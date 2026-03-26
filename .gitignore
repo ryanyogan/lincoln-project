@@ -1,0 +1,47 @@
+# Elixir/Phoenix
+/_build/
+/deps/
+*.ez
+*.beam
+/priv/static/assets/
+erl_crash.dump
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+ENV/
+.eggs/
+*.egg-info/
+*.egg
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+*.sublime-*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+docker-compose.override.yml
+
+# Test
+/cover/
+.pytest_cache/
+htmlcov/
+
+# Node (for Phoenix assets)
+node_modules/

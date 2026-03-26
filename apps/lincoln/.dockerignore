@@ -1,0 +1,39 @@
+# Elixir build artifacts
+_build
+deps
+.fetch
+*.ez
+*.beam
+
+# Node modules
+node_modules
+
+# IDE
+.elixir_ls
+.vscode
+.idea
+*.swp
+
+# Git
+.git
+.gitignore
+
+# Test artifacts
+cover
+doc
+tmp
+test/tmp
+
+# Phoenix generated
+priv/static/assets
+priv/static/cache_manifest.json
+
+# Environment
+.env
+.env.*
+
+# Documentation
+*.md
+
+# Crash dumps
+erl_crash.dump

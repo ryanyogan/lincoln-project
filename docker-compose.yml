@@ -1,0 +1,130 @@
+# Lincoln Development Environment
+# 
+# Usage:
+#   docker compose up -d              # Start DB + ML service (default)
+#   docker compose --profile full up  # Include Elixir app in Docker
+#   docker compose --profile test up  # Include test database
+#   docker compose down               # Stop all services
+#
+# Services:
+#   db         - PostgreSQL 16 with pgvector (port 5432)
+#   db-test    - Isolated test database (port 5433) [profile: test]
+#   ml_service - Python embedding service (port 8000)
+#   lincoln    - Phoenix app [profile: full] (port 4000)
+
+services:
+  # ===========================================================================
+  # Database Services
+  # ===========================================================================
+  
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: lincoln_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: lincoln_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  db-test:
+    image: pgvector/pgvector:pg16
+    container_name: lincoln_db_test
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: lincoln_test
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    profiles:
+      - test
+      - full
+
+  # ===========================================================================
+  # ML Service (Python)
+  # ===========================================================================
+  
+  ml_service:
+    build:
+      context: ./apps/ml_service
+      dockerfile: Dockerfile
+    container_name: lincoln_ml
+    ports:
+      - "8000:8000"
+    volumes:
+      - ml_model_cache:/home/appuser/.cache/huggingface
+    environment:
+      - TRANSFORMERS_CACHE=/home/appuser/.cache/huggingface
+      - HF_HOME=/home/appuser/.cache/huggingface
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 30s  # Model loading takes time
+    restart: unless-stopped
+
+  # ===========================================================================
+  # Elixir App (Optional - use profile: full)
+  # ===========================================================================
+  
+  lincoln:
+    build:
+      context: ./apps/lincoln
+      dockerfile: Dockerfile
+    container_name: lincoln_app
+    ports:
+      - "4000:4000"
+    environment:
+      - DATABASE_URL=postgres://postgres:postgres@db:5432/lincoln_dev
+      - ML_SERVICE_URL=http://ml_service:8000
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - SECRET_KEY_BASE=${SECRET_KEY_BASE:-$(openssl rand -base64 48)}
+      - PHX_HOST=localhost
+      - PORT=4000
+    depends_on:
+      db:
+        condition: service_healthy
+      ml_service:
+        condition: service_healthy
+    profiles:
+      - full
+    restart: unless-stopped
+
+# ===========================================================================
+# Volumes
+# ===========================================================================
+
+volumes:
+  postgres_data:
+    name: lincoln_postgres_data
+  postgres_test_data:
+    name: lincoln_postgres_test_data
+  ml_model_cache:
+    name: lincoln_ml_model_cache
+
+# ===========================================================================
+# Networks (optional, for isolation)
+# ===========================================================================
+
+networks:
+  default:
+    name: lincoln_network

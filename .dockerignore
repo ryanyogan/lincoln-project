@@ -1,0 +1,57 @@
+# Git
+.git
+.gitignore
+
+# Documentation
+*.md
+LICENSE
+
+# Environment files (secrets)
+.env
+.env.*
+!.env.example
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+.elixir_ls
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python
+**/__pycache__
+**/*.pyc
+**/*.pyo
+**/.venv
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+**/htmlcov
+**/.coverage
+
+# Elixir
+**/_build
+**/deps
+**/node_modules
+**/.fetch
+**/erl_crash.dump
+**/*.ez
+**/*.beam
+**/cover
+**/doc
+
+# Phoenix
+**/priv/static/assets
+**/priv/static/cache_manifest.json
+
+# Test artifacts
+**/tmp
+**/test/tmp
+
+# Docker (don't copy compose files into containers)
+docker-compose*.yml
+Dockerfile*
