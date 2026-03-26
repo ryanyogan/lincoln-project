@@ -1,13 +1,14 @@
 # Self-created by Lincoln for adaptive belief formation and metacognitive awareness
 # This module implements confidence scoring and belief quality assessment
 # Self-modified: Enhanced with active belief confidence tracking and uncertainty quantification for improved metacognitive reasoning
+# Self-modified: Added comprehensive belief revision mechanisms and enhanced confidence scoring for better knowledge management
 
 defmodule Lincoln.Learning.BeliefFormation do
   @moduledoc """
   Implements adaptive confidence scoring and metacognitive awareness for belief formation.
   Tracks when beliefs are formed with insufficient evidence versus high confidence,
   and adjusts confidence based on topic complexity and uncertainty patterns.
-  Enhanced with active tracking and real-time uncertainty quantification.
+  Enhanced with active tracking, real-time uncertainty quantification, and belief revision mechanisms.
   """
 
   alias Lincoln.Core.{Belief, Context}
@@ -16,6 +17,8 @@ defmodule Lincoln.Learning.BeliefFormation do
   @confidence_threshold 0.7
   @evidence_minimum 3
   @uncertainty_decay 0.85
+  @revision_threshold 0.4
+  @contradiction_threshold 0.6
   @metacognitive_flags [:insufficient_evidence, :high_uncertainty, :conflicting_sources, :novel_domain]
 
   defstruct [
@@ -29,7 +32,11 @@ defmodule Lincoln.Learning.BeliefFormation do
     :revision_history,
     :confidence_trajectory,
     :uncertainty_score,
-    :knowledge_quality_rating
+    :knowledge_quality_rating,
+    :contradictions_detected,
+    :last_revision_time,
+    :revision_count,
+    :evidence_sources
   ]
 
   # Active confidence tracking state
@@ -54,7 +61,11 @@ defmodule Lincoln.Learning.BeliefFormation do
       base_confidence: belief.confidence || 0.5,
       formation_context: context,
       revision_history: [],
-      confidence_trajectory: [{DateTime.utc_now(), belief.confidence || 0.5}]
+      confidence_trajectory: [{DateTime.utc_now(), belief.confidence || 0.5}],
+      contradictions_detected: [],
+      last_revision_time: DateTime.utc_now(),
+      revision_count: 0,
+      evidence_sources: evidence_sources
     }
     |> calculate_uncertainty_factors(evidence_sources)
     |> apply_topic_complexity_adjustment(belief.topic)
@@ -69,11 +80,77 @@ defmodule Lincoln.Learning.BeliefFormation do
     formation
   end
 
+  def revise_belief_with_evidence(topic, new_evidence, contradiction_level \\ nil) do
+    case :ets.lookup(@belief_confidence_registry, topic) do
+      [{^topic, formation}] ->
+        contradiction_detected = contradiction_level && contradiction_level > @contradiction_threshold
+        
+        revised_formation = formation
+        |> add_new_evidence(new_evidence)
+        |> detect_contradictions(new_evidence, contradiction_level)
+        |> maybe_trigger_revision(contradiction_detected)
+        |> recalculate_confidence()
+        |> update_revision_metrics()
+        |> calculate_uncertainty_score()
+        |> assign_knowledge_quality_rating()
+        |> update_confidence_trajectory()
+
+        store_belief_confidence(topic, revised_formation)
+        
+        revision_outcome = determine_revision_outcome(formation, revised_formation)
+        {:ok, revised_formation, revision_outcome}
+      
+      [] ->
+        {:error, :belief_not_found}
+    end
+  end
+
+  def get_revision_recommendations do
+    start_confidence_tracking()
+    
+    :ets.tab2list(@belief_confidence_registry)
+    |> Enum.map(fn {topic, formation} -> {topic, formation} end)
+    |> Enum.filter(&should_consider_revision?/1)
+    |> Enum.map(fn {topic, formation} ->
+      %{
+        topic: topic,
+        current_confidence: formation.adjusted_confidence,
+        revision_urgency: calculate_revision_urgency(formation),
+        contradictions: length(formation.contradictions_detected),
+        recommendation_type: get_revision_type(formation),
+        last_revised: formation.last_revision_time
+      }
+    end)
+    |> Enum.sort_by(& &1.revision_urgency, :desc)
+  end
+
+  def calculate_belief_confidence_score(topic) do
+    case :ets.lookup(@belief_confidence_registry, topic) do
+      [{^topic, formation}] ->
+        confidence_components = %{
+          base_confidence: formation.adjusted_confidence,
+          evidence_strength: evidence_strength_score(formation),
+          source_reliability: formation.uncertainty_factors.evidence_quality,
+          temporal_stability: calculate_confidence_stability(formation),
+          contradiction_impact: contradiction_penalty(formation),
+          revision_stability: revision_stability_score(formation)
+        }
+        
+        overall_score = calculate_weighted_confidence(confidence_components)
+        
+        {:ok, overall_score, confidence_components}
+      
+      [] ->
+        {:error, :belief_not_found}
+    end
+  end
+
   def update_belief_confidence(belief_formation, new_evidence) do
     updated_evidence_count = belief_formation.evidence_count + length(new_evidence)
     
     updated_formation = belief_formation
     |> Map.put(:evidence_count, updated_evidence_count)
+    |> Map.put(:evidence_sources, belief_formation.evidence_sources ++ new_evidence)
     |> calculate_uncertainty_factors(new_evidence)
     |> update_metacognitive_flags()
     |> adjust_confidence()
@@ -109,7 +186,8 @@ defmodule Lincoln.Learning.BeliefFormation do
         medium_confidence: 0,
         low_confidence: 0,
         average_uncertainty: 0.0,
-        quality_distribution: %{}
+        quality_distribution: %{},
+        revision_summary: %{pending_revisions: 0, recently_revised: 0}
       }
     else
       formations = Enum.map(all_beliefs, fn {_topic, formation} -> formation end)
@@ -121,7 +199,8 @@ defmodule Lincoln.Learning.BeliefFormation do
         low_confidence: count_by_confidence(formations, 0.0, 0.4),
         average_uncertainty: calculate_average_uncertainty(formations),
         quality_distribution: calculate_quality_distribution(formations),
-        problematic_beliefs: identify_problematic_beliefs(formations)
+        problematic_beliefs: identify_problematic_beliefs(formations),
+        revision_summary: calculate_revision_summary(formations)
       }
     end
   end
@@ -138,7 +217,8 @@ defmodule Lincoln.Learning.BeliefFormation do
               temporal_stability: formation.uncertainty_factors.temporal_consistency,
               conflict_level: formation.uncertainty_factors.conflicting_evidence,
               overall_uncertainty: uncertainty_score,
-              confidence_stability: calculate_confidence_stability(formation)
+              confidence_stability: calculate_confidence_stability(formation),
+              contradiction_impact: length(formation.contradictions_detected) * 0.1
             }
           [] -> %{}
         end
@@ -162,273 +242,158 @@ defmodule Lincoln.Learning.BeliefFormation do
         issues: identify_issues(formation),
         confidence: formation.adjusted_confidence,
         uncertainty: formation.uncertainty_score,
-        recommendation: generate_recommendation(formation)
+        recommendation: generate_recommendation(formation),
+        revision_needed: should_consider_revision?({topic, formation})
       }
     end)
   end
 
-  defp store_belief_confidence(topic, formation) do
-    :ets.insert(@belief_confidence_registry, {topic, formation})
-  end
-
-  defp calculate_uncertainty_score(formation) do
-    uncertainty_components = [
-      evidence_uncertainty(formation),
-      source_uncertainty(formation),
-      temporal_uncertainty(formation),
-      conflict_uncertainty(formation),
-      metacognitive_uncertainty(formation)
-    ]
+  # Belief revision mechanism helpers
+  defp add_new_evidence(formation, new_evidence) do
+    updated_sources = formation.evidence_sources ++ new_evidence
+    updated_count = length(updated_sources)
     
-    overall_uncertainty = uncertainty_components
-    |> Enum.sum()
-    |> Kernel./(length(uncertainty_components))
-    
-    Map.put(formation, :uncertainty_score, overall_uncertainty)
+    formation
+    |> Map.put(:evidence_sources, updated_sources)
+    |> Map.put(:evidence_count, updated_count)
   end
 
-  defp assign_knowledge_quality_rating(formation) do
-    rating = cond do
-      formation.adjusted_confidence >= 0.8 && formation.uncertainty_score <= 0.3 -> :high_quality
-      formation.adjusted_confidence >= 0.6 && formation.uncertainty_score <= 0.5 -> :good_quality
-      formation.adjusted_confidence >= 0.4 && formation.uncertainty_score <= 0.7 -> :moderate_quality
-      formation.adjusted_confidence >= 0.2 -> :low_quality
-      true -> :unreliable
-    end
-    
-    Map.put(formation, :knowledge_quality_rating, rating)
-  end
-
-  defp update_confidence_trajectory(formation) do
-    new_point = {DateTime.utc_now(), formation.adjusted_confidence}
-    updated_trajectory = [new_point | formation.confidence_trajectory]
-    
-    # Keep only last 10 points to avoid memory bloat
-    trimmed_trajectory = Enum.take(updated_trajectory, 10)
-    
-    Map.put(formation, :confidence_trajectory, trimmed_trajectory)
-  end
-
-  defp evidence_uncertainty(formation) do
-    case formation.evidence_count do
-      0 -> 1.0
-      1 -> 0.8
-      2 -> 0.6
-      count when count < @evidence_minimum -> 0.5
-      count when count >= 5 -> 0.2
-      _ -> 0.3
-    end
-  end
-
-  defp source_uncertainty(formation) do
-    1.0 - formation.uncertainty_factors.evidence_quality
-  end
-
-  defp temporal_uncertainty(formation) do
-    1.0 - formation.uncertainty_factors.temporal_consistency
-  end
-
-  defp conflict_uncertainty(formation) do
-    formation.uncertainty_factors.conflicting_evidence
-  end
-
-  defp metacognitive_uncertainty(formation) do
-    flag_count = length(formation.metacognitive_flags)
-    min(flag_count * 0.2, 1.0)
-  end
-
-  defp evidence_sufficiency_score(formation) do
-    case formation.evidence_count do
-      count when count >= @evidence_minimum -> 0.9
-      count when count >= 2 -> 0.6
-      1 -> 0.3
-      0 -> 0.0
-    end
-  end
-
-  defp topic_complexity_uncertainty(topic) do
-    case TopicAnalysis.get_topic_complexity(topic) do
-      :simple -> 0.1
-      :moderate -> 0.3
-      :complex -> 0.5
-      :highly_complex -> 0.7
-      :unknown -> 0.9
-    end
-  end
-
-  defp calculate_confidence_stability(formation) do
-    if length(formation.confidence_trajectory) < 2 do
-      0.5
+  defp detect_contradictions(formation, new_evidence, contradiction_level) do
+    new_contradictions = if contradiction_level && contradiction_level > @contradiction_threshold do
+      contradiction_entry = %{
+        detected_at: DateTime.utc_now(),
+        contradiction_level: contradiction_level,
+        conflicting_evidence: new_evidence,
+        resolution_status: :unresolved
+      }
+      [contradiction_entry | formation.contradictions_detected]
     else
-      confidences = Enum.map(formation.confidence_trajectory, fn {_time, conf} -> conf end)
-      variance = calculate_variance(confidences)
-      max(0.0, 1.0 - variance * 2)
+      formation.contradictions_detected
     end
-  end
-
-  defp calculate_variance(values) do
-    if length(values) < 2 do
-      0.0
-    else
-      mean = Enum.sum(values) / length(values)
-      sum_squared_diff = values
-      |> Enum.map(fn x -> :math.pow(x - mean, 2) end)
-      |> Enum.sum()
-      
-      sum_squared_diff / length(values)
-    end
-  end
-
-  defp count_by_confidence(formations, min_conf, max_conf) do
-    formations
-    |> Enum.count(fn formation -> 
-      conf = formation.adjusted_confidence
-      conf >= min_conf && conf < max_conf
-    end)
-  end
-
-  defp calculate_average_uncertainty(formations) do
-    if Enum.empty?(formations) do
-      0.0
-    else
-      formations
-      |> Enum.map(& &1.uncertainty_score)
-      |> Enum.sum()
-      |> Kernel./(length(formations))
-    end
-  end
-
-  defp calculate_quality_distribution(formations) do
-    formations
-    |> Enum.group_by(& &1.knowledge_quality_rating)
-    |> Enum.map(fn {quality, beliefs} -> {quality, length(beliefs)} end)
-    |> Enum.into(%{})
-  end
-
-  defp identify_problematic_beliefs(formations) do
-    formations
-    |> Enum.filter(fn formation ->
-      formation.uncertainty_score > 0.7 || 
-      formation.adjusted_confidence < 0.3 ||
-      :insufficient_evidence in formation.metacognitive_flags
-    end)
-    |> Enum.map(& &1.topic)
-  end
-
-  defp needs_attention?(formation, threshold) do
-    formation.uncertainty_score >= threshold ||
-    formation.adjusted_confidence <= 0.3 ||
-    length(formation.metacognitive_flags) >= 2
-  end
-
-  defp identify_issues(formation) do
-    issues = []
     
-    issues = if formation.uncertainty_score > 0.7, do: [:high_uncertainty | issues], else: issues
-    issues = if formation.adjusted_confidence < 0.3, do: [:low_confidence | issues], else: issues
-    issues = if formation.evidence_count < @evidence_minimum, do: [:insufficient_evidence | issues], else: issues
-    issues = if :conflicting_sources in formation.metacognitive_flags, do: [:conflicting_sources | issues], else: issues
-    
-    issues
+    Map.put(formation, :contradictions_detected, new_contradictions)
   end
 
-  defp generate_recommendation(formation) do
-    cond do
-      formation.evidence_count < @evidence_minimum ->
-        "Gather more evidence sources to improve confidence"
-      
-      formation.uncertainty_factors.conflicting_evidence > 0.5 ->
-        "Resolve conflicting information from sources"
-      
-      formation.uncertainty_factors.evidence_quality < 0.4 ->
-        "Seek higher quality, more authoritative sources"
-      
-      :novel_domain in formation.metacognitive_flags ->
-        "Build foundational understanding in this domain"
-      
-      true ->
-        "Continue monitoring and updating as new information becomes available"
+  defp maybe_trigger_revision(formation, should_revise) do
+    if should_revise || formation.adjusted_confidence < @revision_threshold do
+      trigger_belief_revision(formation)
+    else
+      formation
     end
   end
 
-  # Existing helper functions remain unchanged
-  defp calculate_uncertainty_factors(formation, evidence_sources) do
-    uncertainty_factors = %{
-      evidence_quality: assess_evidence_quality(evidence_sources),
-      source_diversity: calculate_source_diversity(evidence_sources),
-      temporal_consistency: check_temporal_consistency(evidence_sources),
-      conflicting_evidence: detect_conflicts(evidence_sources)
+  defp trigger_belief_revision(formation) do
+    revision_entry = %{
+      timestamp: DateTime.utc_now(),
+      previous_confidence: formation.adjusted_confidence,
+      reason: determine_revision_reason(formation),
+      evidence_at_revision: formation.evidence_count
     }
-
-    Map.put(formation, :uncertainty_factors, uncertainty_factors)
+    
+    formation
+    |> Map.put(:revision_history, [revision_entry | formation.revision_history])
+    |> Map.put(:last_revision_time, DateTime.utc_now())
+    |> Map.put(:revision_count, formation.revision_count + 1)
   end
 
-  defp apply_topic_complexity_adjustment(formation, topic) do
-    complexity_modifier = case TopicAnalysis.get_topic_complexity(topic) do
-      :simple -> 1.0
-      :moderate -> 0.9
-      :complex -> 0.8
-      :highly_complex -> 0.7
-      :unknown -> 0.6
+  defp recalculate_confidence(formation) do
+    formation
+    |> calculate_uncertainty_factors(formation.evidence_sources)
+    |> apply_topic_complexity_adjustment(formation.topic)
+    |> identify_metacognitive_flags()
+    |> adjust_confidence()
+  end
+
+  defp update_revision_metrics(formation) do
+    # Additional metrics tracking could be added here
+    formation
+  end
+
+  defp determine_revision_outcome(old_formation, new_formation) do
+    confidence_change = new_formation.adjusted_confidence - old_formation.adjusted_confidence
+    
+    cond do
+      confidence_change > 0.2 -> :confidence_increased
+      confidence_change < -0.2 -> :confidence_decreased
+      length(new_formation.contradictions_detected) > length(old_formation.contradictions_detected) -> :contradiction_detected
+      new_formation.evidence_count > old_formation.evidence_count -> :evidence_added
+      true -> :minor_update
     end
-
-    adjusted_confidence = formation.base_confidence * complexity_modifier
-    Map.put(formation, :adjusted_confidence, adjusted_confidence)
   end
 
-  defp identify_metacognitive_flags(formation) do
-    flags = []
-    |> maybe_add_flag(:insufficient_evidence, formation.evidence_count < @evidence_minimum)
-    |> maybe_add_flag(:high_uncertainty, high_uncertainty?(formation))
-    |> maybe_add_flag(:conflicting_sources, conflicting_sources?(formation))
-    |> maybe_add_flag(:novel_domain, novel_domain?(formation))
-
-    Map.put(formation, :metacognitive_flags, flags)
+  defp should_consider_revision?({_topic, formation}) do
+    days_since_revision = DateTime.diff(DateTime.utc_now(), formation.last_revision_time, :day)
+    
+    formation.adjusted_confidence < @revision_threshold ||
+    length(formation.contradictions_detected) > 0 ||
+    formation.uncertainty_score > 0.7 ||
+    (days_since_revision > 30 && formation.adjusted_confidence < 0.6)
   end
 
-  defp adjust_confidence(formation) do
-    confidence_adjustments = [
-      evidence_adjustment(formation),
-      uncertainty_adjustment(formation),
-      metacognitive_adjustment(formation)
+  defp calculate_revision_urgency(formation) do
+    urgency_factors = [
+      confidence_urgency(formation.adjusted_confidence),
+      contradiction_urgency(formation.contradictions_detected),
+      temporal_urgency(formation.last_revision_time),
+      uncertainty_urgency(formation.uncertainty_score)
     ]
-
-    final_confidence = formation.adjusted_confidence
-    |> apply_adjustments(confidence_adjustments)
-    |> clamp_confidence()
-
-    Map.put(formation, :adjusted_confidence, final_confidence)
+    
+    Enum.sum(urgency_factors) / length(urgency_factors)
   end
 
-  defp evidence_adjustment(formation) do
-    case formation.evidence_count do
-      count when count < 2 -> -0.3
-      count when count < @evidence_minimum -> -0.15
-      count when count >= 5 -> 0.1
-      _ -> 0.0
+  defp confidence_urgency(confidence) when confidence < 0.3, do: 1.0
+  defp confidence_urgency(confidence) when confidence < 0.5, do: 0.7
+  defp confidence_urgency(_), do: 0.2
+
+  defp contradiction_urgency(contradictions) do
+    unresolved = Enum.count(contradictions, fn c -> c.resolution_status == :unresolved end)
+    min(unresolved * 0.3, 1.0)
+  end
+
+  defp temporal_urgency(last_revision) do
+    days_ago = DateTime.diff(DateTime.utc_now(), last_revision, :day)
+    cond do
+      days_ago > 90 -> 0.8
+      days_ago > 60 -> 0.5
+      days_ago > 30 -> 0.3
+      true -> 0.1
     end
   end
 
-  defp uncertainty_adjustment(formation) do
-    uncertainty_score = formation.uncertainty_factors
-    |> Map.values()
-    |> Enum.map(fn
-      val when is_number(val) -> val
-      _ -> 0.5
+  defp uncertainty_urgency(uncertainty) when uncertainty > 0.8, do: 1.0
+  defp uncertainty_urgency(uncertainty) when uncertainty > 0.6, do: 0.6
+  defp uncertainty_urgency(_), do: 0.2
+
+  defp get_revision_type(formation) do
+    cond do
+      formation.adjusted_confidence < 0.3 -> :confidence_restoration
+      length(formation.contradictions_detected) > 0 -> :contradiction_resolution
+      formation.evidence_count < @evidence_minimum -> :evidence_gathering
+      formation.uncertainty_score > 0.7 -> :uncertainty_reduction
+      true -> :routine_review
+    end
+  end
+
+  defp determine_revision_reason(formation) do
+    cond do
+      formation.adjusted_confidence < @revision_threshold -> :low_confidence
+      length(formation.contradictions_detected) > 0 -> :contradictions_detected
+      formation.uncertainty_score > 0.7 -> :high_uncertainty
+      true -> :routine_maintenance
+    end
+  end
+
+  defp evidence_strength_score(formation) do
+    base_score = min(formation.evidence_count / 5.0, 1.0)
+    quality_bonus = formation.uncertainty_factors.evidence_quality * 0.3
+    diversity_bonus = formation.uncertainty_factors.source_diversity * 0.2
+    
+    min(base_score + quality_bonus + diversity_bonus, 1.0)
+  end
+
+  defp contradiction_penalty(formation) do
+    unresolved_count = Enum.count(formation.contradictions_detected, fn c -> 
+      c.resolution_status == :unresolved 
     end)
-    |> Enum.sum()
-    |> Kernel./(4)  # Average across 4 factors
-
-    # Higher uncertainty reduces confidence
-    (0.5 - uncertainty_score) * 0.4
-  end
-
-  defp metacognitive_adjustment(formation) do
-    penalty = formation.metacognitive_flags
-    |> Enum.map(&flag_penalty/1)
-    |> Enum.sum()
-
-    -penalty
-  end
-
-  defp apply_adjustments(base_confidence,
+    
+    unresolved_count * 0.
