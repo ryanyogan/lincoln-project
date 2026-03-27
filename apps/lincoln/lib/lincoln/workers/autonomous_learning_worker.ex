@@ -26,7 +26,7 @@ defmodule Lincoln.Workers.AutonomousLearningWorker do
     unique: [period: 30]
 
   alias Lincoln.{Agents, Autonomy, Beliefs, Memory, Cognition}
-  alias Lincoln.Autonomy.{Research, Evolution, TokenBudget, LearningSession}
+  alias Lincoln.Autonomy.{Research, Evolution, SelfImprovement, TokenBudget, LearningSession}
 
   require Logger
 
@@ -424,44 +424,86 @@ defmodule Lincoln.Workers.AutonomousLearningWorker do
     unless TokenBudget.should_skip_expensive?(session) do
       Logger.info("[Lincoln] Considering self-improvement...")
 
-      # Gather context about recent session
-      recent_logs = Autonomy.list_logs(session, limit: 50)
-
-      error_logs =
-        recent_logs
-        |> Enum.filter(&(&1.activity_type == "error"))
-        |> Enum.map(& &1.description)
-        |> Enum.join("\n")
-
-      context = %{
-        recent_learnings:
-          "Explored #{session.topics_explored} topics, formed #{session.beliefs_formed} beliefs",
-        recent_errors: if(error_logs == "", do: "None", else: error_logs)
-      }
-
-      case Evolution.reflect_on_codebase(llm, context) do
-        {:ok, %{"should_evolve" => true} = suggestion} ->
-          Logger.info("[Lincoln] Identified improvement: #{suggestion["description"]}")
+      # First, check for event-driven improvement opportunities from the queue
+      # These are high-signal improvements detected from struggles/corrections
+      case SelfImprovement.process_next(agent, llm) do
+        {:ok, code_change} ->
+          Logger.info("[Lincoln] Event-driven improvement applied: #{code_change.file_path}")
 
           Autonomy.log_activity(
             agent,
             session,
             "evolve",
-            "Identified improvement: #{suggestion["description"]}",
-            details: suggestion
+            "Applied event-driven improvement to #{code_change.file_path}",
+            details: %{
+              change_id: code_change.id,
+              file: code_change.file_path,
+              commit: code_change.git_commit
+            }
           )
 
-          # Attempt the evolution
-          attempt_evolution(agent, session, suggestion, llm)
+          Autonomy.increment_session(session, :code_changes_made)
 
-        {:ok, %{"should_evolve" => false, "reasoning" => reasoning}} ->
-          Logger.debug("[Lincoln] No evolution needed: #{reasoning}")
+        :already_working ->
+          Logger.debug("[Lincoln] Already working on an improvement, skipping")
 
-        error ->
-          Logger.warning("[Lincoln] Evolution reflection failed: #{inspect(error)}")
+        :queue_empty ->
+          # No queued improvements - fall back to reflective evolution
+          do_reflective_evolution(agent, session, llm)
+
+        :skipped ->
+          # Decided not to proceed with queued improvement
+          Logger.debug("[Lincoln] Skipped queued improvement, trying reflective evolution")
+          do_reflective_evolution(agent, session, llm)
+
+        {:error, reason} ->
+          Logger.warning("[Lincoln] Event-driven improvement failed: #{inspect(reason)}")
+          # Still try reflective evolution
+          do_reflective_evolution(agent, session, llm)
       end
 
       TokenBudget.record_usage(session, TokenBudget.estimate_evolution_tokens())
+    end
+  end
+
+  # Reflective evolution - the original approach where Lincoln analyzes his codebase
+  # for potential improvements without being triggered by specific events
+  defp do_reflective_evolution(agent, session, llm) do
+    # Gather context about recent session
+    recent_logs = Autonomy.list_logs(session, limit: 50)
+
+    error_logs =
+      recent_logs
+      |> Enum.filter(&(&1.activity_type == "error"))
+      |> Enum.map(& &1.description)
+      |> Enum.join("\n")
+
+    context = %{
+      recent_learnings:
+        "Explored #{session.topics_explored} topics, formed #{session.beliefs_formed} beliefs",
+      recent_errors: if(error_logs == "", do: "None", else: error_logs)
+    }
+
+    case Evolution.reflect_on_codebase(llm, context) do
+      {:ok, %{"should_evolve" => true} = suggestion} ->
+        Logger.info("[Lincoln] Identified improvement: #{suggestion["description"]}")
+
+        Autonomy.log_activity(
+          agent,
+          session,
+          "evolve",
+          "Identified improvement: #{suggestion["description"]}",
+          details: suggestion
+        )
+
+        # Attempt the evolution
+        attempt_evolution(agent, session, suggestion, llm)
+
+      {:ok, %{"should_evolve" => false, "reasoning" => reasoning}} ->
+        Logger.debug("[Lincoln] No evolution needed: #{reasoning}")
+
+      error ->
+        Logger.warning("[Lincoln] Evolution reflection failed: #{inspect(error)}")
     end
   end
 

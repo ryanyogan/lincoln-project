@@ -2,7 +2,7 @@ defmodule LincolnWeb.Layouts do
   @moduledoc """
   This module holds layouts and related functionality.
 
-  Lincoln Neural Terminal - daisyUI Cyberpunk Theme
+  Lincoln Neural Dashboard - Clean admin interface with neural aesthetic.
   Uses drawer + navbar pattern for responsive navigation.
   """
   use LincolnWeb, :html
@@ -27,53 +27,53 @@ defmodule LincolnWeb.Layouts do
       <input id="lincoln-drawer" type="checkbox" class="drawer-toggle" />
       
     <!-- Main content area -->
-      <div class="drawer-content flex flex-col min-h-screen neural-grid">
+      <div class="drawer-content flex flex-col min-h-screen bg-base-100">
         <!-- Navbar -->
-        <div class="navbar bg-base-200 border-b-2 border-primary sticky top-0 z-30">
+        <div class="navbar bg-base-200 border-b border-base-300 sticky top-0 z-30">
           <div class="navbar-start">
             <!-- Mobile drawer toggle -->
             <label for="lincoln-drawer" class="btn btn-ghost btn-square lg:hidden">
               <.icon name="hero-bars-3" class="size-5" />
             </label>
             <!-- Logo -->
-            <a href="/" class="btn btn-ghost gap-2 text-xl font-terminal uppercase">
+            <a href="/" class="btn btn-ghost gap-2 text-xl font-semibold">
               <div class="relative">
                 <.icon name="hero-cpu-chip" class="size-6 text-primary" />
-                <span class="absolute -top-1 -right-1 size-2 bg-accent neural-pulse"></span>
+                <span class="absolute -top-1 -right-1 size-2 bg-success rounded-full"></span>
               </div>
-              <span class="hidden sm:inline">Lincoln<span class="cursor-blink"></span></span>
+              <span class="hidden sm:inline">Lincoln</span>
             </a>
           </div>
 
           <div class="navbar-center hidden lg:flex">
             <ul class="menu menu-horizontal gap-1">
               <li>
-                <a href="/" class="font-terminal uppercase text-sm">
+                <a href="/" class="text-sm">
                   <.icon name="hero-squares-2x2" class="size-4" /> Dashboard
                 </a>
               </li>
               <li>
-                <a href="/chat" class="font-terminal uppercase text-sm">
+                <a href="/chat" class="text-sm">
                   <.icon name="hero-chat-bubble-left-right" class="size-4" /> Chat
                 </a>
               </li>
               <li>
-                <a href="/beliefs" class="font-terminal uppercase text-sm">
+                <a href="/beliefs" class="text-sm">
                   <.icon name="hero-light-bulb" class="size-4" /> Beliefs
                 </a>
               </li>
               <li>
-                <a href="/questions" class="font-terminal uppercase text-sm">
+                <a href="/questions" class="text-sm">
                   <.icon name="hero-question-mark-circle" class="size-4" /> Questions
                 </a>
               </li>
               <li>
-                <a href="/memories" class="font-terminal uppercase text-sm">
+                <a href="/memories" class="text-sm">
                   <.icon name="hero-archive-box" class="size-4" /> Memories
                 </a>
               </li>
               <li>
-                <a href="/autonomy" class="font-terminal uppercase text-sm">
+                <a href="/autonomy" class="text-sm">
                   <.icon name="hero-bolt" class="size-4" /> Autonomy
                 </a>
               </li>
@@ -82,9 +82,9 @@ defmodule LincolnWeb.Layouts do
 
           <div class="navbar-end gap-2">
             <!-- System status -->
-            <div class="hidden sm:flex items-center gap-2 px-3 py-1 bg-base-300 border border-primary/30">
-              <span class="status status-success status-glow"></span>
-              <span class="font-terminal text-xs uppercase text-primary/70">Online</span>
+            <div class="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-base-300 rounded-lg">
+              <span class="size-2 bg-success rounded-full"></span>
+              <span class="text-xs text-base-content/70">Online</span>
             </div>
             
     <!-- System link -->
@@ -97,28 +97,23 @@ defmodule LincolnWeb.Layouts do
           </div>
         </div>
         
-    <!-- Scan line effect -->
-        <div class="h-px scan-line"></div>
-        
     <!-- Page content -->
-        <main class="flex-1 p-4 sm:p-6 lg:p-8">
+        <main class="flex-1 p-4 sm:p-6">
           <div class="mx-auto max-w-7xl">
             {render_slot(@inner_block)}
           </div>
         </main>
         
     <!-- Footer -->
-        <footer class="footer footer-center bg-base-200 border-t-2 border-primary/20 p-4">
-          <div class="flex items-center gap-4 text-xs font-terminal text-base-content/40">
-            <span>LINCOLN v0.1.0</span>
-            <span class="w-8 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent">
-            </span>
+        <footer class="bg-base-200 border-t border-base-300 p-4">
+          <div class="flex items-center justify-center gap-4 text-xs text-base-content/50">
+            <span>Lincoln v0.1.0</span>
+            <span class="text-base-content/20">|</span>
             <span>Neural Learning Agent</span>
-            <span class="w-8 h-px bg-gradient-to-r from-transparent via-primary/50 to-transparent">
-            </span>
-            <div class="flex items-center gap-1">
-              <span class="uppercase">Session Active</span>
-              <span class="status status-success neural-pulse"></span>
+            <span class="text-base-content/20">|</span>
+            <div class="flex items-center gap-1.5">
+              <span>Session Active</span>
+              <span class="size-1.5 bg-success rounded-full"></span>
             </div>
           </div>
         </footer>
@@ -127,76 +122,71 @@ defmodule LincolnWeb.Layouts do
     <!-- Sidebar drawer -->
       <div class="drawer-side z-40">
         <label for="lincoln-drawer" aria-label="close sidebar" class="drawer-overlay"></label>
-        <aside class="bg-base-200 min-h-full w-72 border-r-2 border-primary">
+        <aside class="bg-base-200 min-h-full w-64 border-r border-base-300">
           <!-- Sidebar header -->
-          <div class="p-4 border-b-2 border-primary">
+          <div class="p-4 border-b border-base-300">
             <div class="flex items-center gap-3">
               <div class="avatar placeholder">
-                <div class="bg-primary text-primary-content w-12 border-2 border-primary shadow-brutal-sm">
-                  <span class="text-xl font-black font-terminal">L</span>
+                <div class="bg-primary text-primary-content w-10 rounded-lg">
+                  <span class="text-lg font-bold">L</span>
                 </div>
               </div>
               <div>
-                <h2 class="font-terminal font-bold uppercase">Lincoln</h2>
-                <p class="text-xs font-terminal text-base-content/60">Neural Learning System</p>
+                <h2 class="font-semibold">Lincoln</h2>
+                <p class="text-xs text-base-content/60">Neural Learning System</p>
               </div>
             </div>
           </div>
           
     <!-- Navigation menu -->
-          <ul class="menu p-4 gap-1">
-            <li class="menu-title font-terminal uppercase text-xs tracking-wider">
+          <ul class="menu p-4 gap-0.5">
+            <li class="menu-title text-xs tracking-wide">
               <span>Navigation</span>
             </li>
             <li>
-              <a href="/" class="font-terminal uppercase">
+              <a href="/">
                 <.icon name="hero-squares-2x2" class="size-5" /> Dashboard
               </a>
             </li>
             <li>
-              <a href="/chat" class="font-terminal uppercase">
+              <a href="/chat">
                 <.icon name="hero-chat-bubble-left-right" class="size-5" /> Chat
-                <span class="badge badge-primary badge-sm">Talk</span>
               </a>
             </li>
             <li>
-              <a href="/beliefs" class="font-terminal uppercase">
+              <a href="/beliefs">
                 <.icon name="hero-light-bulb" class="size-5" /> Beliefs
-                <span class="badge badge-secondary badge-sm">Matrix</span>
               </a>
             </li>
             <li>
-              <a href="/questions" class="font-terminal uppercase">
+              <a href="/questions">
                 <.icon name="hero-question-mark-circle" class="size-5" /> Questions
-                <span class="badge badge-accent badge-sm">Query</span>
               </a>
             </li>
             <li>
-              <a href="/memories" class="font-terminal uppercase">
+              <a href="/memories">
                 <.icon name="hero-archive-box" class="size-5" /> Memories
-                <span class="badge badge-info badge-sm">Bank</span>
               </a>
             </li>
             <li>
-              <a href="/autonomy" class="font-terminal uppercase">
+              <a href="/autonomy">
                 <.icon name="hero-bolt" class="size-5" /> Autonomy
-                <span class="badge badge-warning badge-sm">Night</span>
               </a>
             </li>
 
-            <li class="menu-title font-terminal uppercase text-xs tracking-wider mt-4">
+            <li class="menu-title text-xs tracking-wide mt-4">
               <span>System</span>
             </li>
             <li>
-              <a href="/dev/dashboard" class="font-terminal uppercase">
+              <a href="/dev/dashboard">
                 <.icon name="hero-cog-6-tooth" class="size-5" /> Settings
               </a>
             </li>
           </ul>
           
     <!-- Sidebar footer -->
-          <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-primary/20">
-            <div class="flex items-center justify-between text-xs font-terminal text-base-content/50">
+          <div class="absolute bottom-0 left-0 right-0 p-4 border-t border-base-300">
+            <div class="flex items-center justify-between text-xs text-base-content/50">
               <span>Theme</span>
               <.theme_toggle />
             </div>
@@ -259,9 +249,9 @@ defmodule LincolnWeb.Layouts do
     ~H"""
     <label class="swap swap-rotate btn btn-ghost btn-sm btn-square">
       <!-- Hidden checkbox controls theme -->
-      <input type="checkbox" class="theme-controller" value="light" />
+      <input type="checkbox" class="theme-controller" value="lincoln-light" />
       
-    <!-- Sun icon (shown when dark/cyberpunk theme is active) -->
+    <!-- Sun icon (shown when dark/lincoln theme is active) -->
       <svg
         class="swap-off size-5 fill-current"
         xmlns="http://www.w3.org/2000/svg"

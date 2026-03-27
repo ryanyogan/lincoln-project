@@ -7,6 +7,8 @@ defmodule LincolnWeb.BeliefsLive do
 
   alias Lincoln.{Agents, Beliefs}
 
+  @per_page 20
+
   @impl true
   def mount(_params, _session, socket) do
     {:ok, agent} = Agents.get_or_create_default_agent()
@@ -16,7 +18,10 @@ defmodule LincolnWeb.BeliefsLive do
       |> assign(:agent, agent)
       |> assign(:page_title, "Belief Matrix")
       |> assign(:filter, "all")
-      |> load_beliefs()
+      |> assign(:page, 1)
+      |> assign(:per_page, @per_page)
+      |> assign(:end_of_list?, false)
+      |> stream(:beliefs, [])
 
     if connected?(socket) do
       Phoenix.PubSub.subscribe(Lincoln.PubSub, "agent:#{agent.id}:beliefs")
@@ -33,12 +38,26 @@ defmodule LincolnWeb.BeliefsLive do
       socket
       |> assign(:selected_belief, belief)
       |> assign(:page_title, "Belief: #{truncate(belief.statement, 30)}")
+      |> maybe_paginate_beliefs()
 
     {:noreply, socket}
   end
 
   def handle_params(_params, _uri, socket) do
-    {:noreply, assign(socket, :selected_belief, nil)}
+    socket =
+      socket
+      |> assign(:selected_belief, nil)
+      |> maybe_paginate_beliefs()
+
+    {:noreply, socket}
+  end
+
+  defp maybe_paginate_beliefs(socket) do
+    if socket.assigns.page == 1 do
+      paginate_beliefs(socket, 1)
+    else
+      socket
+    end
   end
 
   @impl true
@@ -46,13 +65,19 @@ defmodule LincolnWeb.BeliefsLive do
     socket =
       socket
       |> assign(:filter, filter)
-      |> load_beliefs()
+      |> assign(:page, 1)
+      |> assign(:end_of_list?, false)
+      |> paginate_beliefs(1, reset: true)
 
     {:noreply, socket}
   end
 
   def handle_event("close_detail", _params, socket) do
     {:noreply, push_patch(socket, to: ~p"/beliefs")}
+  end
+
+  def handle_event("load-more", _, socket) do
+    {:noreply, paginate_beliefs(socket, socket.assigns.page + 1)}
   end
 
   @impl true
@@ -64,29 +89,47 @@ defmodule LincolnWeb.BeliefsLive do
     {:noreply, stream_insert(socket, :beliefs, belief)}
   end
 
-  defp load_beliefs(socket) do
-    agent = socket.assigns.agent
-    filter = socket.assigns.filter
+  defp paginate_beliefs(socket, new_page, opts \\ []) do
+    %{per_page: per_page, page: cur_page, agent: agent, filter: filter} = socket.assigns
+    reset = Keyword.get(opts, :reset, false)
+
+    offset = (new_page - 1) * per_page
 
     beliefs =
       case filter do
         "high_confidence" ->
-          Beliefs.list_beliefs(agent, min_confidence: 0.7)
+          Beliefs.list_beliefs(agent, min_confidence: 0.7, limit: per_page, offset: offset)
 
         "low_confidence" ->
-          Beliefs.list_beliefs(agent, max_confidence: 0.5)
+          Beliefs.list_beliefs(agent, max_confidence: 0.5, limit: per_page, offset: offset)
 
         "active" ->
-          Beliefs.list_beliefs(agent, status: "active")
+          Beliefs.list_beliefs(agent, status: "active", limit: per_page, offset: offset)
 
         "revised" ->
-          Beliefs.list_beliefs(agent, status: "revised")
+          Beliefs.list_beliefs(agent, status: "revised", limit: per_page, offset: offset)
 
         _ ->
-          Beliefs.list_beliefs(agent)
+          Beliefs.list_beliefs(agent, limit: per_page, offset: offset)
       end
 
-    stream(socket, :beliefs, beliefs, reset: true)
+    {beliefs, at, limit} =
+      if new_page >= cur_page do
+        {beliefs, -1, per_page * 3 * -1}
+      else
+        {Enum.reverse(beliefs), 0, per_page * 3}
+      end
+
+    case beliefs do
+      [] ->
+        assign(socket, end_of_list?: at == -1)
+
+      [_ | _] ->
+        socket
+        |> assign(:end_of_list?, false)
+        |> assign(:page, new_page)
+        |> stream(:beliefs, beliefs, at: at, limit: limit, reset: reset)
+    end
   end
 
   @impl true
@@ -97,24 +140,24 @@ defmodule LincolnWeb.BeliefsLive do
         <!-- Page Header -->
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 class="text-2xl font-black font-terminal uppercase tracking-tight flex items-center gap-2">
-              <.icon name="hero-light-bulb" class="size-6 text-primary" /> Belief Matrix
+            <h1 class="text-2xl font-bold flex items-center gap-2">
+              <.icon name="hero-light-bulb" class="w-6 h-6 text-primary" /> Beliefs
             </h1>
-            <p class="text-sm font-terminal text-base-content/60 mt-1">
+            <p class="text-sm text-base-content/60 mt-1">
               Knowledge structures held by {@agent.name}
             </p>
           </div>
-          <a href="/" class="btn btn-outline btn-primary btn-sm font-terminal uppercase">
-            <.icon name="hero-arrow-left" class="size-4" /> Dashboard
+          <a href="/" class="btn btn-outline btn-sm">
+            <.icon name="hero-arrow-left" class="w-4 h-4" /> Dashboard
           </a>
         </div>
         
-    <!-- Filter Tabs using daisyUI tabs -->
-        <div role="tablist" class="tabs tabs-boxed bg-base-200 border-2 border-primary w-fit">
+    <!-- Filter Tabs -->
+        <div role="tablist" class="tabs tabs-boxed bg-base-200 w-fit">
           <button
             :for={{value, label} <- filter_options()}
             role="tab"
-            class={["tab font-terminal uppercase text-xs", @filter == value && "tab-active"]}
+            class={["tab text-sm", @filter == value && "tab-active"]}
             phx-click="filter"
             phx-value-filter={value}
           >
@@ -126,13 +169,19 @@ defmodule LincolnWeb.BeliefsLive do
         <div class="flex flex-col lg:flex-row gap-6">
           <!-- Beliefs List -->
           <div class={["flex-1", @selected_belief && "lg:max-w-md"]}>
-            <div id="beliefs-list" phx-update="stream" class="space-y-3">
+            <div
+              id="beliefs-list"
+              phx-update="stream"
+              phx-viewport-bottom={!@end_of_list? && "load-more"}
+              class={[
+                "space-y-3",
+                if(@end_of_list?, do: "pb-10", else: "pb-[calc(100vh)]")
+              ]}
+            >
               <!-- Empty state -->
-              <div class="hidden only:flex flex-col items-center justify-center p-12 border-2 border-dashed border-base-content/20">
-                <.icon name="hero-light-bulb" class="size-12 text-base-content/20 mb-3" />
-                <p class="font-terminal text-sm uppercase text-base-content/40">
-                  No beliefs match this filter
-                </p>
+              <div class="hidden only:flex flex-col items-center justify-center p-12 border border-dashed border-base-300 rounded-lg">
+                <.icon name="hero-light-bulb" class="w-12 h-12 text-base-content/20 mb-3" />
+                <p class="text-sm text-base-content/40">No beliefs match this filter</p>
               </div>
               <!-- Belief cards -->
               <.belief_card
@@ -141,6 +190,12 @@ defmodule LincolnWeb.BeliefsLive do
                 belief={belief}
                 selected={@selected_belief && @selected_belief.id == belief.id}
               />
+            </div>
+            <div
+              :if={@end_of_list? && @page > 1}
+              class="text-center py-4 text-base-content/60 text-sm"
+            >
+              No more beliefs to load
             </div>
           </div>
           
@@ -178,32 +233,27 @@ defmodule LincolnWeb.BeliefsLive do
       id={@id}
       patch={~p"/beliefs/#{@belief.id}"}
       class={[
-        "card bg-base-200 border-2 hover-lift transition-all cursor-pointer",
-        @selected && "border-primary bg-base-300 shadow-brutal-primary",
-        !@selected && "border-primary/30 hover:border-primary"
+        "block bg-base-200 border rounded-lg p-4 hover:bg-base-300/50 transition-colors",
+        @selected && "border-primary bg-base-300",
+        !@selected && "border-base-300 hover:border-primary/30"
       ]}
     >
-      <div class="card-body p-4">
-        <div class="flex items-start justify-between gap-3">
-          <p class="text-sm font-terminal line-clamp-2 flex-1">{@belief.statement}</p>
-          <div class="tooltip tooltip-left" data-tip="Confidence level">
-            <span class={["badge font-terminal font-bold", confidence_badge_class(@belief.confidence)]}>
-              {Float.round(@belief.confidence * 100, 0)}%
-            </span>
-          </div>
-        </div>
-        <div class="card-actions justify-start mt-2">
-          <span class={[
-            "badge badge-sm font-terminal uppercase",
-            source_badge_class(@belief.source_type)
-          ]}>
-            {@belief.source_type}
+      <div class="flex items-start justify-between gap-3">
+        <p class="text-sm line-clamp-2 flex-1">{@belief.statement}</p>
+        <div class="tooltip tooltip-left" data-tip="Confidence level">
+          <span class={["badge font-medium", confidence_badge_class(@belief.confidence)]}>
+            {Float.round(@belief.confidence * 100, 0)}%
           </span>
-          <span class={["badge badge-sm font-terminal uppercase", status_badge_class(@belief.status)]}>
-            {@belief.status}
-          </span>
-          <span class="badge badge-ghost badge-sm font-terminal">E:{@belief.entrenchment}</span>
         </div>
+      </div>
+      <div class="flex items-center gap-2 mt-3">
+        <span class={["badge badge-sm uppercase", source_badge_class(@belief.source_type)]}>
+          {@belief.source_type}
+        </span>
+        <span class={["badge badge-sm uppercase", status_badge_class(@belief.status)]}>
+          {@belief.status}
+        </span>
+        <span class="badge badge-ghost badge-sm">E:{@belief.entrenchment}</span>
       </div>
     </.link>
     """
@@ -214,110 +264,88 @@ defmodule LincolnWeb.BeliefsLive do
   defp belief_detail(assigns) do
     ~H"""
     <div class="flex-1 lg:max-w-lg">
-      <div class="card bg-base-200 border-2 border-primary sticky top-20">
+      <div class="bg-base-200 border border-base-300 rounded-lg sticky top-20">
         <!-- Header -->
-        <div class="flex items-center justify-between px-4 py-3 border-b-2 border-primary bg-base-300">
-          <h3 class="font-terminal text-sm font-bold uppercase tracking-wider flex items-center gap-2">
-            <.icon name="hero-beaker" class="size-4 text-primary" /> Belief Analysis
+        <div class="flex items-center justify-between px-4 py-3 border-b border-base-300">
+          <h3 class="font-semibold text-sm flex items-center gap-2">
+            <.icon name="hero-beaker" class="w-4 h-4 text-primary" /> Belief Analysis
           </h3>
-          <button
-            phx-click="close_detail"
-            class="btn btn-ghost btn-sm btn-square hover:btn-error"
-          >
-            <.icon name="hero-x-mark" class="size-4" />
+          <button phx-click="close_detail" class="btn btn-ghost btn-sm btn-square hover:btn-error">
+            <.icon name="hero-x-mark" class="w-4 h-4" />
           </button>
         </div>
 
-        <div class="card-body p-4 space-y-4">
+        <div class="p-4 space-y-4">
           <!-- Statement -->
           <div>
-            <label class="text-xs font-terminal uppercase tracking-wider text-base-content/50">
-              Statement
-            </label>
-            <p class="mt-1 font-terminal">{@belief.statement}</p>
+            <label class="text-xs uppercase tracking-wider text-base-content/50">Statement</label>
+            <p class="mt-1">{@belief.statement}</p>
           </div>
           
     <!-- Evidence -->
           <%= if @belief.source_evidence do %>
             <div>
-              <label class="text-xs font-terminal uppercase tracking-wider text-base-content/50">
-                Evidence
-              </label>
-              <p class="mt-1 text-sm font-terminal text-base-content/80">{@belief.source_evidence}</p>
+              <label class="text-xs uppercase tracking-wider text-base-content/50">Evidence</label>
+              <p class="mt-1 text-sm text-base-content/80">{@belief.source_evidence}</p>
             </div>
           <% end %>
           
-    <!-- Stats using daisyUI stats component -->
-          <div class="stats stats-vertical sm:stats-horizontal bg-base-300 border border-primary/30 w-full">
-            <div class="stat p-3">
-              <div class="stat-title text-xs font-terminal uppercase">Confidence</div>
-              <div class={[
-                "stat-value text-xl font-terminal",
-                confidence_text_class(@belief.confidence)
-              ]}>
+    <!-- Stats -->
+          <div class="grid grid-cols-2 gap-4">
+            <div class="bg-base-300/50 rounded-lg p-3">
+              <div class="text-xs text-base-content/60 uppercase">Confidence</div>
+              <div class={["text-xl font-bold", confidence_text_class(@belief.confidence)]}>
                 {Float.round(@belief.confidence * 100, 1)}%
               </div>
-              <div class="stat-desc">
-                <progress
-                  class={["progress w-full h-1", confidence_progress_class(@belief.confidence)]}
-                  value={@belief.confidence * 100}
-                  max="100"
-                />
-              </div>
+              <progress
+                class={["progress w-full h-1 mt-1", confidence_progress_class(@belief.confidence)]}
+                value={@belief.confidence * 100}
+                max="100"
+              />
             </div>
-            <div class="stat p-3">
-              <div class="stat-title text-xs font-terminal uppercase">Entrenchment</div>
-              <div class="stat-value text-xl font-terminal">{@belief.entrenchment}</div>
-              <div class="stat-desc">
-                <progress
-                  class="progress progress-secondary w-full h-1"
-                  value={@belief.entrenchment * 10}
-                  max="100"
-                />
-              </div>
+            <div class="bg-base-300/50 rounded-lg p-3">
+              <div class="text-xs text-base-content/60 uppercase">Entrenchment</div>
+              <div class="text-xl font-bold">{@belief.entrenchment}</div>
+              <progress
+                class="progress progress-secondary w-full h-1 mt-1"
+                value={@belief.entrenchment * 10}
+                max="100"
+              />
             </div>
           </div>
           
     <!-- Metadata -->
-          <div class="divider text-xs font-terminal uppercase text-base-content/40">Details</div>
+          <div class="divider text-xs uppercase text-base-content/40">Details</div>
 
-          <div class="space-y-2">
+          <div class="space-y-2 text-sm">
             <div class="flex items-center justify-between">
-              <span class="text-xs font-terminal text-base-content/50 uppercase">Source</span>
-              <span class={[
-                "badge badge-sm font-terminal uppercase",
-                source_badge_class(@belief.source_type)
-              ]}>
+              <span class="text-base-content/50">Source</span>
+              <span class={["badge badge-sm uppercase", source_badge_class(@belief.source_type)]}>
                 {@belief.source_type}
               </span>
             </div>
             <div class="flex items-center justify-between">
-              <span class="text-xs font-terminal text-base-content/50 uppercase">Status</span>
-              <span class={[
-                "badge badge-sm font-terminal uppercase",
-                status_badge_class(@belief.status)
-              ]}>
+              <span class="text-base-content/50">Status</span>
+              <span class={["badge badge-sm uppercase", status_badge_class(@belief.status)]}>
                 {@belief.status}
               </span>
             </div>
             <div class="flex items-center justify-between">
-              <span class="text-xs font-terminal text-base-content/50 uppercase">Revisions</span>
-              <span class="font-terminal text-sm">{@belief.revision_count}</span>
+              <span class="text-base-content/50">Revisions</span>
+              <span>{@belief.revision_count}</span>
             </div>
             <div class="flex items-center justify-between">
-              <span class="text-xs font-terminal text-base-content/50 uppercase">Created</span>
-              <span class="font-terminal text-xs text-base-content/60">
-                {format_datetime(@belief.inserted_at)}
-              </span>
+              <span class="text-base-content/50">Created</span>
+              <span class="text-xs text-base-content/60">{format_datetime(@belief.inserted_at)}</span>
             </div>
           </div>
           
     <!-- Contradicted warning -->
           <%= if @belief.contradicted_by_id do %>
             <div class="alert alert-error">
-              <.icon name="hero-exclamation-triangle" class="size-5" />
+              <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
               <div>
-                <div class="font-terminal text-xs uppercase font-bold">Superseded</div>
+                <div class="text-xs uppercase font-bold">Superseded</div>
                 <div class="text-xs">This belief has been contradicted</div>
               </div>
             </div>

@@ -25,6 +25,7 @@ defmodule Lincoln.Memory do
   """
   def list_memories(%Agent{id: agent_id}, opts \\ []) do
     limit = Keyword.get(opts, :limit, 100)
+    offset = Keyword.get(opts, :offset, 0)
 
     query =
       Memory
@@ -44,6 +45,7 @@ defmodule Lincoln.Memory do
 
     query
     |> order_by([m], desc: m.inserted_at)
+    |> offset(^offset)
     |> limit(^limit)
     |> Repo.all()
   end
@@ -66,11 +68,13 @@ defmodule Lincoln.Memory do
   """
   def list_recent_memories(%Agent{id: agent_id}, hours \\ 24, opts \\ []) do
     limit = Keyword.get(opts, :limit, 50)
+    offset = Keyword.get(opts, :offset, 0)
     cutoff = DateTime.add(DateTime.utc_now(), -hours * 3600, :second)
 
     Memory
     |> where([m], m.agent_id == ^agent_id and m.inserted_at >= ^cutoff)
     |> order_by([m], desc: m.inserted_at)
+    |> offset(^offset)
     |> limit(^limit)
     |> Repo.all()
   end

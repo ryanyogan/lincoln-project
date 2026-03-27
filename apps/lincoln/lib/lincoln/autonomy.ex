@@ -368,6 +368,11 @@ defmodule Lincoln.Autonomy do
   end
 
   @doc """
+  Gets a code change by ID.
+  """
+  def get_code_change!(id), do: Repo.get!(CodeChange, id)
+
+  @doc """
   Lists code changes for a session.
   """
   def list_code_changes(session, opts \\ []) do
@@ -557,4 +562,199 @@ defmodule Lincoln.Autonomy do
   end
 
   defp broadcast_log_event(result), do: result
+
+  # ============================================================================
+  # Identity Context - For Chat Self-Awareness
+  # ============================================================================
+
+  @doc """
+  Gets recent code changes made by Lincoln (self-modifications).
+  Used to give Chat Lincoln awareness of what Worker Lincoln has done.
+  """
+  def list_recent_code_changes(agent, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 5)
+    status = Keyword.get(opts, :status, "committed")
+
+    Repo.all(
+      from(c in CodeChange,
+        where: c.agent_id == ^agent.id and c.status == ^status,
+        order_by: [desc: c.committed_at],
+        limit: ^limit
+      )
+    )
+  end
+
+  @doc """
+  Gets statistics about Lincoln's activity for identity context.
+  """
+  def get_agent_stats(agent) do
+    # Count beliefs
+    belief_count =
+      Repo.one(
+        from(b in Lincoln.Beliefs.Belief,
+          where: b.agent_id == ^agent.id,
+          select: count(b.id)
+        )
+      ) || 0
+
+    # Count memories
+    memory_count =
+      Repo.one(
+        from(m in Lincoln.Memory.Memory,
+          where: m.agent_id == ^agent.id,
+          select: count(m.id)
+        )
+      ) || 0
+
+    # Count code changes
+    code_change_count =
+      Repo.one(
+        from(c in CodeChange,
+          where: c.agent_id == ^agent.id and c.status == "committed",
+          select: count(c.id)
+        )
+      ) || 0
+
+    # Get self-written lines (approximate from belief_formation.ex)
+    self_written_lines = count_self_written_lines()
+
+    # Calculate days active
+    first_memory =
+      Repo.one(
+        from(m in Lincoln.Memory.Memory,
+          where: m.agent_id == ^agent.id,
+          order_by: [asc: m.inserted_at],
+          limit: 1,
+          select: m.inserted_at
+        )
+      )
+
+    days_active =
+      if first_memory do
+        DateTime.diff(DateTime.utc_now(), first_memory, :day)
+      else
+        0
+      end
+
+    # Count learning sessions
+    session_count =
+      Repo.one(
+        from(s in LearningSession,
+          where: s.agent_id == ^agent.id,
+          select: count(s.id)
+        )
+      ) || 0
+
+    %{
+      belief_count: belief_count,
+      memory_count: memory_count,
+      code_change_count: code_change_count,
+      self_written_lines: self_written_lines,
+      days_active: days_active,
+      session_count: session_count
+    }
+  end
+
+  defp count_self_written_lines do
+    # Check if belief_formation.ex exists and count lines
+    path =
+      Path.join([
+        Application.app_dir(:lincoln),
+        "..",
+        "..",
+        "lib",
+        "lincoln",
+        "learning",
+        "belief_formation.ex"
+      ])
+
+    case File.read(path) do
+      {:ok, content} ->
+        content |> String.split("\n") |> length()
+
+      {:error, _} ->
+        # Fallback - try the source path
+        source_path = "lib/lincoln/learning/belief_formation.ex"
+
+        case File.read(source_path) do
+          {:ok, content} -> content |> String.split("\n") |> length()
+          {:error, _} -> 0
+        end
+    end
+  end
+
+  @doc """
+  Gets a summary of the active learning session, if any.
+  """
+  def get_active_session_summary(agent) do
+    case get_active_session(agent) do
+      nil ->
+        nil
+
+      session ->
+        # Get current topic
+        current_topic =
+          Repo.one(
+            from(t in ResearchTopic,
+              where: t.session_id == ^session.id and t.status == "exploring",
+              limit: 1
+            )
+          )
+
+        # Get session stats
+        topic_count =
+          Repo.one(
+            from(t in ResearchTopic,
+              where: t.session_id == ^session.id,
+              select: count(t.id)
+            )
+          ) || 0
+
+        completed_count =
+          Repo.one(
+            from(t in ResearchTopic,
+              where: t.session_id == ^session.id and t.status == "completed",
+              select: count(t.id)
+            )
+          ) || 0
+
+        %{
+          session_id: session.id,
+          status: session.status,
+          # Derive trigger from seed_topics since there's no trigger field
+          trigger: List.first(session.seed_topics) || "autonomous",
+          started_at: session.started_at,
+          current_topic: current_topic && current_topic.topic,
+          topics_total: topic_count,
+          topics_completed: completed_count,
+          beliefs_formed: session.beliefs_formed || 0,
+          memories_created: session.memories_created || 0,
+          code_changes: session.code_changes_made || 0
+        }
+    end
+  end
+
+  @doc """
+  Gets recent learning log entries for display.
+  """
+  def list_recent_logs(agent, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 10)
+    types = Keyword.get(opts, :types, nil)
+
+    query =
+      from(l in LearningLog,
+        where: l.agent_id == ^agent.id,
+        order_by: [desc: l.inserted_at],
+        limit: ^limit
+      )
+
+    query =
+      if types do
+        from(l in query, where: l.activity_type in ^types)
+      else
+        query
+      end
+
+    Repo.all(query)
+  end
 end

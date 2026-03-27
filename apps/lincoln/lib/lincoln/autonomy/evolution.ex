@@ -21,23 +21,8 @@ defmodule Lincoln.Autonomy.Evolution do
   # Project root (Lincoln's home)
   @project_root Path.expand("../../../../..", __DIR__)
 
-  # Files Lincoln can modify
-  @modifiable_paths [
-    "lib/lincoln/autonomy/",
-    "lib/lincoln/cognition/",
-    "lib/lincoln/",
-    "lib/lincoln_web/live/",
-    "config/"
-  ]
-
   # Files Lincoln should NOT modify (core stability)
-  @protected_files [
-    "lib/lincoln/repo.ex",
-    "lib/lincoln/application.ex",
-    "config/dev.exs",
-    "config/test.exs",
-    "config/prod.exs"
-  ]
+  @protected_files ["mix.exs"]
 
   # ============================================================================
   # Code Reading
@@ -183,15 +168,14 @@ defmodule Lincoln.Autonomy.Evolution do
 
   @doc """
   Checks if a file can be modified.
+  Allows all .ex/.exs/.py files except protected ones.
   """
   def can_modify?(relative_path) do
-    # Check if in modifiable paths
-    in_modifiable = Enum.any?(@modifiable_paths, &String.starts_with?(relative_path, &1))
+    is_code_file?(relative_path) && relative_path not in @protected_files
+  end
 
-    # Check if not protected
-    not_protected = relative_path not in @protected_files
-
-    in_modifiable and not_protected
+  defp is_code_file?(path) do
+    String.ends_with?(path, [".ex", ".exs", ".py"])
   end
 
   @doc """
@@ -343,6 +327,19 @@ defmodule Lincoln.Autonomy.Evolution do
       full_path = Path.join(@project_root, code_change.file_path)
       File.rm(full_path)
       {:ok, :deleted}
+    end
+  end
+
+  @doc """
+  Validates that the codebase compiles after a change.
+  """
+  def validate_compilation do
+    case System.cmd("mix", ["compile", "--warnings-as-errors"],
+           cd: @project_root,
+           stderr_to_stdout: true
+         ) do
+      {_, 0} -> :ok
+      {output, _} -> {:error, output}
     end
   end
 

@@ -7,6 +7,8 @@ defmodule LincolnWeb.MemoriesLive do
 
   alias Lincoln.{Agents, Memory}
 
+  @per_page 20
+
   @impl true
   def mount(_params, _session, socket) do
     {:ok, agent} = Agents.get_or_create_default_agent()
@@ -16,7 +18,10 @@ defmodule LincolnWeb.MemoriesLive do
       |> assign(:agent, agent)
       |> assign(:page_title, "Memory Bank")
       |> assign(:filter, "all")
-      |> load_memories()
+      |> assign(:page, 1)
+      |> assign(:per_page, @per_page)
+      |> assign(:end_of_list?, false)
+      |> stream(:memories, [])
 
     if connected?(socket) do
       Phoenix.PubSub.subscribe(Lincoln.PubSub, "agent:#{agent.id}:memories")
@@ -33,12 +38,26 @@ defmodule LincolnWeb.MemoriesLive do
       socket
       |> assign(:selected_memory, memory)
       |> assign(:page_title, "Memory: #{truncate(memory.content, 30)}")
+      |> maybe_paginate_memories()
 
     {:noreply, socket}
   end
 
   def handle_params(_params, _uri, socket) do
-    {:noreply, assign(socket, :selected_memory, nil)}
+    socket =
+      socket
+      |> assign(:selected_memory, nil)
+      |> maybe_paginate_memories()
+
+    {:noreply, socket}
+  end
+
+  defp maybe_paginate_memories(socket) do
+    if socket.assigns.page == 1 do
+      paginate_memories(socket, 1)
+    else
+      socket
+    end
   end
 
   @impl true
@@ -46,13 +65,19 @@ defmodule LincolnWeb.MemoriesLive do
     socket =
       socket
       |> assign(:filter, filter)
-      |> load_memories()
+      |> assign(:page, 1)
+      |> assign(:end_of_list?, false)
+      |> paginate_memories(1, reset: true)
 
     {:noreply, socket}
   end
 
   def handle_event("close_detail", _params, socket) do
     {:noreply, push_patch(socket, to: ~p"/memories")}
+  end
+
+  def handle_event("load-more", _, socket) do
+    {:noreply, paginate_memories(socket, socket.assigns.page + 1)}
   end
 
   @impl true
@@ -64,32 +89,54 @@ defmodule LincolnWeb.MemoriesLive do
     {:noreply, stream_insert(socket, :memories, memory)}
   end
 
-  defp load_memories(socket) do
-    agent = socket.assigns.agent
-    filter = socket.assigns.filter
+  defp paginate_memories(socket, new_page, opts \\ []) do
+    %{per_page: per_page, page: cur_page, agent: agent, filter: filter} = socket.assigns
+    reset = Keyword.get(opts, :reset, false)
+
+    offset = (new_page - 1) * per_page
 
     memories =
       case filter do
         "observation" ->
-          Memory.list_memories(agent, memory_type: "observation", limit: 50)
+          Memory.list_memories(agent, memory_type: "observation", limit: per_page, offset: offset)
 
         "reflection" ->
-          Memory.list_memories(agent, memory_type: "reflection", limit: 50)
+          Memory.list_memories(agent, memory_type: "reflection", limit: per_page, offset: offset)
 
         "conversation" ->
-          Memory.list_memories(agent, memory_type: "conversation", limit: 50)
+          Memory.list_memories(agent,
+            memory_type: "conversation",
+            limit: per_page,
+            offset: offset
+          )
 
         "plan" ->
-          Memory.list_memories(agent, memory_type: "plan", limit: 50)
+          Memory.list_memories(agent, memory_type: "plan", limit: per_page, offset: offset)
 
         "important" ->
-          Memory.list_memories(agent, min_importance: 7, limit: 50)
+          Memory.list_memories(agent, min_importance: 7, limit: per_page, offset: offset)
 
         _ ->
-          Memory.list_recent_memories(agent, 168, limit: 50)
+          Memory.list_recent_memories(agent, 168, limit: per_page, offset: offset)
       end
 
-    stream(socket, :memories, memories, reset: true)
+    {memories, at, limit} =
+      if new_page >= cur_page do
+        {memories, -1, per_page * 3 * -1}
+      else
+        {Enum.reverse(memories), 0, per_page * 3}
+      end
+
+    case memories do
+      [] ->
+        assign(socket, end_of_list?: at == -1)
+
+      [_ | _] ->
+        socket
+        |> assign(:end_of_list?, false)
+        |> assign(:page, new_page)
+        |> stream(:memories, memories, at: at, limit: limit, reset: reset)
+    end
   end
 
   @impl true
@@ -100,24 +147,24 @@ defmodule LincolnWeb.MemoriesLive do
         <!-- Page Header -->
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
-            <h1 class="text-2xl font-black font-terminal uppercase tracking-tight flex items-center gap-2">
-              <.icon name="hero-archive-box" class="size-6 text-accent" /> Memory Bank
+            <h1 class="text-2xl font-semibold flex items-center gap-2">
+              <.icon name="hero-archive-box" class="w-6 h-6 text-accent" /> Memory Bank
             </h1>
-            <p class="text-sm font-terminal text-base-content/60 mt-1">
+            <p class="text-sm text-base-content/60 mt-1">
               Experience storage for {@agent.name}
             </p>
           </div>
-          <a href="/" class="btn btn-outline btn-accent btn-sm font-terminal uppercase">
-            <.icon name="hero-arrow-left" class="size-4" /> Dashboard
+          <a href="/" class="btn btn-ghost btn-sm">
+            <.icon name="hero-arrow-left" class="w-4 h-4" /> Dashboard
           </a>
         </div>
         
     <!-- Filter Tabs -->
-        <div role="tablist" class="tabs tabs-boxed bg-base-200 border-2 border-accent w-fit">
+        <div role="tablist" class="tabs tabs-boxed bg-base-200 border border-base-300 w-fit">
           <button
             :for={{value, label} <- filter_options()}
             role="tab"
-            class={["tab font-terminal uppercase text-xs", @filter == value && "tab-active"]}
+            class={["tab text-xs", @filter == value && "tab-active"]}
             phx-click="filter"
             phx-value-filter={value}
           >
@@ -129,11 +176,19 @@ defmodule LincolnWeb.MemoriesLive do
         <div class="flex flex-col lg:flex-row gap-6">
           <!-- Memories List -->
           <div class={["flex-1", @selected_memory && "lg:max-w-md"]}>
-            <div id="memories-list" phx-update="stream" class="space-y-3">
+            <div
+              id="memories-list"
+              phx-update="stream"
+              phx-viewport-bottom={!@end_of_list? && "load-more"}
+              class={[
+                "space-y-3",
+                if(@end_of_list?, do: "pb-10", else: "pb-[calc(100vh)]")
+              ]}
+            >
               <!-- Empty state -->
-              <div class="hidden only:flex flex-col items-center justify-center p-12 border-2 border-dashed border-base-content/20">
-                <.icon name="hero-archive-box" class="size-12 text-base-content/20 mb-3" />
-                <p class="font-terminal text-sm uppercase text-base-content/40">
+              <div class="hidden only:flex flex-col items-center justify-center p-12 border border-dashed border-base-content/20 rounded-lg">
+                <.icon name="hero-archive-box" class="w-12 h-12 text-base-content/20 mb-3" />
+                <p class="text-sm text-base-content/40">
                   No memories match this filter
                 </p>
               </div>
@@ -144,6 +199,12 @@ defmodule LincolnWeb.MemoriesLive do
                 memory={memory}
                 selected={@selected_memory && @selected_memory.id == memory.id}
               />
+            </div>
+            <div
+              :if={@end_of_list? && @page > 1}
+              class="text-center py-4 text-base-content/60 text-sm"
+            >
+              No more memories to load
             </div>
           </div>
           
@@ -182,25 +243,20 @@ defmodule LincolnWeb.MemoriesLive do
       id={@id}
       patch={~p"/memories/#{@memory.id}"}
       class={[
-        "card bg-base-200 border-2 hover-lift transition-all cursor-pointer",
-        @selected && "border-accent bg-base-300 shadow-brutal",
-        !@selected && "border-accent/30 hover:border-accent"
+        "block bg-base-200 border rounded-lg p-4 transition-colors cursor-pointer",
+        @selected && "border-accent bg-base-300",
+        !@selected && "border-base-300 hover:border-accent/50 hover:bg-base-300/50"
       ]}
     >
-      <div class="card-body p-4">
-        <p class="text-sm font-terminal line-clamp-2">{truncate(@memory.content, 150)}</p>
-        <div class="card-actions justify-between items-center mt-2">
-          <div class="flex items-center gap-2">
-            <span class={[
-              "badge badge-sm font-terminal uppercase",
-              memory_badge_class(@memory.memory_type)
-            ]}>
-              {@memory.memory_type}
-            </span>
-            <span class="badge badge-ghost badge-sm font-terminal">x{@memory.access_count}</span>
-          </div>
-          <.importance_indicator importance={@memory.importance} />
+      <p class="text-sm line-clamp-2">{truncate(@memory.content, 150)}</p>
+      <div class="flex justify-between items-center mt-3">
+        <div class="flex items-center gap-2">
+          <span class={["badge badge-sm", memory_badge_class(@memory.memory_type)]}>
+            {@memory.memory_type}
+          </span>
+          <span class="badge badge-ghost badge-sm">x{@memory.access_count}</span>
         </div>
+        <.importance_indicator importance={@memory.importance} />
       </div>
     </.link>
     """
@@ -211,88 +267,82 @@ defmodule LincolnWeb.MemoriesLive do
   defp memory_detail(assigns) do
     ~H"""
     <div class="flex-1 lg:max-w-lg">
-      <div class="card bg-base-200 border-2 border-accent sticky top-20">
+      <div class="bg-base-200 border border-base-300 rounded-lg sticky top-20">
         <!-- Header -->
-        <div class="flex items-center justify-between px-4 py-3 border-b-2 border-accent bg-base-300">
-          <h3 class="font-terminal text-sm font-bold uppercase tracking-wider flex items-center gap-2">
-            <.icon name="hero-document-magnifying-glass" class="size-4 text-accent" /> Memory Analysis
+        <div class="flex items-center justify-between px-4 py-3 border-b border-base-300">
+          <h3 class="text-sm font-semibold flex items-center gap-2">
+            <.icon name="hero-document-magnifying-glass" class="w-4 h-4 text-accent" />
+            Memory Analysis
           </h3>
           <button
             phx-click="close_detail"
             class="btn btn-ghost btn-sm btn-square hover:btn-error"
           >
-            <.icon name="hero-x-mark" class="size-4" />
+            <.icon name="hero-x-mark" class="w-4 h-4" />
           </button>
         </div>
 
-        <div class="card-body p-4 space-y-4">
+        <div class="p-4 space-y-4">
           <!-- Content -->
           <div>
-            <label class="text-xs font-terminal uppercase tracking-wider text-base-content/50">
+            <label class="text-xs uppercase tracking-wider text-base-content/50">
               Content
             </label>
-            <p class="mt-1 font-terminal whitespace-pre-wrap">{@memory.content}</p>
+            <p class="mt-1 whitespace-pre-wrap">{@memory.content}</p>
           </div>
           
     <!-- Summary -->
           <%= if @memory.summary do %>
-            <div class="alert">
-              <.icon name="hero-document-text" class="size-5" />
+            <div class="bg-base-300 rounded-lg p-3 flex gap-3">
+              <.icon name="hero-document-text" class="w-5 h-5 text-base-content/60 shrink-0" />
               <div>
-                <div class="text-xs font-terminal uppercase font-bold">Summary</div>
-                <div class="text-sm font-terminal italic">{@memory.summary}</div>
+                <div class="text-xs uppercase font-medium text-base-content/60">Summary</div>
+                <div class="text-sm italic mt-1">{@memory.summary}</div>
               </div>
             </div>
           <% end %>
           
     <!-- Stats -->
-          <div class="stats stats-vertical sm:stats-horizontal bg-base-300 border border-accent/30 w-full">
-            <div class="stat p-3">
-              <div class="stat-title text-xs font-terminal uppercase">Importance</div>
-              <div class="stat-value text-xl font-terminal text-accent">
+          <div class="grid grid-cols-2 gap-3">
+            <div class="bg-base-300 rounded-lg p-3">
+              <div class="text-xs uppercase text-base-content/60">Importance</div>
+              <div class="text-xl font-semibold text-accent mt-1">
                 {@memory.importance}<span class="text-base text-base-content/30">/10</span>
               </div>
-              <div class="stat-desc">
-                <progress
-                  class="progress progress-accent w-full h-1"
-                  value={@memory.importance * 10}
-                  max="100"
-                />
-              </div>
+              <progress
+                class="progress progress-accent w-full h-1 mt-2"
+                value={@memory.importance * 10}
+                max="100"
+              />
             </div>
-            <div class="stat p-3">
-              <div class="stat-title text-xs font-terminal uppercase">Access Count</div>
-              <div class="stat-value text-xl font-terminal">{@memory.access_count}</div>
-              <div class="stat-desc font-terminal">times retrieved</div>
+            <div class="bg-base-300 rounded-lg p-3">
+              <div class="text-xs uppercase text-base-content/60">Access Count</div>
+              <div class="text-xl font-semibold mt-1">{@memory.access_count}</div>
+              <div class="text-xs text-base-content/50 mt-1">times retrieved</div>
             </div>
           </div>
           
     <!-- Metadata -->
-          <div class="divider text-xs font-terminal uppercase text-base-content/40">Details</div>
+          <div class="divider text-xs uppercase text-base-content/40">Details</div>
 
           <div class="space-y-2">
             <div class="flex items-center justify-between">
-              <span class="text-xs font-terminal text-base-content/50 uppercase">Type</span>
-              <span class={[
-                "badge badge-sm font-terminal uppercase",
-                memory_badge_class(@memory.memory_type)
-              ]}>
+              <span class="text-xs text-base-content/50 uppercase">Type</span>
+              <span class={["badge badge-sm", memory_badge_class(@memory.memory_type)]}>
                 {@memory.memory_type}
               </span>
             </div>
             <%= if @memory.last_accessed_at do %>
               <div class="flex items-center justify-between">
-                <span class="text-xs font-terminal text-base-content/50 uppercase">
-                  Last Accessed
-                </span>
-                <span class="font-terminal text-xs text-base-content/60">
+                <span class="text-xs text-base-content/50 uppercase">Last Accessed</span>
+                <span class="text-xs text-base-content/60">
                   {format_datetime(@memory.last_accessed_at)}
                 </span>
               </div>
             <% end %>
             <div class="flex items-center justify-between">
-              <span class="text-xs font-terminal text-base-content/50 uppercase">Created</span>
-              <span class="font-terminal text-xs text-base-content/60">
+              <span class="text-xs text-base-content/50 uppercase">Created</span>
+              <span class="text-xs text-base-content/60">
                 {format_datetime(@memory.inserted_at)}
               </span>
             </div>
@@ -300,28 +350,28 @@ defmodule LincolnWeb.MemoriesLive do
           
     <!-- Source Context -->
           <%= if @memory.source_context && @memory.source_context != %{} do %>
-            <div class="collapse collapse-arrow bg-base-300 border border-accent/20">
+            <div class="collapse collapse-arrow bg-base-300 rounded-lg">
               <input type="checkbox" />
-              <div class="collapse-title text-xs font-terminal uppercase font-bold">
+              <div class="collapse-title text-xs uppercase font-medium">
                 Source Context
               </div>
               <div class="collapse-content">
-                <pre class="text-xs font-terminal overflow-x-auto" phx-no-curly-interpolation>{inspect(@memory.source_context, pretty: true)}</pre>
+                <pre class="text-xs overflow-x-auto font-mono" phx-no-curly-interpolation>{inspect(@memory.source_context, pretty: true)}</pre>
               </div>
             </div>
           <% end %>
           
     <!-- Related Beliefs -->
           <%= if @memory.related_belief_ids && @memory.related_belief_ids != [] do %>
-            <div class="alert alert-info">
-              <.icon name="hero-link" class="size-5" />
-              <div>
-                <div class="text-xs font-terminal uppercase font-bold">Linked Beliefs</div>
-                <div class="text-sm font-terminal">
+            <div class="bg-info/10 border border-info/20 rounded-lg p-3 flex items-center gap-3">
+              <.icon name="hero-link" class="w-5 h-5 text-info" />
+              <div class="flex-1">
+                <div class="text-xs uppercase font-medium">Linked Beliefs</div>
+                <div class="text-sm">
                   {length(@memory.related_belief_ids)} belief(s) connected
                 </div>
               </div>
-              <a href="/beliefs" class="btn btn-ghost btn-xs font-terminal">View</a>
+              <a href="/beliefs" class="btn btn-ghost btn-xs">View</a>
             </div>
           <% end %>
         </div>
@@ -335,13 +385,13 @@ defmodule LincolnWeb.MemoriesLive do
   defp importance_indicator(assigns) do
     ~H"""
     <div
-      class="flex items-center gap-1 tooltip tooltip-left"
+      class="flex items-center gap-0.5 tooltip tooltip-left"
       data-tip={"Importance: #{@importance}/10"}
     >
       <span
         :for={i <- 1..5}
         class={[
-          "w-1.5 h-3",
+          "w-1.5 h-3 rounded-sm",
           i <= div(@importance, 2) && "bg-accent",
           i > div(@importance, 2) && "bg-base-content/20"
         ]}

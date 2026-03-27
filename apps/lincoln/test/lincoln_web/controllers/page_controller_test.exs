@@ -3,7 +3,7 @@ defmodule LincolnWeb.PageControllerTest do
 
   test "GET / loads the dashboard", %{conn: conn} do
     conn = get(conn, ~p"/")
-    assert html_response(conn, 200) =~ "LINCOLN"
+    assert html_response(conn, 200) =~ "Lincoln"
     assert html_response(conn, 200) =~ "Neural Learning System"
   end
 

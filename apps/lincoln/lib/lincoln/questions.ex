@@ -20,10 +20,12 @@ defmodule Lincoln.Questions do
   """
   def list_open_questions(%Agent{id: agent_id}, opts \\ []) do
     limit = Keyword.get(opts, :limit, 50)
+    offset = Keyword.get(opts, :offset, 0)
 
     Question
     |> where([q], q.agent_id == ^agent_id and q.status == "open")
     |> order_by([q], desc: q.priority, asc: q.inserted_at)
+    |> offset(^offset)
     |> limit(^limit)
     |> Repo.all()
   end
@@ -48,6 +50,7 @@ defmodule Lincoln.Questions do
   """
   def list_questions(%Agent{id: agent_id}, opts \\ []) do
     limit = Keyword.get(opts, :limit, 50)
+    offset = Keyword.get(opts, :offset, 0)
 
     query =
       Question
@@ -61,6 +64,7 @@ defmodule Lincoln.Questions do
 
     query
     |> order_by([q], desc: q.priority, desc: q.inserted_at)
+    |> offset(^offset)
     |> limit(^limit)
     |> Repo.all()
   end

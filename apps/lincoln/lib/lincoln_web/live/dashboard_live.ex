@@ -434,7 +434,7 @@ defmodule LincolnWeb.DashboardLive do
               </div>
               <div class="p-4 max-h-80 overflow-y-auto">
                 <%= if @beliefs == [] do %>
-                  <.empty_state icon="hero-light-bulb" message="No beliefs formed yet" />
+                  <.dashboard_empty_state icon="hero-light-bulb" title="No beliefs formed yet" />
                 <% else %>
                   <ul class="space-y-2">
                     <li :for={belief <- @beliefs}>
@@ -460,7 +460,7 @@ defmodule LincolnWeb.DashboardLive do
               </div>
               <div class="p-4 max-h-80 overflow-y-auto">
                 <%= if @open_questions == [] do %>
-                  <.empty_state icon="hero-question-mark-circle" message="No open questions" />
+                  <.dashboard_empty_state icon="hero-question-mark-circle" title="No open questions" />
                 <% else %>
                   <ul class="space-y-2">
                     <li :for={question <- @open_questions}>
@@ -485,7 +485,7 @@ defmodule LincolnWeb.DashboardLive do
               </div>
               <div class="p-4 max-h-80 overflow-y-auto">
                 <%= if @recent_memories == [] do %>
-                  <.empty_state icon="hero-archive-box" message="No memories recorded" />
+                  <.dashboard_empty_state icon="hero-archive-box" title="No memories recorded" />
                 <% else %>
                   <ul class="space-y-2">
                     <li :for={memory <- @recent_memories}>
@@ -507,7 +507,7 @@ defmodule LincolnWeb.DashboardLive do
               </div>
               <div class="p-4 max-h-80 overflow-y-auto">
                 <%= if @recent_actions == [] do %>
-                  <.empty_state icon="hero-clock" message="No recent activity" />
+                  <.dashboard_empty_state icon="hero-clock" title="No recent activity" />
                 <% else %>
                   <ul class="timeline timeline-vertical timeline-compact">
                     <li :for={action <- @recent_actions}>
@@ -529,13 +529,13 @@ defmodule LincolnWeb.DashboardLive do
   # ============================================================================
 
   attr(:icon, :string, required: true)
-  attr(:message, :string, required: true)
+  attr(:title, :string, required: true)
 
-  defp empty_state(assigns) do
+  defp dashboard_empty_state(assigns) do
     ~H"""
     <div class="flex flex-col items-center justify-center py-8 text-base-content/40">
-      <.icon name={@icon} class="size-10 mb-2" />
-      <p class="font-terminal text-xs uppercase">{@message}</p>
+      <.icon name={@icon} class="w-10 h-10 mb-2" />
+      <p class="text-sm">{@title}</p>
     </div>
     """
   end

@@ -39,13 +39,13 @@ defmodule LincolnWeb.CoreComponents do
       <.flash kind={:info} flash={@flash} />
       <.flash kind={:info} phx-mounted={show("#flash")}>Welcome Back!</.flash>
   """
-  attr :id, :string, doc: "the optional id of flash container"
-  attr :flash, :map, default: %{}, doc: "the map of flash messages to display"
-  attr :title, :string, default: nil
-  attr :kind, :atom, values: [:info, :error], doc: "used for styling and flash lookup"
-  attr :rest, :global, doc: "the arbitrary HTML attributes to add to the flash container"
+  attr(:id, :string, doc: "the optional id of flash container")
+  attr(:flash, :map, default: %{}, doc: "the map of flash messages to display")
+  attr(:title, :string, default: nil)
+  attr(:kind, :atom, values: [:info, :error], doc: "used for styling and flash lookup")
+  attr(:rest, :global, doc: "the arbitrary HTML attributes to add to the flash container")
 
-  slot :inner_block, doc: "the optional inner block that renders the flash message"
+  slot(:inner_block, doc: "the optional inner block that renders the flash message")
 
   def flash(assigns) do
     assigns = assign_new(assigns, :id, fn -> "flash-#{assigns.kind}" end)
@@ -88,10 +88,10 @@ defmodule LincolnWeb.CoreComponents do
       <.button phx-click="go" variant="primary">Send!</.button>
       <.button navigate={~p"/"}>Home</.button>
   """
-  attr :rest, :global, include: ~w(href navigate patch method download name value disabled)
-  attr :class, :any
-  attr :variant, :string, values: ~w(primary)
-  slot :inner_block, required: true
+  attr(:rest, :global, include: ~w(href navigate patch method download name value disabled))
+  attr(:class, :any)
+  attr(:variant, :string, values: ~w(primary))
+  slot(:inner_block, required: true)
 
   def button(%{rest: rest} = assigns) do
     variants = %{"primary" => "btn-primary", nil => "btn-primary btn-soft"}
@@ -156,30 +156,33 @@ defmodule LincolnWeb.CoreComponents do
   For more information on what kind of data can be passed to `options` see
   [`options_for_select`](https://hexdocs.pm/phoenix_html/Phoenix.HTML.Form.html#options_for_select/2).
   """
-  attr :id, :any, default: nil
-  attr :name, :any
-  attr :label, :string, default: nil
-  attr :value, :any
+  attr(:id, :any, default: nil)
+  attr(:name, :any)
+  attr(:label, :string, default: nil)
+  attr(:value, :any)
 
-  attr :type, :string,
+  attr(:type, :string,
     default: "text",
     values: ~w(checkbox color date datetime-local email file month number password
                search select tel text textarea time url week hidden)
+  )
 
-  attr :field, Phoenix.HTML.FormField,
+  attr(:field, Phoenix.HTML.FormField,
     doc: "a form field struct retrieved from the form, for example: @form[:email]"
+  )
 
-  attr :errors, :list, default: []
-  attr :checked, :boolean, doc: "the checked flag for checkbox inputs"
-  attr :prompt, :string, default: nil, doc: "the prompt for select inputs"
-  attr :options, :list, doc: "the options to pass to Phoenix.HTML.Form.options_for_select/2"
-  attr :multiple, :boolean, default: false, doc: "the multiple flag for select inputs"
-  attr :class, :any, default: nil, doc: "the input class to use over defaults"
-  attr :error_class, :any, default: nil, doc: "the input error class to use over defaults"
+  attr(:errors, :list, default: [])
+  attr(:checked, :boolean, doc: "the checked flag for checkbox inputs")
+  attr(:prompt, :string, default: nil, doc: "the prompt for select inputs")
+  attr(:options, :list, doc: "the options to pass to Phoenix.HTML.Form.options_for_select/2")
+  attr(:multiple, :boolean, default: false, doc: "the multiple flag for select inputs")
+  attr(:class, :any, default: nil, doc: "the input class to use over defaults")
+  attr(:error_class, :any, default: nil, doc: "the input error class to use over defaults")
 
-  attr :rest, :global,
+  attr(:rest, :global,
     include: ~w(accept autocomplete capture cols disabled form list max maxlength min minlength
                 multiple pattern placeholder readonly required rows size step)
+  )
 
   def input(%{field: %Phoenix.HTML.FormField{} = field} = assigns) do
     errors = if Phoenix.Component.used_input?(field), do: field.errors, else: []
@@ -308,9 +311,9 @@ defmodule LincolnWeb.CoreComponents do
   @doc """
   Renders a header with title.
   """
-  slot :inner_block, required: true
-  slot :subtitle
-  slot :actions
+  slot(:inner_block, required: true)
+  slot(:subtitle)
+  slot(:actions)
 
   def header(assigns) do
     ~H"""
@@ -338,20 +341,21 @@ defmodule LincolnWeb.CoreComponents do
         <:col :let={user} label="username">{user.username}</:col>
       </.table>
   """
-  attr :id, :string, required: true
-  attr :rows, :list, required: true
-  attr :row_id, :any, default: nil, doc: "the function for generating the row id"
-  attr :row_click, :any, default: nil, doc: "the function for handling phx-click on each row"
+  attr(:id, :string, required: true)
+  attr(:rows, :list, required: true)
+  attr(:row_id, :any, default: nil, doc: "the function for generating the row id")
+  attr(:row_click, :any, default: nil, doc: "the function for handling phx-click on each row")
 
-  attr :row_item, :any,
+  attr(:row_item, :any,
     default: &Function.identity/1,
     doc: "the function for mapping each row before calling the :col and :action slots"
+  )
 
   slot :col, required: true do
-    attr :label, :string
+    attr(:label, :string)
   end
 
-  slot :action, doc: "the slot for showing user actions in the last table column"
+  slot(:action, doc: "the slot for showing user actions in the last table column")
 
   def table(assigns) do
     assigns =
@@ -402,7 +406,7 @@ defmodule LincolnWeb.CoreComponents do
       </.list>
   """
   slot :item, required: true do
-    attr :title, :string, required: true
+    attr(:title, :string, required: true)
   end
 
   def list(assigns) do
@@ -436,8 +440,8 @@ defmodule LincolnWeb.CoreComponents do
       <.icon name="hero-x-mark" />
       <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
   """
-  attr :name, :string, required: true
-  attr :class, :any, default: "size-4"
+  attr(:name, :string, required: true)
+  attr(:class, :any, default: "size-4")
 
   def icon(%{name: "hero-" <> _} = assigns) do
     ~H"""
@@ -495,4 +499,144 @@ defmodule LincolnWeb.CoreComponents do
   def translate_errors(errors, field) when is_list(errors) do
     for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
   end
+
+  @doc """
+  Renders a card container.
+  """
+  attr(:class, :string, default: nil)
+  slot(:inner_block, required: true)
+
+  def card(assigns) do
+    ~H"""
+    <div class={[
+      "bg-base-200 border border-base-300 rounded-lg p-6",
+      @class
+    ]}>
+      {render_slot(@inner_block)}
+    </div>
+    """
+  end
+
+  @doc """
+  Renders a stat card for dashboards.
+  """
+  attr(:title, :string, required: true)
+  attr(:value, :string, required: true)
+  attr(:icon, :string, default: nil)
+  attr(:description, :string, default: nil)
+  attr(:class, :string, default: nil)
+
+  def stat_card(assigns) do
+    ~H"""
+    <div class={["bg-base-200 border border-base-300 rounded-lg p-4", @class]}>
+      <div class="flex items-start justify-between">
+        <div>
+          <p class="text-sm text-base-content/60">{@title}</p>
+          <p class="text-2xl font-bold mt-1">{@value}</p>
+          <p :if={@description} class="text-xs text-base-content/50 mt-1">{@description}</p>
+        </div>
+        <div :if={@icon} class="text-primary/60">
+          <.icon name={@icon} class="w-6 h-6" />
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
+  Renders an empty state message.
+  """
+  attr(:icon, :string, default: "hero-inbox")
+  attr(:title, :string, required: true)
+  attr(:description, :string, default: nil)
+  slot(:action)
+
+  def empty_state(assigns) do
+    ~H"""
+    <div class="flex flex-col items-center justify-center py-12 text-center">
+      <div class="text-base-content/30 mb-4">
+        <.icon name={@icon} class="w-12 h-12" />
+      </div>
+      <h3 class="text-lg font-medium text-base-content/70">{@title}</h3>
+      <p :if={@description} class="text-sm text-base-content/50 mt-1 max-w-sm">
+        {@description}
+      </p>
+      <div :if={@action != []} class="mt-4">
+        {render_slot(@action)}
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
+  Renders a section header.
+  """
+  attr(:title, :string, required: true)
+  attr(:subtitle, :string, default: nil)
+  slot(:actions)
+
+  def section_header(assigns) do
+    ~H"""
+    <div class="flex items-center justify-between mb-4">
+      <div>
+        <h2 class="text-lg font-semibold">{@title}</h2>
+        <p :if={@subtitle} class="text-sm text-base-content/60">{@subtitle}</p>
+      </div>
+      <div :if={@actions != []} class="flex items-center gap-2">
+        {render_slot(@actions)}
+      </div>
+    </div>
+    """
+  end
+
+  @doc """
+  Renders a badge with neural styling.
+  """
+  attr(:type, :atom,
+    default: :default,
+    values: [:default, :primary, :secondary, :success, :warning, :error]
+  )
+
+  attr(:class, :string, default: nil)
+  slot(:inner_block, required: true)
+
+  def badge(assigns) do
+    ~H"""
+    <span class={[
+      "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium",
+      badge_class(@type),
+      @class
+    ]}>
+      {render_slot(@inner_block)}
+    </span>
+    """
+  end
+
+  defp badge_class(:default), do: "bg-base-300 text-base-content"
+  defp badge_class(:primary), do: "bg-primary/20 text-primary"
+  defp badge_class(:secondary), do: "bg-secondary/20 text-secondary"
+  defp badge_class(:success), do: "bg-success/20 text-success"
+  defp badge_class(:warning), do: "bg-warning/20 text-warning"
+  defp badge_class(:error), do: "bg-error/20 text-error"
+
+  @doc """
+  Renders a loading skeleton.
+  """
+  attr(:class, :string, default: nil)
+  attr(:type, :atom, default: :text, values: [:text, :circle, :card])
+
+  def skeleton(assigns) do
+    ~H"""
+    <div class={[
+      "animate-pulse bg-base-300 rounded",
+      skeleton_class(@type),
+      @class
+    ]}>
+    </div>
+    """
+  end
+
+  defp skeleton_class(:text), do: "h-4 w-full"
+  defp skeleton_class(:circle), do: "h-10 w-10 rounded-full"
+  defp skeleton_class(:card), do: "h-24 w-full"
 end

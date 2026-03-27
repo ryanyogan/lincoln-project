@@ -48,6 +48,12 @@ defmodule Lincoln.Beliefs do
       end
 
     query =
+      case Keyword.get(opts, :offset) do
+        nil -> query
+        offset -> offset(query, ^offset)
+      end
+
+    query =
       case Keyword.get(opts, :limit) do
         nil -> query
         limit -> limit(query, ^limit)

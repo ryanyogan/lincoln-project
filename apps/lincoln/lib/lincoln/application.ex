@@ -14,6 +14,8 @@ defmodule Lincoln.Application do
       {Phoenix.PubSub, name: Lincoln.PubSub},
       # Oban for background job processing
       {Oban, Application.fetch_env!(:lincoln, Oban)},
+      # Events cache for fast pattern analysis
+      Lincoln.Events.Cache,
       # Start to serve requests, typically the last entry
       LincolnWeb.Endpoint
     ]

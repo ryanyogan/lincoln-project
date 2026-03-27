@@ -245,106 +245,102 @@ defmodule LincolnWeb.AutonomyLive do
     <Layouts.app flash={@flash}>
       <div class="space-y-6">
         <!-- Header with Controls -->
-        <div class="card bg-base-200 border-2 border-accent">
-          <div class="card-body">
-            <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-              <div class="flex items-center gap-4">
-                <div class="avatar placeholder">
-                  <div class={[
-                    "w-16 border-2 shadow-brutal transition-all",
-                    if(@active_session && LearningSession.running?(@active_session),
-                      do: "bg-accent text-accent-content border-accent animate-pulse",
-                      else: "bg-base-300 text-base-content/50 border-base-content/20"
-                    )
-                  ]}>
-                    <span class="text-2xl font-black font-terminal">L</span>
-                  </div>
-                </div>
-                <div>
-                  <h1 class="text-2xl font-black font-terminal uppercase tracking-tight">
-                    Night Shift
-                  </h1>
-                  <p class="text-base-content/60 font-terminal text-sm">
-                    <%= if @active_session && LearningSession.running?(@active_session) do %>
-                      <span class="text-accent">Autonomous learning active</span>
-                    <% else %>
-                      Autonomous learning system
-                    <% end %>
-                  </p>
+        <div class="bg-base-200 border border-base-300 rounded-lg p-6">
+          <div class="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+            <div class="flex items-center gap-4">
+              <div class="avatar placeholder">
+                <div class={[
+                  "w-14 rounded-lg transition-all",
+                  if(@active_session && LearningSession.running?(@active_session),
+                    do: "bg-accent text-accent-content animate-pulse",
+                    else: "bg-base-300 text-base-content/50"
+                  )
+                ]}>
+                  <span class="text-2xl font-bold">L</span>
                 </div>
               </div>
+              <div>
+                <h1 class="text-2xl font-semibold">Night Shift</h1>
+                <p class="text-base-content/60 text-sm">
+                  <%= if @active_session && LearningSession.running?(@active_session) do %>
+                    <span class="text-accent">Autonomous learning active</span>
+                  <% else %>
+                    Autonomous learning system
+                  <% end %>
+                </p>
+              </div>
+            </div>
 
-              <div class="flex gap-2">
-                <%= if @active_session && LearningSession.running?(@active_session) do %>
-                  <button phx-click="stop_session" class="btn btn-error btn-lg gap-2 font-terminal">
-                    <.icon name="hero-stop" class="size-5" /> Stop Learning
-                  </button>
-                <% else %>
-                  <button
-                    phx-click="show_start_modal"
-                    class="btn btn-accent btn-lg gap-2 font-terminal"
-                  >
-                    <.icon name="hero-play" class="size-5" /> Start Night Shift
-                  </button>
-                <% end %>
-              </div>
+            <div class="flex gap-2">
+              <%= if @active_session && LearningSession.running?(@active_session) do %>
+                <button phx-click="stop_session" class="btn btn-error gap-2">
+                  <.icon name="hero-stop" class="w-5 h-5" /> Stop Learning
+                </button>
+              <% else %>
+                <button
+                  phx-click="show_start_modal"
+                  class="btn btn-accent gap-2"
+                >
+                  <.icon name="hero-play" class="w-5 h-5" /> Start Night Shift
+                </button>
+              <% end %>
             </div>
           </div>
         </div>
         
     <!-- Stats Grid -->
         <%= if @stats do %>
-          <div class="stats stats-vertical sm:stats-horizontal shadow-brutal-primary bg-base-200 w-full border-2 border-primary">
-            <div class="stat">
-              <div class="stat-figure text-primary">
-                <.icon name="hero-clock" class="size-8" />
+          <div class="grid grid-cols-2 sm:grid-cols-5 gap-4">
+            <div class="bg-base-200 border border-base-300 rounded-lg p-4">
+              <div class="flex items-center justify-between">
+                <div class="text-xs uppercase text-base-content/60">Duration</div>
+                <.icon name="hero-clock" class="w-5 h-5 text-primary" />
               </div>
-              <div class="stat-title font-terminal uppercase text-xs">Duration</div>
-              <div class="stat-value text-primary font-terminal text-2xl">
+              <div class="text-2xl font-semibold text-primary mt-2">
                 {format_duration(@stats.duration_minutes)}
               </div>
             </div>
 
-            <div class="stat">
-              <div class="stat-figure text-secondary">
-                <.icon name="hero-magnifying-glass" class="size-8" />
+            <div class="bg-base-200 border border-base-300 rounded-lg p-4">
+              <div class="flex items-center justify-between">
+                <div class="text-xs uppercase text-base-content/60">Topics</div>
+                <.icon name="hero-magnifying-glass" class="w-5 h-5 text-secondary" />
               </div>
-              <div class="stat-title font-terminal uppercase text-xs">Topics</div>
-              <div class="stat-value text-secondary font-terminal text-2xl">
+              <div class="text-2xl font-semibold text-secondary mt-2">
                 {@stats.topics_explored}
               </div>
-              <div class="stat-desc font-terminal">{@stats.topics_pending} pending</div>
+              <div class="text-xs text-base-content/50 mt-1">{@stats.topics_pending} pending</div>
             </div>
 
-            <div class="stat">
-              <div class="stat-figure text-accent">
-                <.icon name="hero-light-bulb" class="size-8" />
+            <div class="bg-base-200 border border-base-300 rounded-lg p-4">
+              <div class="flex items-center justify-between">
+                <div class="text-xs uppercase text-base-content/60">Beliefs</div>
+                <.icon name="hero-light-bulb" class="w-5 h-5 text-accent" />
               </div>
-              <div class="stat-title font-terminal uppercase text-xs">Beliefs</div>
-              <div class="stat-value text-accent font-terminal text-2xl">
+              <div class="text-2xl font-semibold text-accent mt-2">
                 {@stats.beliefs_formed}
               </div>
             </div>
 
-            <div class="stat">
-              <div class="stat-figure text-info">
-                <.icon name="hero-code-bracket" class="size-8" />
+            <div class="bg-base-200 border border-base-300 rounded-lg p-4">
+              <div class="flex items-center justify-between">
+                <div class="text-xs uppercase text-base-content/60">Code Changes</div>
+                <.icon name="hero-code-bracket" class="w-5 h-5 text-info" />
               </div>
-              <div class="stat-title font-terminal uppercase text-xs">Code Changes</div>
-              <div class="stat-value text-info font-terminal text-2xl">
+              <div class="text-2xl font-semibold text-info mt-2">
                 {@stats.code_changes}
               </div>
             </div>
 
-            <div class="stat">
-              <div class="stat-figure text-warning">
-                <.icon name="hero-currency-dollar" class="size-8" />
+            <div class="bg-base-200 border border-base-300 rounded-lg p-4">
+              <div class="flex items-center justify-between">
+                <div class="text-xs uppercase text-base-content/60">Tokens</div>
+                <.icon name="hero-currency-dollar" class="w-5 h-5 text-warning" />
               </div>
-              <div class="stat-title font-terminal uppercase text-xs">Tokens</div>
-              <div class="stat-value text-warning font-terminal text-2xl">
+              <div class="text-2xl font-semibold text-warning mt-2">
                 {format_tokens(@stats.tokens_used)}
               </div>
-              <div class="stat-desc font-terminal">
+              <div class="text-xs text-base-content/50 mt-1">
                 {TokenBudget.format_cost(@stats.tokens_used)}
               </div>
             </div>
@@ -354,29 +350,27 @@ defmodule LincolnWeb.AutonomyLive do
     <!-- Main Content Grid -->
         <div class="grid lg:grid-cols-3 gap-6">
           <!-- Activity Log (2 columns) -->
-          <div class="lg:col-span-2 card bg-base-200 border-2 border-info/50">
-            <div class="card-body p-0">
-              <div class="flex items-center justify-between px-4 py-3 border-b-2 border-info/30 bg-base-300">
-                <h2 class="card-title text-sm font-terminal uppercase gap-2">
-                  <.icon name="hero-bolt" class="size-4 text-info" /> Live Activity
-                </h2>
-                <%= if @active_session && LearningSession.running?(@active_session) do %>
-                  <span class="badge badge-info badge-sm gap-1 font-terminal">
-                    <span class="status status-success animate-pulse"></span> Live
-                  </span>
-                <% end %>
-              </div>
-              <div class="p-4 h-96 overflow-y-auto" id="activity-log" phx-hook="ScrollToBottom">
-                <div id="logs-stream" phx-update="stream" class="space-y-2">
-                  <div class="hidden only:flex flex-col items-center justify-center h-full text-center">
-                    <.icon name="hero-bolt" class="size-12 text-base-content/20 mb-2" />
-                    <p class="font-terminal text-sm text-base-content/40">
-                      No activity yet. Start a learning session to see Lincoln in action.
-                    </p>
-                  </div>
-
-                  <.log_entry :for={{dom_id, log} <- @streams.logs} id={dom_id} log={log} />
+          <div class="lg:col-span-2 bg-base-200 border border-base-300 rounded-lg">
+            <div class="flex items-center justify-between px-4 py-3 border-b border-base-300">
+              <h2 class="text-sm font-semibold flex items-center gap-2">
+                <.icon name="hero-bolt" class="w-4 h-4 text-info" /> Live Activity
+              </h2>
+              <%= if @active_session && LearningSession.running?(@active_session) do %>
+                <span class="badge badge-info badge-sm gap-1">
+                  <span class="w-2 h-2 rounded-full bg-success animate-pulse"></span> Live
+                </span>
+              <% end %>
+            </div>
+            <div class="p-4 h-96 overflow-y-auto" id="activity-log" phx-hook="ScrollToBottom">
+              <div id="logs-stream" phx-update="stream" class="space-y-2">
+                <div class="hidden only:flex flex-col items-center justify-center h-full text-center">
+                  <.icon name="hero-bolt" class="w-12 h-12 text-base-content/20 mb-2" />
+                  <p class="text-sm text-base-content/40">
+                    No activity yet. Start a learning session to see Lincoln in action.
+                  </p>
                 </div>
+
+                <.log_entry :for={{dom_id, log} <- @streams.logs} id={dom_id} log={log} />
               </div>
             </div>
           </div>
@@ -384,75 +378,68 @@ defmodule LincolnWeb.AutonomyLive do
     <!-- Side Panel -->
           <div class="space-y-6">
             <!-- Topic Queue -->
-            <div class="card bg-base-200 border-2 border-secondary/50">
-              <div class="card-body p-0">
-                <div class="px-4 py-3 border-b-2 border-secondary/30 bg-base-300">
-                  <h2 class="card-title text-sm font-terminal uppercase gap-2">
-                    <.icon name="hero-queue-list" class="size-4 text-secondary" /> Topic Queue
-                  </h2>
-                </div>
-                <div class="p-4 max-h-64 overflow-y-auto">
-                  <%= if @pending_topics == [] do %>
-                    <p class="text-center text-base-content/40 font-terminal text-sm py-4">
-                      No pending topics
-                    </p>
-                  <% else %>
-                    <ul class="space-y-2">
-                      <li :for={topic <- @pending_topics}>
-                        <div class="flex items-center gap-2 p-2 bg-base-300 border border-secondary/20">
-                          <span class="badge badge-secondary badge-xs font-terminal">
-                            P{topic.priority}
-                          </span>
-                          <span class="font-terminal text-sm flex-1 truncate">
-                            {topic.topic}
-                          </span>
-                          <span class="badge badge-ghost badge-xs font-terminal">
-                            D{topic.depth}
-                          </span>
-                        </div>
-                      </li>
-                    </ul>
-                  <% end %>
-                </div>
+            <div class="bg-base-200 border border-base-300 rounded-lg">
+              <div class="px-4 py-3 border-b border-base-300">
+                <h2 class="text-sm font-semibold flex items-center gap-2">
+                  <.icon name="hero-queue-list" class="w-4 h-4 text-secondary" /> Topic Queue
+                </h2>
+              </div>
+              <div class="p-4 max-h-64 overflow-y-auto">
+                <%= if @pending_topics == [] do %>
+                  <p class="text-center text-base-content/40 text-sm py-4">
+                    No pending topics
+                  </p>
+                <% else %>
+                  <ul class="space-y-2">
+                    <li :for={topic <- @pending_topics}>
+                      <div class="flex items-center gap-2 p-2 bg-base-300 rounded-lg">
+                        <span class="badge badge-secondary badge-xs">
+                          P{topic.priority}
+                        </span>
+                        <span class="text-sm flex-1 truncate">
+                          {topic.topic}
+                        </span>
+                        <span class="badge badge-ghost badge-xs">
+                          D{topic.depth}
+                        </span>
+                      </div>
+                    </li>
+                  </ul>
+                <% end %>
               </div>
             </div>
             
     <!-- Code Changes -->
-            <div class="card bg-base-200 border-2 border-accent/50">
-              <div class="card-body p-0">
-                <div class="px-4 py-3 border-b-2 border-accent/30 bg-base-300">
-                  <h2 class="card-title text-sm font-terminal uppercase gap-2">
-                    <.icon name="hero-code-bracket" class="size-4 text-accent" /> Self-Modifications
-                  </h2>
-                </div>
-                <div class="p-4 max-h-48 overflow-y-auto">
-                  <%= if @code_changes == [] do %>
-                    <p class="text-center text-base-content/40 font-terminal text-sm py-4">
-                      No code changes yet
-                    </p>
-                  <% else %>
-                    <ul class="space-y-2">
-                      <li :for={change <- @code_changes}>
-                        <div class="p-2 bg-base-300 border border-accent/20">
-                          <div class="flex items-center gap-2">
-                            <span class={[
-                              "badge badge-xs font-terminal",
-                              change_type_badge(change.change_type)
-                            ]}>
-                              {change.change_type}
-                            </span>
-                            <span class="font-terminal text-xs text-base-content/60 truncate">
-                              {change.file_path}
-                            </span>
-                          </div>
-                          <p class="font-terminal text-sm mt-1 line-clamp-2">
-                            {change.description}
-                          </p>
+            <div class="bg-base-200 border border-base-300 rounded-lg">
+              <div class="px-4 py-3 border-b border-base-300">
+                <h2 class="text-sm font-semibold flex items-center gap-2">
+                  <.icon name="hero-code-bracket" class="w-4 h-4 text-accent" /> Self-Modifications
+                </h2>
+              </div>
+              <div class="p-4 max-h-48 overflow-y-auto">
+                <%= if @code_changes == [] do %>
+                  <p class="text-center text-base-content/40 text-sm py-4">
+                    No code changes yet
+                  </p>
+                <% else %>
+                  <ul class="space-y-2">
+                    <li :for={change <- @code_changes}>
+                      <div class="p-2 bg-base-300 rounded-lg">
+                        <div class="flex items-center gap-2">
+                          <span class={["badge badge-xs", change_type_badge(change.change_type)]}>
+                            {change.change_type}
+                          </span>
+                          <span class="text-xs text-base-content/60 truncate">
+                            {change.file_path}
+                          </span>
                         </div>
-                      </li>
-                    </ul>
-                  <% end %>
-                </div>
+                        <p class="text-sm mt-1 line-clamp-2">
+                          {change.description}
+                        </p>
+                      </div>
+                    </li>
+                  </ul>
+                <% end %>
               </div>
             </div>
           </div>
@@ -460,40 +447,38 @@ defmodule LincolnWeb.AutonomyLive do
         
     <!-- Past Sessions -->
         <%= if @sessions != [] do %>
-          <div class="card bg-base-200 border-2 border-base-content/20">
-            <div class="card-body p-0">
-              <div class="px-4 py-3 border-b-2 border-base-content/10 bg-base-300">
-                <h2 class="card-title text-sm font-terminal uppercase gap-2">
-                  <.icon name="hero-archive-box" class="size-4" /> Past Sessions
-                </h2>
-              </div>
-              <div class="p-4">
-                <div class="overflow-x-auto">
-                  <table class="table table-zebra font-terminal text-sm">
-                    <thead>
-                      <tr>
-                        <th>Started</th>
-                        <th>Duration</th>
-                        <th>Topics</th>
-                        <th>Beliefs</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      <tr :for={session <- @sessions}>
-                        <td>{format_datetime(session.started_at)}</td>
-                        <td>{format_session_duration(session)}</td>
-                        <td>{session.topics_explored}</td>
-                        <td>{session.beliefs_formed}</td>
-                        <td>
-                          <span class={["badge badge-sm font-terminal", status_badge(session.status)]}>
-                            {session.status}
-                          </span>
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
+          <div class="bg-base-200 border border-base-300 rounded-lg">
+            <div class="px-4 py-3 border-b border-base-300">
+              <h2 class="text-sm font-semibold flex items-center gap-2">
+                <.icon name="hero-archive-box" class="w-4 h-4" /> Past Sessions
+              </h2>
+            </div>
+            <div class="p-4">
+              <div class="overflow-x-auto">
+                <table class="table table-zebra text-sm">
+                  <thead>
+                    <tr>
+                      <th>Started</th>
+                      <th>Duration</th>
+                      <th>Topics</th>
+                      <th>Beliefs</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr :for={session <- @sessions}>
+                      <td>{format_datetime(session.started_at)}</td>
+                      <td>{format_session_duration(session)}</td>
+                      <td>{session.topics_explored}</td>
+                      <td>{session.beliefs_formed}</td>
+                      <td>
+                        <span class={["badge badge-sm", status_badge(session.status)]}>
+                          {session.status}
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
@@ -502,9 +487,9 @@ defmodule LincolnWeb.AutonomyLive do
       
     <!-- Start Session Modal -->
       <dialog id="start-modal" class={["modal", @show_start_modal && "modal-open"]}>
-        <div class="modal-box bg-base-200 border-2 border-accent">
-          <h3 class="font-black font-terminal text-lg uppercase">Start Night Shift</h3>
-          <p class="py-4 font-terminal text-sm text-base-content/70">
+        <div class="modal-box bg-base-200 border border-base-300">
+          <h3 class="text-lg font-semibold">Start Night Shift</h3>
+          <p class="py-4 text-sm text-base-content/70">
             Lincoln will autonomously explore these seed topics, learning and forming beliefs.
             He may discover related topics and potentially improve his own code.
           </p>
@@ -512,23 +497,23 @@ defmodule LincolnWeb.AutonomyLive do
           <form phx-submit="start_session">
             <div class="form-control">
               <label class="label">
-                <span class="label-text font-terminal uppercase text-xs">
+                <span class="label-text text-xs uppercase">
                   Seed Topics (one per line)
                 </span>
               </label>
               <textarea
                 name="topics"
-                class="textarea textarea-bordered textarea-accent h-48 font-terminal"
+                class="textarea textarea-bordered h-48"
                 phx-change="update_seed_topics"
               >{@seed_topics_input}</textarea>
             </div>
 
             <div class="modal-action">
-              <button type="button" phx-click="hide_start_modal" class="btn btn-ghost font-terminal">
+              <button type="button" phx-click="hide_start_modal" class="btn btn-ghost">
                 Cancel
               </button>
-              <button type="submit" class="btn btn-accent font-terminal gap-2">
-                <.icon name="hero-play" class="size-4" /> Begin Learning
+              <button type="submit" class="btn btn-accent gap-2">
+                <.icon name="hero-play" class="w-4 h-4" /> Begin Learning
               </button>
             </div>
           </form>
@@ -553,31 +538,31 @@ defmodule LincolnWeb.AutonomyLive do
     <div
       id={@id}
       class={[
-        "flex items-start gap-3 p-2 border-l-2 bg-base-300/50",
+        "flex items-start gap-3 p-2 border-l-2 bg-base-300/50 rounded-r-lg",
         log_border_color(@log.activity_type)
       ]}
     >
       <div class={["mt-0.5", "text-#{LearningLog.activity_color(@log.activity_type)}"]}>
-        <.icon name={LearningLog.activity_icon(@log.activity_type)} class="size-4" />
+        <.icon name={LearningLog.activity_icon(@log.activity_type)} class="w-4 h-4" />
       </div>
       <div class="flex-1 min-w-0">
         <div class="flex items-center gap-2">
           <span class={[
-            "badge badge-xs font-terminal uppercase",
+            "badge badge-xs",
             "badge-#{LearningLog.activity_color(@log.activity_type)}"
           ]}>
             {@log.activity_type}
           </span>
-          <span class="text-xs font-terminal text-base-content/40">
+          <span class="text-xs text-base-content/40">
             {format_time(@log.inserted_at)}
           </span>
           <%= if @log.tokens_used > 0 do %>
-            <span class="text-xs font-terminal text-warning/60">
+            <span class="text-xs text-warning/60">
               {format_tokens(@log.tokens_used)} tokens
             </span>
           <% end %>
         </div>
-        <p class="font-terminal text-sm mt-1">{@log.description}</p>
+        <p class="text-sm mt-1">{@log.description}</p>
       </div>
     </div>
     """

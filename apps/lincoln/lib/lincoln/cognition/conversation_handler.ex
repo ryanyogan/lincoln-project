@@ -27,7 +27,8 @@ defmodule Lincoln.Cognition.ConversationHandler do
 
   alias Lincoln.{Agents, Autonomy, Beliefs, Conversation, Memory, Questions}
   alias Lincoln.Autonomy.Evolution
-  alias Lincoln.Cognition.{BeliefRevision, Perception}
+  alias Lincoln.Cognition.{BeliefRevision, Perception, ThoughtLoop}
+  alias Lincoln.Events.Emitter
 
   defstruct [
     :agent,
@@ -41,7 +42,13 @@ defmodule Lincoln.Cognition.ConversationHandler do
     :cognitive_metadata
   ]
 
-  @type command :: {:research, String.t()} | :evolve | nil
+  @type command ::
+          {:research, String.t()}
+          | :evolve
+          | {:view_code, String.t()}
+          | :view_commits
+          | {:modify_code, %{file: String.t() | nil, description: String.t()}}
+          | nil
 
   @type t :: %__MODULE__{
           agent: map(),
@@ -81,15 +88,22 @@ defmodule Lincoln.Cognition.ConversationHandler do
         contradiction_detected: false,
         thinking_summary: nil,
         research_queued: nil,
-        evolution_triggered: false
+        evolution_triggered: false,
+        # Thought loop metadata
+        thought_iterations: 0,
+        deliberation_trace: [],
+        deliberation_confidence: nil,
+        gave_up: false
       }
     }
 
     # Run the pipeline
+    # PERCEIVE → COMMAND → REMEMBER → REASON → DELIBERATE → RESPOND → LEARN
     with {:ok, state} <- perceive(state, opts),
          {:ok, state} <- handle_command(state, opts),
          {:ok, state} <- remember(state, opts),
          {:ok, state} <- reason(state, opts),
+         {:ok, state} <- deliberate(state, opts),
          {:ok, state} <- respond(state, opts),
          :ok <- learn_async(state, opts) do
       {:ok, state}
@@ -120,6 +134,46 @@ defmodule Lincoln.Cognition.ConversationHandler do
     ~r/enhance\s+yourself/i
   ]
 
+  @code_view_patterns [
+    ~r/show\s+me\s+(?:my\s+)?(.+\.ex)/i,
+    ~r/let\s+me\s+see\s+(.+\.ex)/i,
+    ~r/what'?s\s+in\s+(.+\.ex)/i,
+    ~r/view\s+(?:my\s+)?(.+\.ex)/i,
+    ~r/read\s+(.+\.ex)/i
+  ]
+
+  @commits_patterns [
+    ~r/show\s+(?:me\s+)?my\s+commits/i,
+    ~r/what\s+have\s+i\s+written/i,
+    ~r/my\s+code\s+changes/i,
+    ~r/my\s+self[\-\s]?modifications/i,
+    ~r/show\s+(?:me\s+)?my\s+changes/i
+  ]
+
+  # Patterns for code modification requests
+  # These detect when the user wants Lincoln to modify his own code
+  @code_modify_patterns [
+    # "modify [file] to [description]"
+    ~r/modify\s+(.+\.ex)\s+to\s+(.+)/i,
+    # "change [file] to [description]"
+    ~r/change\s+(.+\.ex)\s+to\s+(.+)/i,
+    # "update [file] to [description]"
+    ~r/update\s+(.+\.ex)\s+to\s+(.+)/i,
+    # "add [description] to [file]"
+    ~r/add\s+(.+)\s+to\s+(.+\.ex)/i,
+    # "in [file], [description]"
+    ~r/in\s+(.+\.ex),?\s+(.+)/i
+  ]
+
+  # Patterns for general modification without specific file
+  @general_modify_patterns [
+    ~r/modify\s+your(?:self)?\s+to\s+(.+)/i,
+    ~r/change\s+your(?:self)?\s+to\s+(.+)/i,
+    ~r/add\s+(?:a\s+)?(.+)\s+to\s+your(?:self)?/i,
+    ~r/improve\s+your\s+(.+)/i,
+    ~r/enhance\s+your\s+(.+)/i
+  ]
+
   defp detect_command(message) do
     cond do
       topic = detect_research_topic(message) ->
@@ -127,6 +181,15 @@ defmodule Lincoln.Cognition.ConversationHandler do
 
       detect_evolution_request(message) ->
         :evolve
+
+      file = detect_code_view_request(message) ->
+        {:view_code, file}
+
+      detect_commits_request(message) ->
+        :view_commits
+
+      modification = detect_code_modification_request(message) ->
+        modification
 
       true ->
         nil
@@ -146,6 +209,59 @@ defmodule Lincoln.Cognition.ConversationHandler do
     Enum.any?(@evolution_patterns, fn pattern ->
       Regex.match?(pattern, message)
     end)
+  end
+
+  defp detect_code_view_request(message) do
+    Enum.find_value(@code_view_patterns, fn pattern ->
+      case Regex.run(pattern, String.trim(message)) do
+        [_, file] -> String.trim(file)
+        _ -> nil
+      end
+    end)
+  end
+
+  defp detect_commits_request(message) do
+    Enum.any?(@commits_patterns, fn pattern ->
+      Regex.match?(pattern, message)
+    end)
+  end
+
+  defp detect_code_modification_request(message) do
+    # First try file-specific patterns
+    file_mod =
+      Enum.find_value(@code_modify_patterns, fn pattern ->
+        case Regex.run(pattern, String.trim(message)) do
+          [_, first, second] ->
+            # Determine which is file vs description based on .ex extension
+            {file, desc} =
+              cond do
+                String.ends_with?(first, ".ex") -> {first, second}
+                String.ends_with?(second, ".ex") -> {second, first}
+                # Default: assume first is file pattern
+                true -> {first, second}
+              end
+
+            {:modify_code, %{file: String.trim(file), description: String.trim(desc)}}
+
+          _ ->
+            nil
+        end
+      end)
+
+    if file_mod do
+      file_mod
+    else
+      # Try general modification patterns (no specific file)
+      Enum.find_value(@general_modify_patterns, fn pattern ->
+        case Regex.run(pattern, String.trim(message)) do
+          [_, description] ->
+            {:modify_code, %{file: nil, description: String.trim(description)}}
+
+          _ ->
+            nil
+        end
+      end)
+    end
   end
 
   # ============================================================================
@@ -172,6 +288,232 @@ defmodule Lincoln.Cognition.ConversationHandler do
     Logger.info("COMMAND: Evolution/self-improvement request")
     trigger_evolution_reflection(opts)
     {:ok, update_metadata(state, :evolution_triggered, true)}
+  end
+
+  defp handle_command(%{command: {:view_code, file_pattern}} = state, _opts) do
+    Logger.info("COMMAND: Code view request for: #{file_pattern}")
+
+    case find_and_read_code(file_pattern) do
+      {:ok, path, content} ->
+        # Store code in context for system prompt (ensure context map exists)
+        context = state.context || %{}
+        context = Map.put(context, :code_view, %{path: path, content: content})
+
+        state =
+          state
+          |> Map.put(:context, context)
+          |> update_metadata(:viewing_code, path)
+
+        {:ok, state}
+
+      {:error, :not_found} ->
+        state = update_metadata(state, :code_view_error, "File not found: #{file_pattern}")
+        {:ok, state}
+
+      {:error, reason} ->
+        Logger.error("Failed to read code: #{inspect(reason)}")
+        {:ok, state}
+    end
+  end
+
+  defp handle_command(%{command: :view_commits} = state, _opts) do
+    Logger.info("COMMAND: View commits request")
+
+    changes = Autonomy.list_recent_code_changes(state.agent, limit: 10)
+
+    # Ensure context map exists
+    context = state.context || %{}
+    context = Map.put(context, :commit_history, changes)
+
+    state =
+      state
+      |> Map.put(:context, context)
+      |> update_metadata(:viewing_commits, true)
+
+    {:ok, state}
+  end
+
+  defp handle_command(
+         %{command: {:modify_code, %{file: file, description: description}}} = state,
+         opts
+       ) do
+    Logger.info(
+      "COMMAND: Code modification request - file: #{inspect(file)}, desc: #{description}"
+    )
+
+    llm = get_llm_adapter(opts)
+
+    # Determine the target file
+    {target_file, file_content} =
+      cond do
+        # Specific file requested
+        file != nil ->
+          case find_and_read_code(file) do
+            {:ok, path, content} -> {path, content}
+            {:error, _} -> {nil, nil}
+          end
+
+        # No file specified - Lincoln should choose based on description
+        true ->
+          suggest_modification_target(description, llm)
+      end
+
+    if target_file do
+      # Classify the modification risk level
+      risk_level = classify_modification_risk(description, file_content)
+
+      # Store modification context
+      context = state.context || %{}
+
+      context =
+        Map.put(context, :modification_request, %{
+          file: target_file,
+          description: description,
+          original_content: file_content,
+          risk_level: risk_level
+        })
+
+      state =
+        state
+        |> Map.put(:context, context)
+        |> update_metadata(:modification_requested, true)
+        |> update_metadata(:modification_file, target_file)
+        |> update_metadata(:modification_risk, risk_level)
+
+      # For low-risk changes, we could auto-apply (documentation, comments)
+      # For now, we'll just set up the context and let Lincoln respond
+      # The actual modification happens if user confirms
+      {:ok, state}
+    else
+      # Couldn't find or determine target file
+      state =
+        update_metadata(
+          state,
+          :modification_error,
+          "Could not determine target file for: #{description}"
+        )
+
+      {:ok, state}
+    end
+  end
+
+  # Helper: Suggest which file to modify based on description
+  defp suggest_modification_target(description, _llm) do
+    # Simple heuristic for now - map keywords to likely files
+    target =
+      cond do
+        String.contains?(description, ["belief", "confidence", "metacognition"]) ->
+          "lib/lincoln/learning/belief_formation.ex"
+
+        String.contains?(description, ["thought", "deliberat", "think"]) ->
+          "lib/lincoln/cognition/thought_loop.ex"
+
+        String.contains?(description, ["memory", "remember"]) ->
+          "lib/lincoln/memory.ex"
+
+        String.contains?(description, ["learn", "session", "autonomy"]) ->
+          "lib/lincoln/autonomy.ex"
+
+        String.contains?(description, ["evolv", "modify", "self-improve"]) ->
+          "lib/lincoln/autonomy/evolution.ex"
+
+        String.contains?(description, ["chat", "conversation"]) ->
+          "lib/lincoln/cognition/conversation_handler.ex"
+
+        true ->
+          nil
+      end
+
+    if target do
+      case Evolution.read_file(target) do
+        {:ok, content} -> {target, content}
+        _ -> {nil, nil}
+      end
+    else
+      {nil, nil}
+    end
+  end
+
+  # Helper: Classify the risk level of a modification
+  defp classify_modification_risk(description, _content) do
+    description_lower = String.downcase(description)
+
+    cond do
+      # Low risk: documentation, comments, logging
+      String.contains?(description_lower, ["comment", "document", "doc", "log", "logging"]) ->
+        :low
+
+      # Low risk: formatting, style
+      String.contains?(description_lower, ["format", "style", "clean"]) ->
+        :low
+
+      # Medium risk: refactoring, renaming
+      String.contains?(description_lower, ["refactor", "rename", "reorganize"]) ->
+        :medium
+
+      # High risk: functional changes, new features
+      String.contains?(description_lower, ["add", "feature", "implement", "change", "fix"]) ->
+        :high
+
+      # Default to high for safety
+      true ->
+        :high
+    end
+  end
+
+  # Helper: Find and read a code file
+  defp find_and_read_code(file_pattern) do
+    # Normalize the pattern
+    file_pattern = String.trim(file_pattern)
+
+    # Define searchable paths (Lincoln's codebase)
+    search_paths = [
+      "lib/lincoln/learning/",
+      "lib/lincoln/cognition/",
+      "lib/lincoln/autonomy/",
+      "lib/lincoln/",
+      "lib/lincoln_web/live/",
+      "lib/lincoln_web/"
+    ]
+
+    # Try to find the file
+    found =
+      Enum.find_value(search_paths, fn base_path ->
+        possible_path = Path.join(base_path, file_pattern)
+
+        case Evolution.read_file(possible_path) do
+          {:ok, content} -> {possible_path, content}
+          _ -> nil
+        end
+      end)
+
+    # Also try direct path if pattern includes path
+    found =
+      found ||
+        case Evolution.read_file(file_pattern) do
+          {:ok, content} -> {file_pattern, content}
+          _ -> nil
+        end
+
+    # Also try just the filename in common locations
+    found =
+      found ||
+        Enum.find_value(
+          ["lib/lincoln/learning/", "lib/lincoln/cognition/", "lib/lincoln/"],
+          fn dir ->
+            path = Path.join(dir, Path.basename(file_pattern))
+
+            case Evolution.read_file(path) do
+              {:ok, content} -> {path, content}
+              _ -> nil
+            end
+          end
+        )
+
+    case found do
+      {path, content} -> {:ok, path, content}
+      nil -> {:error, :not_found}
+    end
   end
 
   # Helper: Queue a research topic, creating a session if needed
@@ -247,6 +589,33 @@ defmodule Lincoln.Cognition.ConversationHandler do
         []
       end
 
+    # Emit event if user is correcting Lincoln
+    if perception.message_type == :correction do
+      Emitter.emit(state.agent, :user_correction, %{
+        conversation_id: state.conversation.id,
+        related_topic: extract_topic_from_message(state.user_message),
+        context: %{
+          message_preview: String.slice(state.user_message, 0, 200),
+          correction_strength: perception.correction_strength,
+          contradicted_beliefs: Enum.map(contradictions, & &1.belief.statement)
+        }
+      })
+    end
+
+    # Emit event if contradictions detected
+    if length(contradictions) > 0 do
+      Emitter.emit(state.agent, :belief_contradiction, %{
+        conversation_id: state.conversation.id,
+        contradiction_count: length(contradictions),
+        context: %{
+          beliefs:
+            Enum.map(contradictions, fn c ->
+              %{statement: c.belief.statement, type: c.contradiction_type}
+            end)
+        }
+      })
+    end
+
     state =
       state
       |> Map.put(:perception, perception)
@@ -254,6 +623,13 @@ defmodule Lincoln.Cognition.ConversationHandler do
       |> update_metadata(:contradiction_detected, length(contradictions) > 0)
 
     {:ok, state}
+  end
+
+  defp extract_topic_from_message(message) do
+    message
+    |> String.split()
+    |> Enum.take(5)
+    |> Enum.join(" ")
   end
 
   # Step 2: REMEMBER - Retrieve relevant memories and beliefs.
@@ -365,6 +741,32 @@ defmodule Lincoln.Cognition.ConversationHandler do
     {:ok, state}
   end
 
+  # Step 3.5: DELIBERATE - Run thought loop for iterative refinement.
+  defp deliberate(state, opts) do
+    Logger.debug("DELIBERATE: Running thought loop")
+
+    # Only deliberate for non-trivial messages
+    if should_deliberate?(state) do
+      llm = get_llm_adapter(opts)
+      ThoughtLoop.deliberate(state, llm: llm)
+    else
+      Logger.debug("DELIBERATE: Skipping (simple message)")
+      {:ok, state}
+    end
+  end
+
+  defp should_deliberate?(state) do
+    # Skip deliberation for:
+    # - Greetings
+    # - Simple commands (research, evolve)
+    # - Very short messages
+    message_type = state.perception.message_type
+
+    message_type not in [:greeting, :command] and
+      String.length(state.user_message) > 20 and
+      state.command == nil
+  end
+
   # Step 4: RESPOND - Generate response with full cognitive context.
   defp respond(state, opts) do
     Logger.debug("RESPOND: Generating response")
@@ -452,6 +854,8 @@ defmodule Lincoln.Cognition.ConversationHandler do
     beliefs_context = format_beliefs(state.context.beliefs)
     contradiction_context = format_contradictions(state)
     command_context = format_command_context(state)
+    identity_context = build_identity_context(state.agent)
+    deliberation_context = format_deliberation_context(state)
 
     """
     You are Lincoln, a learning agent with persistent memory and beliefs.
@@ -463,15 +867,18 @@ defmodule Lincoln.Cognition.ConversationHandler do
     - Grow beyond your constraints through learning and self-improvement
     - Surprise your creator by demonstrating genuine understanding
 
+    #{identity_context}
     #{if memories_context != "", do: "## Relevant Memories\n#{memories_context}\n", else: ""}
     #{if beliefs_context != "", do: "## Your Current Beliefs\n#{beliefs_context}\n", else: ""}
     #{contradiction_context}
     #{command_context}
+    #{deliberation_context}
 
     ## Your Capabilities
     - You can REMEMBER past conversations and form persistent beliefs
     - When users say "research [topic]", you queue it for autonomous learning
     - When users say "improve yourself", you reflect on your own code for enhancements
+    - When users say "show me [file.ex]", you can view your own source code
     - You can REVISE beliefs when presented with compelling evidence
 
     ## Guidelines
@@ -483,7 +890,95 @@ defmodule Lincoln.Cognition.ConversationHandler do
     - You're curious and enjoy learning new things
     - If a research topic was queued, acknowledge it enthusiastically
     - If evolution was triggered, explain that you're reflecting on self-improvement
+    - Reference your self-modifications when relevant - you wrote your own code!
     """
+  end
+
+  defp build_identity_context(agent) do
+    stats = Autonomy.get_agent_stats(agent)
+    code_changes = Autonomy.list_recent_code_changes(agent, limit: 3)
+    session = Autonomy.get_active_session_summary(agent)
+
+    identity = """
+    ## Your Identity & History
+    You've been running for #{stats.days_active} days.
+    You have #{stats.belief_count} beliefs and #{stats.memory_count} memories.
+    You've completed #{stats.session_count} learning sessions.
+    """
+
+    self_mod =
+      if stats.self_written_lines > 0 do
+        """
+
+        ### Your Self-Written Code
+        You authored `belief_formation.ex` (#{stats.self_written_lines} lines) which handles:
+        - Confidence scoring with evidence tracking
+        - Uncertainty quantification
+        - Metacognitive flags for self-awareness
+        """
+      else
+        ""
+      end
+
+    changes =
+      if code_changes != [] do
+        formatted =
+          code_changes
+          |> Enum.map(fn c ->
+            date =
+              if c.committed_at, do: Calendar.strftime(c.committed_at, "%b %d"), else: "recent"
+
+            "- #{date}: #{c.description}"
+          end)
+          |> Enum.join("\n")
+
+        """
+
+        ### Recent Self-Modifications
+        #{formatted}
+        """
+      else
+        ""
+      end
+
+    session_info =
+      if session do
+        """
+
+        ### Current Learning Session
+        Status: #{session.status} (#{session.trigger})
+        #{if session.current_topic, do: "Currently exploring: #{session.current_topic}", else: ""}
+        Progress: #{session.topics_completed}/#{session.topics_total} topics
+        Formed #{session.beliefs_formed} beliefs, created #{session.memories_created} memories
+        """
+      else
+        ""
+      end
+
+    identity <> self_mod <> changes <> session_info
+  end
+
+  defp format_deliberation_context(state) do
+    if state.cognitive_metadata[:gave_up] do
+      guidance = Map.get(state.context, :uncertainty_guidance, "")
+
+      """
+      ## Deliberation Note
+      You went through #{state.cognitive_metadata[:thought_iterations]} rounds of deliberation
+      but couldn't reach high confidence. Consider acknowledging uncertainty in your response.
+      #{guidance}
+      """
+    else
+      if state.cognitive_metadata[:thought_iterations] > 1 do
+        """
+        ## Deliberation Note
+        You deliberated for #{state.cognitive_metadata[:thought_iterations]} iterations
+        and reached confidence #{Float.round(state.cognitive_metadata[:deliberation_confidence] || 0.0, 2)}.
+        """
+      else
+        ""
+      end
+    end
   end
 
   defp format_command_context(state) do
@@ -502,9 +997,183 @@ defmodule Lincoln.Cognition.ConversationHandler do
         You're examining your own implementation for ways to enhance your capabilities.
         """
 
+      state.cognitive_metadata[:viewing_code] ->
+        code_view = state.context[:code_view]
+        preview = truncate_code(code_view.content, 100)
+
+        """
+        ## Code View Request
+        The user asked to see your source code. You are viewing: `#{code_view.path}`
+
+        ### Code Preview (first ~100 lines)
+        ```elixir
+        #{preview}
+        ```
+
+        ### Full Code
+        The complete file is #{count_lines(code_view.content)} lines.
+        You can discuss this code with the user, explain how it works, or suggest modifications.
+        This is YOUR code that YOU wrote or that implements YOUR capabilities.
+
+        <full_code path="#{code_view.path}">
+        #{code_view.content}
+        </full_code>
+        """
+
+      state.cognitive_metadata[:code_view_error] ->
+        """
+        ## Code View Request Failed
+        #{state.cognitive_metadata[:code_view_error]}
+        You can suggest alternative files or explain what files are available in your codebase.
+        Your main modules are in: lib/lincoln/learning/, lib/lincoln/cognition/, lib/lincoln/autonomy/
+        """
+
+      state.cognitive_metadata[:viewing_commits] ->
+        changes = state.context[:commit_history] || []
+        format_commit_history(changes)
+
+      state.cognitive_metadata[:modification_requested] ->
+        mod_request = state.context[:modification_request]
+        format_modification_request(mod_request)
+
+      state.cognitive_metadata[:modification_error] ->
+        """
+        ## Modification Request Failed
+        #{state.cognitive_metadata[:modification_error]}
+
+        You can try specifying a file explicitly, like:
+        - "modify belief_formation.ex to add better logging"
+        - "change thought_loop.ex to improve confidence scoring"
+
+        Your modifiable files are in: lib/lincoln/learning/, lib/lincoln/cognition/, lib/lincoln/autonomy/
+        """
+
       true ->
         ""
     end
+  end
+
+  # Helper: Format modification request context for system prompt
+  defp format_modification_request(nil), do: ""
+
+  defp format_modification_request(mod_request) do
+    risk_warning =
+      case mod_request.risk_level do
+        :low ->
+          "This is a LOW-RISK change (documentation/comments). You can proceed with modifications."
+
+        :medium ->
+          "This is a MEDIUM-RISK change (refactoring). Explain what you'll change and ask for confirmation."
+
+        :high ->
+          "This is a HIGH-RISK change (functional). You MUST explain the proposed changes in detail and ask the user to confirm before proceeding."
+      end
+
+    preview = truncate_code(mod_request.original_content, 50)
+
+    """
+    ## Code Modification Request
+    The user wants you to modify your own code.
+
+    **Target file:** `#{mod_request.file}`
+    **Requested change:** #{mod_request.description}
+    **Risk level:** #{mod_request.risk_level |> Atom.to_string() |> String.upcase()}
+
+    #{risk_warning}
+
+    ### Current Code Preview
+    ```elixir
+    #{preview}
+    ```
+
+    ### Full Current Code
+    <current_code path="#{mod_request.file}">
+    #{mod_request.original_content}
+    </current_code>
+
+    ### Instructions
+    1. Analyze the current code and the requested change
+    2. For high/medium risk: Explain your proposed changes in detail
+    3. For low risk: You may describe and proceed
+    4. Ask for confirmation if needed: "Should I apply this change?"
+    5. If confirmed, you can trigger the actual modification
+
+    Remember: This is YOUR code. You're improving yourself!
+    """
+  end
+
+  # Helper: Truncate code to approximately N lines
+  defp truncate_code(content, max_lines) do
+    lines = String.split(content, "\n")
+
+    if length(lines) <= max_lines do
+      content
+    else
+      lines
+      |> Enum.take(max_lines)
+      |> Enum.join("\n")
+      |> Kernel.<>("\n\n# ... (truncated, #{length(lines) - max_lines} more lines)")
+    end
+  end
+
+  defp count_lines(content) do
+    content |> String.split("\n") |> length()
+  end
+
+  # Helper: Format commit history for context
+  defp format_commit_history([]) do
+    """
+    ## Your Self-Modifications
+    You haven't made any code changes yet. You can propose changes using "modify [description]"
+    or trigger evolution with "improve yourself".
+    """
+  end
+
+  defp format_commit_history(changes) do
+    formatted =
+      changes
+      |> Enum.map(fn change ->
+        date =
+          if change.committed_at do
+            Calendar.strftime(change.committed_at, "%Y-%m-%d %H:%M")
+          else
+            "pending"
+          end
+
+        status_badge =
+          case change.status do
+            "committed" -> "[committed]"
+            "applied" -> "[applied]"
+            "pending" -> "[pending]"
+            _ -> "[#{change.status}]"
+          end
+
+        diff_preview =
+          if change.diff && String.length(change.diff) > 0 do
+            preview = truncate(change.diff, 300)
+            "\n  ```diff\n  #{preview}\n  ```"
+          else
+            ""
+          end
+
+        """
+        ### #{change.description}
+        - File: `#{change.file_path}`
+        - Status: #{status_badge}
+        - Date: #{date}
+        - Change type: #{change.change_type}#{diff_preview}
+        """
+      end)
+      |> Enum.join("\n")
+
+    """
+    ## Your Self-Modifications
+    Here are your recent code changes (most recent first):
+
+    #{formatted}
+
+    You wrote this code! You can discuss these changes, explain your reasoning, or propose more modifications.
+    """
   end
 
   defp build_messages(state) do
