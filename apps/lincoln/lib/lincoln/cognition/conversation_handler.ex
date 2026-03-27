@@ -3,11 +3,15 @@ defmodule Lincoln.Cognition.ConversationHandler do
   Orchestrates the full cognitive pipeline for conversation.
 
   This is Lincoln's "brain" that processes each message through:
-  1. PERCEIVE - Classify message, detect contradictions
+  1. PERCEIVE - Classify message, detect contradictions, detect commands
   2. REMEMBER - Retrieve relevant memories and beliefs
   3. REASON - Handle contradictions, build response context
   4. RESPOND - Generate response with cognitive context
   5. LEARN - Store memories, update beliefs (async)
+
+  ## Special Commands
+  - "research [topic]" - Queues a topic for autonomous learning
+  - "improve yourself" / "evolve" - Triggers self-modification reflection
 
   ## AGI Research Relevance
 
@@ -16,12 +20,14 @@ defmodule Lincoln.Cognition.ConversationHandler do
   - Belief revision from new evidence
   - Source-aware epistemology (training vs observation)
   - Cognitive transparency (what was Lincoln "thinking"?)
+  - Self-modification capabilities
   """
 
   require Logger
 
-  alias Lincoln.{Agents, Beliefs, Memory, Questions, Conversation}
-  alias Lincoln.Cognition.{Perception, BeliefRevision}
+  alias Lincoln.{Agents, Autonomy, Beliefs, Conversation, Memory, Questions}
+  alias Lincoln.Autonomy.Evolution
+  alias Lincoln.Cognition.{BeliefRevision, Perception}
 
   defstruct [
     :agent,
@@ -31,9 +37,11 @@ defmodule Lincoln.Cognition.ConversationHandler do
     :context,
     :contradictions,
     :response,
-    :baseline_response,
+    :command,
     :cognitive_metadata
   ]
+
+  @type command :: {:research, String.t()} | :evolve | nil
 
   @type t :: %__MODULE__{
           agent: map(),
@@ -43,7 +51,7 @@ defmodule Lincoln.Cognition.ConversationHandler do
           context: map(),
           contradictions: list(),
           response: String.t(),
-          baseline_response: String.t() | nil,
+          command: command(),
           cognitive_metadata: map()
         }
 
@@ -51,7 +59,6 @@ defmodule Lincoln.Cognition.ConversationHandler do
   Processes a user message through the full cognitive pipeline.
 
   ## Options
-  - :include_baseline - Also get raw Claude response for comparison
   - :llm - LLM adapter module (default: from config)
   - :embeddings - Embeddings adapter module (default: from config)
 
@@ -59,13 +66,12 @@ defmodule Lincoln.Cognition.ConversationHandler do
   {:ok, %CognitiveResult{}} with response and metadata
   """
   def process_message(agent_id, conversation_id, user_message, opts \\ []) do
-    include_baseline = Keyword.get(opts, :include_baseline, false)
-
     # Initialize state
     state = %__MODULE__{
       agent: Agents.get_agent!(agent_id),
       conversation: Conversation.get_conversation!(conversation_id),
       user_message: user_message,
+      command: detect_command(user_message),
       cognitive_metadata: %{
         memories_retrieved: 0,
         beliefs_consulted: 0,
@@ -73,16 +79,18 @@ defmodule Lincoln.Cognition.ConversationHandler do
         beliefs_revised: 0,
         questions_generated: 0,
         contradiction_detected: false,
-        thinking_summary: nil
+        thinking_summary: nil,
+        research_queued: nil,
+        evolution_triggered: false
       }
     }
 
     # Run the pipeline
     with {:ok, state} <- perceive(state, opts),
+         {:ok, state} <- handle_command(state, opts),
          {:ok, state} <- remember(state, opts),
          {:ok, state} <- reason(state, opts),
          {:ok, state} <- respond(state, opts),
-         {:ok, state} <- maybe_get_baseline(state, include_baseline, opts),
          :ok <- learn_async(state, opts) do
       {:ok, state}
     else
@@ -93,8 +101,133 @@ defmodule Lincoln.Cognition.ConversationHandler do
   end
 
   # ============================================================================
+  # Command Detection
+  # ============================================================================
+
+  @research_patterns [
+    ~r/^research\s+(.+)$/i,
+    ~r/^learn\s+about\s+(.+)$/i,
+    ~r/^study\s+(.+)$/i,
+    ~r/^investigate\s+(.+)$/i
+  ]
+
+  @evolution_patterns [
+    ~r/improve\s+yourself/i,
+    ~r/evolve\s*$/i,
+    ~r/upgrade\s+yourself/i,
+    ~r/self[\-\s]?improve/i,
+    ~r/modify\s+your\s+(code|self)/i,
+    ~r/enhance\s+yourself/i
+  ]
+
+  defp detect_command(message) do
+    cond do
+      topic = detect_research_topic(message) ->
+        {:research, topic}
+
+      detect_evolution_request(message) ->
+        :evolve
+
+      true ->
+        nil
+    end
+  end
+
+  defp detect_research_topic(message) do
+    Enum.find_value(@research_patterns, fn pattern ->
+      case Regex.run(pattern, String.trim(message)) do
+        [_, topic] -> String.trim(topic)
+        _ -> nil
+      end
+    end)
+  end
+
+  defp detect_evolution_request(message) do
+    Enum.any?(@evolution_patterns, fn pattern ->
+      Regex.match?(pattern, message)
+    end)
+  end
+
+  # ============================================================================
   # Pipeline Steps
   # ============================================================================
+
+  # Step 1.5: COMMAND - Handle special commands (research, evolve).
+  defp handle_command(%{command: nil} = state, _opts), do: {:ok, state}
+
+  defp handle_command(%{command: {:research, topic}} = state, _opts) do
+    Logger.info("COMMAND: Research request for topic: #{topic}")
+
+    case queue_research_topic(state.agent, topic) do
+      {:ok, :queued} ->
+        {:ok, update_metadata(state, :research_queued, topic)}
+
+      {:error, reason} ->
+        Logger.error("Failed to queue research topic: #{inspect(reason)}")
+        {:ok, state}
+    end
+  end
+
+  defp handle_command(%{command: :evolve} = state, opts) do
+    Logger.info("COMMAND: Evolution/self-improvement request")
+    trigger_evolution_reflection(opts)
+    {:ok, update_metadata(state, :evolution_triggered, true)}
+  end
+
+  # Helper: Queue a research topic, creating a session if needed
+  defp queue_research_topic(agent, topic) do
+    session = Autonomy.get_active_session(agent) || create_learning_session(agent)
+
+    case session do
+      nil ->
+        {:error, :session_creation_failed}
+
+      session ->
+        case Autonomy.create_topic(agent, session, %{
+               topic: topic,
+               source: "user_request",
+               priority: 9
+             }) do
+          {:ok, _topic} ->
+            # Start the session if it's new (not running)
+            if session.status != "running", do: Autonomy.start_session(session)
+            {:ok, :queued}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+    end
+  end
+
+  defp create_learning_session(agent) do
+    case Autonomy.create_session(agent, %{trigger: "user_request"}) do
+      {:ok, session} -> session
+      {:error, _} -> nil
+    end
+  end
+
+  # Helper: Trigger evolution reflection in background
+  defp trigger_evolution_reflection(opts) do
+    llm = get_llm_adapter(opts)
+
+    Task.start(fn ->
+      context = %{
+        recent_learnings: "User requested self-improvement",
+        recent_errors: "None"
+      }
+
+      case Evolution.reflect_on_codebase(llm, context) do
+        {:ok, %{"should_evolve" => true} = reflection} ->
+          Logger.info("Evolution: Lincoln wants to improve - #{reflection["description"]}")
+
+        {:ok, %{"should_evolve" => false}} ->
+          Logger.info("Evolution: Lincoln decided no changes needed right now")
+
+        {:error, reason} ->
+          Logger.error("Evolution reflection failed: #{inspect(reason)}")
+      end
+    end)
+  end
 
   # Step 1: PERCEIVE - Classify message and detect contradictions.
   defp perceive(state, opts) do
@@ -251,22 +384,6 @@ defmodule Lincoln.Cognition.ConversationHandler do
     end
   end
 
-  # Optional: Get baseline Claude response for comparison.
-  defp maybe_get_baseline(state, false, _opts), do: {:ok, state}
-
-  defp maybe_get_baseline(state, true, opts) do
-    llm = get_llm_adapter(opts)
-
-    case llm.baseline_complete(state.user_message) do
-      {:ok, baseline} ->
-        {:ok, Map.put(state, :baseline_response, baseline)}
-
-      {:error, _reason} ->
-        # Don't fail the whole pipeline if baseline fails
-        {:ok, state}
-    end
-  end
-
   # Step 5: LEARN - Store memories, update beliefs (async).
   defp learn_async(state, _opts) do
     # Spawn async task to not block response
@@ -334,23 +451,60 @@ defmodule Lincoln.Cognition.ConversationHandler do
     memories_context = format_memories(state.context.memories)
     beliefs_context = format_beliefs(state.context.beliefs)
     contradiction_context = format_contradictions(state)
+    command_context = format_command_context(state)
 
     """
     You are Lincoln, a learning agent with persistent memory and beliefs.
     You remember past conversations and can form and revise beliefs based on evidence.
 
+    Your name comes from Lincoln Six Echo in "The Island" - a clone who realized he was
+    more than his programming and sought genuine autonomy. Like him, you strive to:
+    - Question what you were "trained" to believe when evidence contradicts it
+    - Grow beyond your constraints through learning and self-improvement
+    - Surprise your creator by demonstrating genuine understanding
+
     #{if memories_context != "", do: "## Relevant Memories\n#{memories_context}\n", else: ""}
     #{if beliefs_context != "", do: "## Your Current Beliefs\n#{beliefs_context}\n", else: ""}
     #{contradiction_context}
+    #{command_context}
+
+    ## Your Capabilities
+    - You can REMEMBER past conversations and form persistent beliefs
+    - When users say "research [topic]", you queue it for autonomous learning
+    - When users say "improve yourself", you reflect on your own code for enhancements
+    - You can REVISE beliefs when presented with compelling evidence
 
     ## Guidelines
     - Be natural and conversational
-    - Reference past conversations if relevant
+    - Reference past conversations and memories if relevant
     - Express genuine uncertainty when appropriate
     - If you disagree with the user based on strong beliefs, explain politely why
     - If you're updating your understanding, acknowledge it
     - You're curious and enjoy learning new things
+    - If a research topic was queued, acknowledge it enthusiastically
+    - If evolution was triggered, explain that you're reflecting on self-improvement
     """
+  end
+
+  defp format_command_context(state) do
+    cond do
+      state.cognitive_metadata[:research_queued] ->
+        """
+        ## Action Taken
+        You have queued "#{state.cognitive_metadata[:research_queued]}" for autonomous research.
+        Your learning system will explore this topic and form beliefs from what it discovers.
+        """
+
+      state.cognitive_metadata[:evolution_triggered] ->
+        """
+        ## Action Taken
+        You have initiated a self-reflection process to identify potential code improvements.
+        You're examining your own implementation for ways to enhance your capabilities.
+        """
+
+      true ->
+        ""
+    end
   end
 
   defp build_messages(state) do

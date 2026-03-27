@@ -1,11 +1,13 @@
 defmodule LincolnWeb.ChatLive do
   @moduledoc """
-  Main chat interface with cognitive transparency and optional baseline comparison.
+  Main chat interface with cognitive transparency.
 
   Features:
-  - Split view: Lincoln (with thinking) vs Claude baseline (optional)
   - Conversation history sidebar
   - Real-time cognitive process display
+  - Memory access and recall
+  - Research instruction capability
+  - Code modification requests
   - Mobile responsive
   """
   use LincolnWeb, :live_view
@@ -25,7 +27,6 @@ defmodule LincolnWeb.ChatLive do
       |> assign(:conversations, conversations)
       |> assign(:conversation, nil)
       |> assign(:input, "")
-      |> assign(:show_baseline, false)
       |> assign(:show_sidebar, false)
       |> assign(:processing, false)
       |> assign(:thinking_step, nil)
@@ -89,10 +90,6 @@ defmodule LincolnWeb.ChatLive do
     end
   end
 
-  def handle_event("toggle_baseline", _params, socket) do
-    {:noreply, assign(socket, :show_baseline, !socket.assigns.show_baseline)}
-  end
-
   def handle_event("toggle_sidebar", _params, socket) do
     {:noreply, assign(socket, :show_sidebar, !socket.assigns.show_sidebar)}
   end
@@ -133,14 +130,12 @@ defmodule LincolnWeb.ChatLive do
   def handle_info({:process_message, content}, socket) do
     agent = socket.assigns.agent
     conversation = socket.assigns.conversation
-    show_baseline = socket.assigns.show_baseline
 
     result =
       ConversationHandler.process_message(
         agent.id,
         conversation.id,
-        content,
-        include_baseline: show_baseline
+        content
       )
 
     case result do
@@ -157,8 +152,7 @@ defmodule LincolnWeb.ChatLive do
               beliefs_revised: cognitive_result.cognitive_metadata.beliefs_revised,
               questions_generated: cognitive_result.cognitive_metadata.questions_generated,
               contradiction_detected: cognitive_result.cognitive_metadata.contradiction_detected,
-              thinking_summary: cognitive_result.cognitive_metadata.thinking_summary,
-              baseline_response: cognitive_result.baseline_response
+              thinking_summary: cognitive_result.cognitive_metadata.thinking_summary
             }
           )
 
@@ -231,27 +225,13 @@ defmodule LincolnWeb.ChatLive do
     <!-- Main Chat Area -->
         <div class="flex-1 flex flex-col min-w-0 bg-base-100">
           <!-- Chat Header -->
-          <.chat_header
-            conversation={@conversation}
-            show_baseline={@show_baseline}
-          />
+          <.chat_header conversation={@conversation} />
           
     <!-- Messages Area -->
           <div class="flex-1 overflow-hidden">
-            <div class={[
-              "h-full flex",
-              @show_baseline && "divide-x-2 divide-primary/20"
-            ]}>
+            <div class="h-full flex">
               <!-- Lincoln Column -->
-              <div class={["flex-1 flex flex-col min-w-0", @show_baseline && "max-w-1/2"]}>
-                <div
-                  :if={@show_baseline}
-                  class="px-4 py-2 border-b border-primary/20 bg-base-200"
-                >
-                  <div class="flex items-center gap-2 text-xs font-terminal uppercase text-primary">
-                    <.icon name="hero-cpu-chip" class="size-4" /> Lincoln (Learning Agent)
-                  </div>
-                </div>
+              <div class="flex-1 flex flex-col min-w-0">
                 <div
                   class="flex-1 overflow-y-auto scroll-smooth"
                   id="lincoln-messages"
@@ -271,6 +251,10 @@ defmodule LincolnWeb.ChatLive do
                       <p class="text-sm text-base-content/60 max-w-sm">
                         Talk to Lincoln and watch him learn. He remembers conversations, forms beliefs, and can revise his understanding based on new evidence.
                       </p>
+                      <div class="mt-4 text-xs text-base-content/40 space-y-1">
+                        <p>Try: "research [topic]" to queue autonomous learning</p>
+                        <p>Try: "improve yourself" to trigger self-modification</p>
+                      </div>
                     </div>
                     
     <!-- Messages -->
@@ -279,31 +263,11 @@ defmodule LincolnWeb.ChatLive do
                       id={dom_id}
                       message={msg}
                       expanded={@expanded_thinking == msg.id}
-                      column={:lincoln}
                     />
                   </div>
                   
     <!-- Thinking indicator -->
                   <.thinking_indicator :if={@processing} step={@thinking_step} />
-                </div>
-              </div>
-              
-    <!-- Baseline Column (optional) -->
-              <div :if={@show_baseline} class="flex-1 flex flex-col min-w-0 bg-base-200/30">
-                <div class="px-4 py-2 border-b border-primary/20 bg-base-200">
-                  <div class="flex items-center gap-2 text-xs font-terminal uppercase text-base-content/50">
-                    <.icon name="hero-cube" class="size-4" /> Claude (Stateless)
-                  </div>
-                </div>
-                <div class="flex-1 overflow-y-auto">
-                  <div class="space-y-4 p-4">
-                    <.message_bubble
-                      :for={{dom_id, msg} <- @streams.messages}
-                      id={"baseline-#{dom_id}"}
-                      message={msg}
-                      column={:baseline}
-                    />
-                  </div>
                 </div>
               </div>
             </div>
@@ -375,7 +339,6 @@ defmodule LincolnWeb.ChatLive do
   end
 
   attr(:conversation, :map, default: nil)
-  attr(:show_baseline, :boolean, default: false)
 
   defp chat_header(assigns) do
     ~H"""
@@ -400,30 +363,7 @@ defmodule LincolnWeb.ChatLive do
       </div>
 
       <div class="flex items-center gap-2">
-        <!-- Baseline toggle -->
-        <label class="label cursor-pointer gap-2 hidden sm:flex">
-          <span class="label-text text-xs font-terminal uppercase">Compare</span>
-          <input
-            type="checkbox"
-            class="toggle toggle-primary toggle-sm"
-            checked={@show_baseline}
-            phx-click="toggle_baseline"
-          />
-        </label>
-        
-    <!-- Mobile baseline toggle -->
-        <button
-          phx-click="toggle_baseline"
-          class={[
-            "btn btn-sm btn-square sm:hidden",
-            if(@show_baseline, do: "btn-primary", else: "btn-ghost")
-          ]}
-          title="Compare with baseline"
-        >
-          <.icon name="hero-square-2-stack" class="size-4" />
-        </button>
-        
-    <!-- New chat button -->
+        <!-- New chat button -->
         <button phx-click="new_conversation" class="btn btn-outline btn-primary btn-sm gap-1">
           <.icon name="hero-plus" class="size-4" />
           <span class="hidden sm:inline">New</span>
@@ -436,111 +376,84 @@ defmodule LincolnWeb.ChatLive do
   attr(:id, :string, required: true)
   attr(:message, :map, required: true)
   attr(:expanded, :boolean, default: false)
-  attr(:column, :atom, values: [:lincoln, :baseline], default: :lincoln)
 
   defp message_bubble(assigns) do
     ~H"""
-    <%= if @column == :lincoln do %>
-      <%= if @message.role == "user" do %>
-        <!-- User message -->
-        <div id={@id} class="chat chat-end">
-          <div class="chat-bubble bg-primary text-primary-content border-2 border-primary shadow-brutal-sm">
-            {@message.content}
-          </div>
-          <div class="chat-footer text-xs font-terminal opacity-50 mt-1">
-            {format_time(@message.inserted_at)}
-          </div>
+    <%= if @message.role == "user" do %>
+      <!-- User message -->
+      <div id={@id} class="chat chat-end">
+        <div class="chat-bubble bg-primary text-primary-content border-2 border-primary shadow-brutal-sm">
+          {@message.content}
         </div>
-      <% else %>
-        <!-- Lincoln message -->
-        <div id={@id} class="chat chat-start">
-          <div class="chat-image avatar placeholder">
-            <div class="bg-secondary text-secondary-content w-10 border-2 border-secondary">
-              <span class="font-terminal font-bold">L</span>
-            </div>
-          </div>
-          <div class="chat-bubble bg-base-200 border-2 border-secondary text-base-content shadow-brutal-sm">
-            <div class="whitespace-pre-wrap">{@message.content}</div>
-            
-    <!-- Thinking panel (minimal) -->
-            <div
-              class="mt-3 pt-2 border-t border-secondary/30 cursor-pointer hover:bg-base-300/50 -mx-3 -mb-2 px-3 pb-2 transition-colors"
-              phx-click="expand_thinking"
-              phx-value-id={@message.id}
-            >
-              <div class="flex items-center gap-2 text-xs font-terminal text-base-content/60">
-                <span title="Memories retrieved">
-                  <.icon name="hero-archive-box" class="size-3 inline" /> {@message.memories_retrieved}
-                </span>
-                <span class="text-base-content/30">|</span>
-                <span title="Beliefs consulted">
-                  <.icon name="hero-light-bulb" class="size-3 inline" /> {@message.beliefs_consulted}
-                </span>
-                <%= if @message.beliefs_revised > 0 do %>
-                  <span class="text-base-content/30">|</span>
-                  <span class="text-warning" title="Beliefs revised">
-                    <.icon name="hero-arrow-path" class="size-3 inline" /> {@message.beliefs_revised}
-                  </span>
-                <% end %>
-                <%= if @message.contradiction_detected do %>
-                  <span class="text-base-content/30">|</span>
-                  <span class="text-error" title="Contradiction detected">
-                    <.icon name="hero-exclamation-triangle" class="size-3 inline" />
-                  </span>
-                <% end %>
-                <span class="flex-1"></span>
-                <.icon
-                  name="hero-chevron-down"
-                  class={["size-3 transition-transform", @expanded && "rotate-180"]}
-                />
-              </div>
-              
-    <!-- Expanded details -->
-              <div :if={@expanded} class="mt-2 text-xs space-y-1 text-base-content/70">
-                <p :if={@message.thinking_summary} class="italic">
-                  {@message.thinking_summary}
-                </p>
-                <p :if={!@message.thinking_summary}>
-                  Retrieved {@message.memories_retrieved} memories, consulted {@message.beliefs_consulted} beliefs.
-                  <%= if @message.beliefs_formed > 0 do %>
-                    Formed {@message.beliefs_formed} new belief(s).
-                  <% end %>
-                  <%= if @message.questions_generated > 0 do %>
-                    Generated {@message.questions_generated} question(s).
-                  <% end %>
-                </p>
-              </div>
-            </div>
-          </div>
-          <div class="chat-footer text-xs font-terminal opacity-50 mt-1">
-            {format_time(@message.inserted_at)}
-          </div>
+        <div class="chat-footer text-xs font-terminal opacity-50 mt-1">
+          {format_time(@message.inserted_at)}
         </div>
-      <% end %>
+      </div>
     <% else %>
-      <!-- Baseline column - show user messages and baseline responses -->
-      <%= if @message.role == "user" do %>
-        <div id={@id} class="chat chat-end">
-          <div class="chat-bubble bg-base-300 text-base-content/70 border border-base-content/20">
-            {@message.content}
+      <!-- Lincoln message -->
+      <div id={@id} class="chat chat-start">
+        <div class="chat-image avatar placeholder">
+          <div class="bg-secondary text-secondary-content w-10 border-2 border-secondary">
+            <span class="font-terminal font-bold">L</span>
           </div>
         </div>
-      <% else %>
-        <div id={@id} class="chat chat-start">
-          <div class="chat-image avatar placeholder">
-            <div class="bg-base-300 text-base-content/50 w-10 border border-base-content/20">
-              <span class="font-terminal text-sm">C</span>
+        <div class="chat-bubble bg-base-200 border-2 border-secondary text-base-content shadow-brutal-sm">
+          <div class="whitespace-pre-wrap">{@message.content}</div>
+          
+    <!-- Thinking panel (minimal) -->
+          <div
+            class="mt-3 pt-2 border-t border-secondary/30 cursor-pointer hover:bg-base-300/50 -mx-3 -mb-2 px-3 pb-2 transition-colors"
+            phx-click="expand_thinking"
+            phx-value-id={@message.id}
+          >
+            <div class="flex items-center gap-2 text-xs font-terminal text-base-content/60">
+              <span title="Memories retrieved">
+                <.icon name="hero-archive-box" class="size-3 inline" /> {@message.memories_retrieved}
+              </span>
+              <span class="text-base-content/30">|</span>
+              <span title="Beliefs consulted">
+                <.icon name="hero-light-bulb" class="size-3 inline" /> {@message.beliefs_consulted}
+              </span>
+              <%= if @message.beliefs_revised > 0 do %>
+                <span class="text-base-content/30">|</span>
+                <span class="text-warning" title="Beliefs revised">
+                  <.icon name="hero-arrow-path" class="size-3 inline" /> {@message.beliefs_revised}
+                </span>
+              <% end %>
+              <%= if @message.contradiction_detected do %>
+                <span class="text-base-content/30">|</span>
+                <span class="text-error" title="Contradiction detected">
+                  <.icon name="hero-exclamation-triangle" class="size-3 inline" />
+                </span>
+              <% end %>
+              <span class="flex-1"></span>
+              <.icon
+                name="hero-chevron-down"
+                class={["size-3 transition-transform", @expanded && "rotate-180"]}
+              />
+            </div>
+            
+    <!-- Expanded details -->
+            <div :if={@expanded} class="mt-2 text-xs space-y-1 text-base-content/70">
+              <p :if={@message.thinking_summary} class="italic">
+                {@message.thinking_summary}
+              </p>
+              <p :if={!@message.thinking_summary}>
+                Retrieved {@message.memories_retrieved} memories, consulted {@message.beliefs_consulted} beliefs.
+                <%= if @message.beliefs_formed > 0 do %>
+                  Formed {@message.beliefs_formed} new belief(s).
+                <% end %>
+                <%= if @message.questions_generated > 0 do %>
+                  Generated {@message.questions_generated} question(s).
+                <% end %>
+              </p>
             </div>
           </div>
-          <div class="chat-bubble bg-base-300/50 border border-base-content/20 text-base-content/70">
-            <%= if @message.baseline_response do %>
-              <div class="whitespace-pre-wrap">{@message.baseline_response}</div>
-            <% else %>
-              <span class="italic text-base-content/40">No baseline captured</span>
-            <% end %>
-          </div>
         </div>
-      <% end %>
+        <div class="chat-footer text-xs font-terminal opacity-50 mt-1">
+          {format_time(@message.inserted_at)}
+        </div>
+      </div>
     <% end %>
     """
   end
@@ -573,6 +486,7 @@ defmodule LincolnWeb.ChatLive do
   defp chat_input(assigns) do
     ~H"""
     <form
+      id="chat-form"
       phx-submit="send_message"
       phx-change="input_change"
       class="p-4 border-t-2 border-primary bg-base-200"
@@ -582,7 +496,7 @@ defmodule LincolnWeb.ChatLive do
           type="text"
           name="message"
           value={@value}
-          placeholder="Type a message..."
+          placeholder="Type a message... (try 'research [topic]' or 'improve yourself')"
           disabled={@disabled}
           autocomplete="off"
           phx-debounce="100"
@@ -592,6 +506,7 @@ defmodule LincolnWeb.ChatLive do
           type="submit"
           class="btn btn-primary"
           disabled={@disabled || @value == ""}
+          phx-disable-with="..."
         >
           <.icon name="hero-paper-airplane" class="size-5" />
         </button>

@@ -25,14 +25,6 @@ defmodule Lincoln.Adapters.LLM do
   """
   @callback extract(prompt :: String.t(), schema :: map(), opts :: keyword()) ::
               {:ok, map()} | {:error, term()}
-
-  @doc """
-  Stateless completion for baseline comparison.
-  No system prompt, no memory context - just raw LLM response.
-  """
-  @callback baseline_complete(prompt :: String.t()) :: response()
-
-  @optional_callbacks [baseline_complete: 1]
 end
 
 defmodule Lincoln.Adapters.LLM.Anthropic do
@@ -88,33 +80,6 @@ defmodule Lincoln.Adapters.LLM.Anthropic do
     case chat([%{role: "user", content: prompt}], Keyword.put(opts, :system, system_prompt)) do
       {:ok, response} ->
         parse_json_response(response)
-
-      {:error, _} = error ->
-        error
-    end
-  end
-
-  @doc """
-  Stateless Claude completion for baseline comparison.
-  No system prompt, no memory context - just raw Claude.
-  Used to compare Lincoln's contextual responses vs vanilla LLM.
-  """
-  @impl true
-  def baseline_complete(prompt) do
-    config = get_config([])
-
-    body = %{
-      model: config.model,
-      max_tokens: config.max_tokens,
-      messages: [%{"role" => "user", "content" => prompt}]
-    }
-
-    case make_request(body, config) do
-      {:ok, %{"content" => [%{"text" => text} | _]}} ->
-        {:ok, text}
-
-      {:ok, response} ->
-        {:error, {:unexpected_response, response}}
 
       {:error, _} = error ->
         error
@@ -220,10 +185,5 @@ defmodule Lincoln.Adapters.LLM.Mock do
   @impl true
   def extract(_prompt, _schema, _opts \\ []) do
     {:ok, %{}}
-  end
-
-  @impl true
-  def baseline_complete(_prompt) do
-    {:ok, "Mock baseline response (stateless)"}
   end
 end
