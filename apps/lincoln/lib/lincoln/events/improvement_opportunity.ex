@@ -64,14 +64,24 @@ defmodule Lincoln.Events.ImprovementOpportunity do
   end
 
   def mark_in_progress(opportunity) do
-    change(opportunity, %{status: "in_progress", attempted_at: DateTime.utc_now()})
+    change(opportunity, %{
+      status: "in_progress",
+      attempted_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    })
   end
 
   def mark_completed(opportunity, outcome) do
-    change(opportunity, %{status: "completed", completed_at: DateTime.utc_now(), outcome: outcome})
+    change(opportunity, %{
+      status: "completed",
+      completed_at: DateTime.utc_now() |> DateTime.truncate(:second),
+      outcome: outcome
+    })
   end
 
   def mark_failed(opportunity, _reason) do
-    change(opportunity, %{status: "failed", completed_at: DateTime.utc_now()})
+    change(opportunity, %{
+      status: "failed",
+      completed_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    })
   end
 end

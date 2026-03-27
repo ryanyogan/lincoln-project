@@ -310,6 +310,38 @@ defmodule LincolnWeb.ChatLive do
     {:noreply, prepend_cognitive_event(socket, cognitive_event)}
   end
 
+  # Handle improvement opportunities being queued (from conversation_handler)
+  def handle_info({:improvement_queued, opportunity}, socket) do
+    cognitive_event = %{
+      id: opportunity.id,
+      type: "improvement_opportunity",
+      severity: "info",
+      icon: "hero-sparkles",
+      message: "Queued self-improvement",
+      detail:
+        get_in(opportunity.analysis, [:description]) ||
+          get_in(opportunity.analysis, ["description"]),
+      timestamp: opportunity.inserted_at
+    }
+
+    {:noreply, prepend_cognitive_event(socket, cognitive_event)}
+  end
+
+  # Handle improvement being applied (code change committed)
+  def handle_info({:improvement_applied, code_change}, socket) do
+    cognitive_event = %{
+      id: code_change.id,
+      type: "code_change_applied",
+      severity: "success",
+      icon: "hero-code-bracket",
+      message: "Code modified: #{Path.basename(code_change.file_path)}",
+      detail: code_change.git_commit && "Commit: #{String.slice(code_change.git_commit, 0, 7)}",
+      timestamp: code_change.inserted_at
+    }
+
+    {:noreply, prepend_cognitive_event(socket, cognitive_event)}
+  end
+
   # Catch-all for other autonomy events (must be after all specific handlers)
   def handle_info({:autonomy, _event, _data}, socket) do
     {:noreply, socket}

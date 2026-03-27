@@ -75,6 +75,29 @@ defmodule Lincoln.Autonomy.SelfImprovement do
   # =============================================================================
 
   defp analyze_struggle(opportunity, llm) do
+    # For user-requested improvements, we already have the analysis from reflection
+    if opportunity.pattern == "user_requested_improvement" do
+      analyze_user_requested(opportunity)
+    else
+      analyze_detected_pattern(opportunity, llm)
+    end
+  end
+
+  # User requested improvement already has description and reasoning from reflection
+  defp analyze_user_requested(opportunity) do
+    analysis = opportunity.analysis || %{}
+
+    %{
+      root_cause:
+        analysis["description"] || analysis[:description] || "User requested improvement",
+      target_files: [opportunity.suggested_focus] |> Enum.reject(&is_nil/1),
+      change_type: "new_feature",
+      confidence: 0.8
+    }
+  end
+
+  # Pattern-detected struggles need LLM analysis
+  defp analyze_detected_pattern(opportunity, llm) do
     prompt = """
     You are Lincoln, an AI agent analyzing your own struggles to improve yourself.
 

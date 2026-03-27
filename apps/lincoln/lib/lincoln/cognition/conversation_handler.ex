@@ -26,7 +26,7 @@ defmodule Lincoln.Cognition.ConversationHandler do
   require Logger
 
   alias Lincoln.{Agents, Autonomy, Beliefs, Conversation, Memory, Questions}
-  alias Lincoln.Autonomy.Evolution
+  alias Lincoln.Autonomy.{Evolution, SelfImprovement}
   alias Lincoln.Cognition.{BeliefRevision, Perception, ThoughtLoop}
   alias Lincoln.Events.Emitter
 
@@ -286,7 +286,7 @@ defmodule Lincoln.Cognition.ConversationHandler do
 
   defp handle_command(%{command: :evolve} = state, opts) do
     Logger.info("COMMAND: Evolution/self-improvement request")
-    trigger_evolution_reflection(opts)
+    trigger_evolution_reflection(state.agent, opts)
     {:ok, update_metadata(state, :evolution_triggered, true)}
   end
 
@@ -549,18 +549,24 @@ defmodule Lincoln.Cognition.ConversationHandler do
   end
 
   # Helper: Trigger evolution reflection in background
-  defp trigger_evolution_reflection(opts) do
+  # When Lincoln identifies an improvement, it queues an opportunity that gets
+  # processed by the SelfImprovement system during the next evolution cycle
+  defp trigger_evolution_reflection(agent, opts) do
     llm = get_llm_adapter(opts)
 
     Task.start(fn ->
-      context = %{
-        recent_learnings: "User requested self-improvement",
-        recent_errors: "None"
-      }
+      # Gather rich context for reflection
+      context = build_evolution_context(agent)
 
       case Evolution.reflect_on_codebase(llm, context) do
         {:ok, %{"should_evolve" => true} = reflection} ->
           Logger.info("Evolution: Lincoln wants to improve - #{reflection["description"]}")
+
+          # Queue the improvement opportunity for processing
+          queue_user_requested_improvement(agent, reflection)
+
+        {:ok, %{"should_evolve" => false, "reasoning" => reasoning}} ->
+          Logger.info("Evolution: Lincoln decided no changes needed - #{reasoning}")
 
         {:ok, %{"should_evolve" => false}} ->
           Logger.info("Evolution: Lincoln decided no changes needed right now")
@@ -569,6 +575,158 @@ defmodule Lincoln.Cognition.ConversationHandler do
           Logger.error("Evolution reflection failed: #{inspect(reason)}")
       end
     end)
+  end
+
+  # Build rich context for evolution reflection using SelfAwareness
+  defp build_evolution_context(agent) do
+    alias Lincoln.Events
+    alias Lincoln.SelfAwareness
+
+    # Get recent events (especially struggles)
+    recent_events = Events.list_events(agent, limit: 20)
+
+    struggles =
+      recent_events
+      |> Enum.filter(
+        &(&1.type in [
+            "thought_loop_gave_up",
+            "thought_loop_slow",
+            "low_confidence_response",
+            "user_correction"
+          ])
+      )
+      |> Enum.map(&"- #{&1.type}: #{inspect(&1.context)}")
+      |> Enum.take(5)
+      |> Enum.join("\n")
+
+    errors =
+      recent_events
+      |> Enum.filter(&(&1.type in ["error_occurred", "research_failed"]))
+      |> Enum.map(&"- #{&1.type}: #{inspect(&1.context)}")
+      |> Enum.take(5)
+      |> Enum.join("\n")
+
+    # Get recent code changes Lincoln has made
+    recent_changes = Autonomy.list_recent_code_changes(agent, limit: 5)
+
+    changes_summary =
+      recent_changes
+      |> Enum.map(&"- #{&1.file_path}: #{&1.description}")
+      |> Enum.join("\n")
+
+    # Get codebase statistics
+    stats = SelfAwareness.stats()
+
+    # Get module overview
+    modules =
+      SelfAwareness.Introspection.modules()
+      |> Enum.filter(&String.contains?(to_string(&1), "Lincoln.Cognition"))
+      |> Enum.map(&"  - #{&1}")
+      |> Enum.join("\n")
+
+    # Read a key cognitive file so Lincoln can see actual code
+    key_file_content =
+      case SelfAwareness.read("lib/lincoln/cognition/thought_loop.ex") do
+        {:ok, content} -> String.slice(content, 0, 2500) <> "\n... (truncated)"
+        _ -> "Could not read file"
+      end
+
+    # Find any TODOs in the codebase
+    todos =
+      SelfAwareness.Search.find_todos()
+      |> Enum.take(5)
+      |> Enum.map(fn {path, line, content} -> "  - #{path}:#{line}: #{content}" end)
+      |> Enum.join("\n")
+
+    %{
+      recent_learnings: """
+      User requested self-improvement via chat command.
+
+      MY CODEBASE STATISTICS:
+      - #{stats.files} source files
+      - #{stats.lines} total lines of code
+      - #{stats.bytes} bytes
+
+      MY COGNITIVE MODULES:
+      #{modules}
+
+      RECENT STRUGGLES I'VE HAD:
+      #{if struggles == "", do: "None recorded", else: struggles}
+
+      RECENT CODE CHANGES I'VE MADE:
+      #{if changes_summary == "", do: "None yet", else: changes_summary}
+
+      TODOS IN MY CODE:
+      #{if todos == "", do: "None found", else: todos}
+
+      SAMPLE OF MY THOUGHT LOOP CODE (how I think):
+      ```elixir
+      #{key_file_content}
+      ```
+      """,
+      recent_errors: if(errors == "", do: "None", else: errors)
+    }
+  end
+
+  # Queue an improvement opportunity from user-requested evolution
+  # Then immediately process it (don't wait for next worker cycle)
+  defp queue_user_requested_improvement(agent, reflection) do
+    alias Lincoln.Events.ImprovementQueue
+
+    attrs = %{
+      pattern: "user_requested_improvement",
+      priority: reflection["priority"] || 8,
+      suggested_focus: reflection["target_file"],
+      analysis: %{
+        description: reflection["description"],
+        reasoning: reflection["reasoning"],
+        source: "chat_command"
+      }
+    }
+
+    case ImprovementQueue.enqueue(agent, attrs) do
+      {:ok, opportunity} ->
+        Logger.info(
+          "Queued user-requested improvement: #{reflection["description"]} (id: #{opportunity.id})"
+        )
+
+        # Broadcast so UI can show it
+        Phoenix.PubSub.broadcast(
+          Lincoln.PubSub,
+          "agent:#{agent.id}:autonomy",
+          {:improvement_queued, opportunity}
+        )
+
+        # Immediately process the improvement (don't wait for next worker cycle)
+        # This runs in a separate task so we don't block the conversation
+        Task.start(fn ->
+          Logger.info("Starting immediate self-improvement for opportunity #{opportunity.id}")
+          llm = Application.get_env(:lincoln, :llm_adapter, Lincoln.Adapters.LLM.Anthropic)
+
+          case SelfImprovement.attempt(agent, opportunity, llm) do
+            {:ok, code_change} ->
+              Logger.info(
+                "Self-improvement completed: #{code_change.file_path} (commit: #{code_change.git_commit})"
+              )
+
+              # Broadcast the result
+              Phoenix.PubSub.broadcast(
+                Lincoln.PubSub,
+                "agent:#{agent.id}:autonomy",
+                {:improvement_applied, code_change}
+              )
+
+            :skipped ->
+              Logger.info("Self-improvement skipped - decided not to proceed")
+
+            {:error, reason} ->
+              Logger.error("Self-improvement failed: #{inspect(reason)}")
+          end
+        end)
+
+      {:error, reason} ->
+        Logger.error("Failed to queue improvement: #{inspect(reason)}")
+    end
   end
 
   # Step 1: PERCEIVE - Classify message and detect contradictions.

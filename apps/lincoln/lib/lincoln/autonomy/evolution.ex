@@ -3,7 +3,7 @@ defmodule Lincoln.Autonomy.Evolution do
   Lincoln's self-modification capabilities.
 
   This module allows Lincoln to:
-  - Read his own codebase
+  - Read his own codebase (via SelfAwareness)
   - Analyze code for potential improvements
   - Propose and apply changes
   - Commit changes to git with explanations
@@ -12,52 +12,65 @@ defmodule Lincoln.Autonomy.Evolution do
   - Lincoln Six Echo
 
   Every change is logged and can be rolled back.
+
+  ## Code Access
+
+  For reading code, this module delegates to `Lincoln.SelfAwareness` which
+  provides compile-time embedded source code. This ensures Lincoln can always
+  read his own code, even in production environments without filesystem access.
+
+  For writing code, we use the filesystem directly via `@project_root`.
   """
 
   require Logger
 
   alias Lincoln.Autonomy
+  alias Lincoln.SelfAwareness
 
-  # Project root (Lincoln's home)
-  @project_root Path.expand("../../../../..", __DIR__)
+  # Project root - used for WRITE operations (apply_change, commit, etc.)
+  # For READ operations, use SelfAwareness instead
+  @project_root SelfAwareness.project_root()
 
   # Files Lincoln should NOT modify (core stability)
   @protected_files ["mix.exs"]
 
   # ============================================================================
-  # Code Reading
+  # Code Reading (via SelfAwareness)
   # ============================================================================
 
   @doc """
-  Reads a file from the codebase.
+  Reads a file from the embedded codebase (compile-time snapshot).
+
+  For seeing runtime modifications (uncommitted changes), use `read_file_fresh/1`.
   """
   def read_file(relative_path) do
-    full_path = Path.join(@project_root, relative_path)
+    SelfAwareness.read(relative_path)
+  end
 
-    case File.read(full_path) do
-      {:ok, content} ->
-        {:ok, content}
+  @doc """
+  Reads a file from disk (current state, including uncommitted changes).
 
-      {:error, reason} ->
-        {:error, {:file_read_failed, reason}}
-    end
+  Use this when you need to see modifications that haven't been compiled yet.
+  """
+  def read_file_fresh(relative_path) do
+    SelfAwareness.read_fresh(relative_path)
   end
 
   @doc """
   Lists files matching a pattern.
-  """
-  def list_files(pattern) do
-    full_pattern = Path.join(@project_root, pattern)
 
-    Path.wildcard(full_pattern)
-    |> Enum.map(&Path.relative_to(&1, @project_root))
+  Uses SelfAwareness for embedded files. Pattern can be a glob or substring.
+  """
+  def list_files(pattern \\ "**/*.ex") do
+    SelfAwareness.list_files(pattern)
   end
 
   @doc """
   Gets an overview of a directory structure.
   """
   def get_directory_structure(dir \\ "lib/lincoln") do
-    list_files(Path.join(dir, "**/*.ex"))
+    SelfAwareness.list_files(dir)
+    |> Enum.filter(&String.ends_with?(&1, ".ex"))
     |> Enum.sort()
   end
 
@@ -66,6 +79,29 @@ defmodule Lincoln.Autonomy.Evolution do
   """
   def read_self do
     read_file("lib/lincoln/autonomy/evolution.ex")
+  end
+
+  @doc """
+  Search for patterns across the codebase.
+
+  Delegates to `SelfAwareness.Search.grep/2`.
+  """
+  def grep(pattern, opts \\ []) do
+    SelfAwareness.grep(pattern, opts)
+  end
+
+  @doc """
+  Find function definitions by name.
+  """
+  def find_function(name) do
+    SelfAwareness.find_function(name)
+  end
+
+  @doc """
+  Get codebase statistics.
+  """
+  def stats do
+    SelfAwareness.stats()
   end
 
   # ============================================================================
