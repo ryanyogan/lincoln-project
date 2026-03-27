@@ -81,6 +81,15 @@ defmodule Lincoln.PubSubBroadcaster do
   end
 
   # ============================================================================
+  # Autonomy
+  # ============================================================================
+
+  def broadcast_autonomy_event(agent_id, event) do
+    broadcast(agent_topic(agent_id, :autonomy), event)
+    broadcast(agent_topic(agent_id), event)
+  end
+
+  # ============================================================================
   # Helpers
   # ============================================================================
 
@@ -91,8 +100,12 @@ defmodule Lincoln.PubSubBroadcaster do
   defp agent_topic(agent_id, :beliefs), do: "agent:#{agent_id}:beliefs"
   defp agent_topic(agent_id, :questions), do: "agent:#{agent_id}:questions"
   defp agent_topic(agent_id, :memories), do: "agent:#{agent_id}:memories"
+  defp agent_topic(agent_id, :autonomy), do: "agent:#{agent_id}:autonomy"
 
-  defp broadcast(topic, message) do
+  @doc """
+  Generic broadcast to any topic.
+  """
+  def broadcast(topic, message) do
     Phoenix.PubSub.broadcast(@pubsub, topic, message)
   end
 end

@@ -36,6 +36,9 @@ defmodule LincolnWeb.Router do
     live("/memories", MemoriesLive, :index)
     live("/memories/:id", MemoriesLive, :show)
 
+    # Autonomy - Night Shift
+    live("/autonomy", AutonomyLive, :index)
+
     # Keep the old page controller for reference
     get("/welcome", PageController, :home)
   end

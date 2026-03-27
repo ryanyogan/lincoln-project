@@ -367,8 +367,7 @@ defmodule LincolnWeb.ChatLive do
 
       <div class="p-4 border-t border-primary/20 text-xs font-terminal text-base-content/40">
         <div class="flex items-center gap-2">
-          <span class="status status-success neural-pulse"></span>
-          Learning Active
+          <span class="status status-success neural-pulse"></span> Learning Active
         </div>
       </div>
     </aside>
@@ -411,8 +410,8 @@ defmodule LincolnWeb.ChatLive do
             phx-click="toggle_baseline"
           />
         </label>
-
-        <!-- Mobile baseline toggle -->
+        
+    <!-- Mobile baseline toggle -->
         <button
           phx-click="toggle_baseline"
           class={[
@@ -423,8 +422,8 @@ defmodule LincolnWeb.ChatLive do
         >
           <.icon name="hero-square-2-stack" class="size-4" />
         </button>
-
-        <!-- New chat button -->
+        
+    <!-- New chat button -->
         <button phx-click="new_conversation" class="btn btn-outline btn-primary btn-sm gap-1">
           <.icon name="hero-plus" class="size-4" />
           <span class="hidden sm:inline">New</span>
@@ -573,7 +572,11 @@ defmodule LincolnWeb.ChatLive do
 
   defp chat_input(assigns) do
     ~H"""
-    <form phx-submit="send_message" phx-change="input_change" class="p-4 border-t-2 border-primary bg-base-200">
+    <form
+      phx-submit="send_message"
+      phx-change="input_change"
+      class="p-4 border-t-2 border-primary bg-base-200"
+    >
       <div class="flex gap-2">
         <input
           type="text"

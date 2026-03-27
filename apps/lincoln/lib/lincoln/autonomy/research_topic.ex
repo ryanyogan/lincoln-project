@@ -75,14 +75,17 @@ defmodule Lincoln.Autonomy.ResearchTopic do
 
   def start_changeset(topic) do
     topic
-    |> change(%{status: "in_progress", started_at: DateTime.utc_now()})
+    |> change(%{
+      status: "in_progress",
+      started_at: DateTime.utc_now() |> DateTime.truncate(:second)
+    })
   end
 
   def complete_changeset(topic, facts_count, beliefs_count, children_count) do
     topic
     |> change(%{
       status: "completed",
-      completed_at: DateTime.utc_now(),
+      completed_at: DateTime.utc_now() |> DateTime.truncate(:second),
       facts_extracted: facts_count,
       beliefs_formed: beliefs_count,
       child_topics_discovered: children_count
@@ -93,7 +96,7 @@ defmodule Lincoln.Autonomy.ResearchTopic do
     topic
     |> change(%{
       status: "failed",
-      completed_at: DateTime.utc_now(),
+      completed_at: DateTime.utc_now() |> DateTime.truncate(:second),
       error_message: error_message
     })
   end
@@ -102,7 +105,7 @@ defmodule Lincoln.Autonomy.ResearchTopic do
     topic
     |> change(%{
       status: "skipped",
-      completed_at: DateTime.utc_now(),
+      completed_at: DateTime.utc_now() |> DateTime.truncate(:second),
       error_message: reason
     })
   end

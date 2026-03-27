@@ -72,6 +72,11 @@ defmodule LincolnWeb.Layouts do
                   <.icon name="hero-archive-box" class="size-4" /> Memories
                 </a>
               </li>
+              <li>
+                <a href="/autonomy" class="font-terminal uppercase text-sm">
+                  <.icon name="hero-bolt" class="size-4" /> Autonomy
+                </a>
+              </li>
             </ul>
           </div>
 
@@ -170,6 +175,12 @@ defmodule LincolnWeb.Layouts do
               <a href="/memories" class="font-terminal uppercase">
                 <.icon name="hero-archive-box" class="size-5" /> Memories
                 <span class="badge badge-info badge-sm">Bank</span>
+              </a>
+            </li>
+            <li>
+              <a href="/autonomy" class="font-terminal uppercase">
+                <.icon name="hero-bolt" class="size-5" /> Autonomy
+                <span class="badge badge-warning badge-sm">Night</span>
               </a>
             </li>
 

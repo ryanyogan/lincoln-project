@@ -68,7 +68,8 @@ config :lincoln, Oban,
     reflection: 2,
     curiosity: 2,
     investigation: 5,
-    maintenance: 2
+    maintenance: 2,
+    autonomy: 3
   ],
   plugins: [
     Oban.Plugins.Pruner,

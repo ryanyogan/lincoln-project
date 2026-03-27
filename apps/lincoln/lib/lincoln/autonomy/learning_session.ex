@@ -66,12 +66,12 @@ defmodule Lincoln.Autonomy.LearningSession do
 
   def start_changeset(session) do
     session
-    |> change(%{status: "running", started_at: DateTime.utc_now()})
+    |> change(%{status: "running", started_at: DateTime.utc_now() |> DateTime.truncate(:second)})
   end
 
   def stop_changeset(session) do
     session
-    |> change(%{status: "stopped", stopped_at: DateTime.utc_now()})
+    |> change(%{status: "stopped", stopped_at: DateTime.utc_now() |> DateTime.truncate(:second)})
   end
 
   def pause_changeset(session) do
