@@ -32,11 +32,15 @@ defmodule LincolnWeb.SubstrateLive do
       |> assign(:attention_params_form, build_params_form(agent))
       |> assign(:top_beliefs, [])
       |> assign(:tier_counts, %{local: 0, ollama: 0, claude: 0})
+      |> assign(:recent_contradictions, [])
+      |> assign(:recent_cascades, [])
 
     if connected?(socket) do
       Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.substrate_topic(agent.id))
       Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.driver_topic(agent.id))
       Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.attention_topic(agent.id))
+      Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.skeptic_topic(agent.id))
+      Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.resonator_topic(agent.id))
     end
 
     {:ok, socket}
@@ -102,6 +106,24 @@ defmodule LincolnWeb.SubstrateLive do
   def handle_info({:next_thought, belief, score}, socket) do
     top_beliefs = update_top_beliefs(socket.assigns.top_beliefs, belief, score)
     {:noreply, assign(socket, :top_beliefs, top_beliefs)}
+  end
+
+  def handle_info({:contradiction_detected, relationship, source_belief, target_belief}, socket) do
+    entry = %{
+      relationship: relationship,
+      source: source_belief,
+      target: target_belief,
+      detected_at: DateTime.utc_now()
+    }
+
+    contradictions = [entry | socket.assigns.recent_contradictions] |> Enum.take(10)
+    {:noreply, assign(socket, :recent_contradictions, contradictions)}
+  end
+
+  def handle_info({:cascade_detected, cascade_info}, socket) do
+    entry = Map.put(cascade_info, :detected_at, DateTime.utc_now())
+    cascades = [entry | socket.assigns.recent_cascades] |> Enum.take(10)
+    {:noreply, assign(socket, :recent_cascades, cascades)}
   end
 
   # Catch-all for other PubSub messages
@@ -501,6 +523,80 @@ defmodule LincolnWeb.SubstrateLive do
                         </span>
                       </div>
                     </div>
+                  </div>
+                </div>
+              </div>
+
+              <%!-- Skeptic Panel --%>
+              <div class="card bg-base-200 border-2 border-error/50 hover:border-error transition-colors">
+                <div class="card-body p-0">
+                  <div class="px-4 py-3 border-b-2 border-error/30 bg-base-300">
+                    <h2 class="card-title text-sm font-terminal uppercase gap-2">
+                      <.icon name="hero-shield-exclamation" class="size-4 text-error" />
+                      Skeptic — Contradictions
+                    </h2>
+                  </div>
+                  <div class="p-3 max-h-[24rem] overflow-y-auto">
+                    <%= if @recent_contradictions == [] do %>
+                      <div class="flex flex-col items-center justify-center py-8 text-base-content/40">
+                        <.icon name="hero-shield-exclamation" class="size-6 mb-2" />
+                        <p class="text-xs font-terminal">No contradictions detected yet</p>
+                      </div>
+                    <% else %>
+                      <div class="space-y-2">
+                        <%= for entry <- @recent_contradictions do %>
+                          <div class="p-2 bg-base-300 border border-error/10 hover:border-error/30 transition-colors">
+                            <div class="text-[10px] text-error/70 font-terminal mb-1">
+                              {format_time(entry.detected_at)} · confidence: {Float.round(entry.relationship.confidence, 2)}
+                            </div>
+                            <div class="text-xs font-terminal text-base-content/70 truncate">
+                              {entry.source.statement}
+                            </div>
+                            <div class="text-[10px] text-error/40 text-center font-terminal my-0.5">
+                              ↕ contradicts
+                            </div>
+                            <div class="text-xs font-terminal text-base-content/70 truncate">
+                              {entry.target.statement}
+                            </div>
+                          </div>
+                        <% end %>
+                      </div>
+                    <% end %>
+                  </div>
+                </div>
+              </div>
+
+              <%!-- Resonator Panel --%>
+              <div class="card bg-base-200 border-2 border-success/50 hover:border-success transition-colors">
+                <div class="card-body p-0">
+                  <div class="px-4 py-3 border-b-2 border-success/30 bg-base-300">
+                    <h2 class="card-title text-sm font-terminal uppercase gap-2">
+                      <.icon name="hero-bolt" class="size-4 text-success" />
+                      Resonator — Cascades
+                    </h2>
+                  </div>
+                  <div class="p-3 max-h-[24rem] overflow-y-auto">
+                    <%= if @recent_cascades == [] do %>
+                      <div class="flex flex-col items-center justify-center py-8 text-base-content/40">
+                        <.icon name="hero-bolt" class="size-6 mb-2" />
+                        <p class="text-xs font-terminal">No cascades detected yet</p>
+                      </div>
+                    <% else %>
+                      <div class="space-y-2">
+                        <%= for cascade <- @recent_cascades do %>
+                          <div class="p-2 bg-base-300 border border-success/10 hover:border-success/30 transition-colors">
+                            <div class="text-[10px] text-success/70 font-terminal">
+                              {format_time(cascade.detected_at)}
+                            </div>
+                            <div class="flex gap-3 text-xs font-terminal text-base-content/70 mt-1">
+                              <span>cluster: {cascade.cluster_size} beliefs</span>
+                              <span>score: {Float.round(cascade.cascade_score, 2)}</span>
+                              <span>+{cascade.relationships_created} links</span>
+                            </div>
+                          </div>
+                        <% end %>
+                      </div>
+                    <% end %>
                   </div>
                 </div>
               </div>
