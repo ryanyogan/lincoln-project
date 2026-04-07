@@ -60,3 +60,13 @@
 - `get_attention_params/1` handles both string and atom keys from DB (JSONB returns string keys).
 - `recency_novelty`: 1.0 within 24h, linear decay to 0.0 over 7 days. `challenged_recently`: 1.0 within 1h, decay over 24h.
 - `DateTime.diff/3` with `:second` for all time comparisons — avoids integer division issues.
+
+## Driver Tiered Inference (Task 14)
+
+- Driver accepts both `{belief, score}` tuples and plain belief maps — backwards compatible with pre-Attention callers.
+- Async pattern: `Task.async/1` in GenServer, results arrive via `handle_info({ref, result})`. Must `Process.demonitor(ref, [:flush])` to prevent stale DOWN messages.
+- `pending_tasks` map stores `%{task_ref => tier_atom}` — needed to know which tier completed when result arrives.
+- Memory creation uses `Lincoln.Memory.create_memory/2` (not `record_memory`) — takes `(%Agent{}, attrs_map)`.
+- Memory write is fire-and-forget via `Task.start/1` — Driver doesn't block on DB.
+- `Float.round(score / 1, 2)` trick: forces integer scores through float division so `Float.round/2` doesn't crash on integer input.
+- Token budget integration deferred — defaults to `:full`. Will need session context plumbing from AgentSupervisor.
