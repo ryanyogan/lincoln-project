@@ -100,6 +100,33 @@
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
       "updated_at": "2026-04-07T19:40:46.263Z"
+    },
+    "todo:12": {
+      "task_key": "todo:12",
+      "task_label": "12",
+      "task_title": "Parameterized Scoring in Attention GenServer",
+      "session_id": "ses_2968804caffey3UK7kyxJ1vyKy",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-04-07T19:46:47.088Z"
+    },
+    "todo:13": {
+      "task_key": "todo:13",
+      "task_label": "13",
+      "task_title": "Tiered Inference in Driver",
+      "session_id": "ses_296834aabffefMVxcjRG5TNDpq",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-07T19:51:13.663Z"
+    },
+    "todo:14": {
+      "task_key": "todo:14",
+      "task_label": "14",
+      "task_title": "Attention Parameter Dashboard Controls",
+      "session_id": "ses_2967f0c55ffeSY38YkQE0MpwoM",
+      "agent": "Sisyphus-Junior",
+      "category": "visual-engineering",
+      "updated_at": "2026-04-07T19:56:18.813Z"
     }
   }
 }

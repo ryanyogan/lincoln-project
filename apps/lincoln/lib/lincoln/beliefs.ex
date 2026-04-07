@@ -7,7 +7,7 @@ defmodule Lincoln.Beliefs do
   """
   import Ecto.Query
   alias Lincoln.Repo
-  alias Lincoln.Beliefs.{Belief, BeliefRevision}
+  alias Lincoln.Beliefs.{Belief, BeliefRevision, BeliefRelationship}
   alias Lincoln.Agents.Agent
   alias Lincoln.PubSubBroadcaster
 
@@ -331,5 +331,63 @@ defmodule Lincoln.Beliefs do
     # This is a heuristic - beliefs that are semantically similar
     # but have different source types or low confidence might contradict
     find_similar_beliefs(agent, embedding, opts)
+  end
+
+  # ============================================================================
+  # Belief Relationships
+  # ============================================================================
+
+  @doc """
+  Creates a new relationship between two beliefs.
+  """
+  def create_relationship(attrs) do
+    %BeliefRelationship{}
+    |> BeliefRelationship.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Finds all relationships connected to a belief (both incoming and outgoing).
+  """
+  def find_relationships(%Agent{id: agent_id}, belief_id) do
+    BeliefRelationship
+    |> where([r], r.agent_id == ^agent_id)
+    |> where([r], r.source_belief_id == ^belief_id or r.target_belief_id == ^belief_id)
+    |> Repo.all()
+  end
+
+  @doc """
+  Finds all contradictions for an agent.
+  """
+  def find_contradictions(%Agent{id: agent_id}) do
+    BeliefRelationship
+    |> where([r], r.agent_id == ^agent_id)
+    |> where([r], r.relationship_type == "contradicts")
+    |> preload([:source_belief, :target_belief])
+    |> Repo.all()
+  end
+
+  @doc """
+  Finds all beliefs in a support cluster (connected by "supports" relationships).
+  """
+  def find_support_cluster(%Agent{id: agent_id}, belief_id) do
+    BeliefRelationship
+    |> where([r], r.agent_id == ^agent_id)
+    |> where([r], r.relationship_type == "supports")
+    |> where([r], r.source_belief_id == ^belief_id or r.target_belief_id == ^belief_id)
+    |> preload([:source_belief, :target_belief])
+    |> Repo.all()
+  end
+
+  @doc """
+  Checks if a relationship already exists between two beliefs.
+  """
+  def relationship_exists?(%Agent{id: agent_id}, source_id, target_id, type) do
+    BeliefRelationship
+    |> where([r], r.agent_id == ^agent_id)
+    |> where([r], r.source_belief_id == ^source_id)
+    |> where([r], r.target_belief_id == ^target_id)
+    |> where([r], r.relationship_type == ^type)
+    |> Repo.exists?()
   end
 end

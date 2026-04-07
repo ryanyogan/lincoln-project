@@ -39,6 +39,14 @@ defmodule Lincoln.Beliefs.Belief do
 
     has_many(:revisions, Lincoln.Beliefs.BeliefRevision)
 
+    has_many(:outgoing_relationships, Lincoln.Beliefs.BeliefRelationship,
+      foreign_key: :source_belief_id
+    )
+
+    has_many(:incoming_relationships, Lincoln.Beliefs.BeliefRelationship,
+      foreign_key: :target_belief_id
+    )
+
     timestamps(type: :utc_datetime)
   end
 

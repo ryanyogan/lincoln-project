@@ -1005,7 +1005,7 @@ Wave FINAL (after ALL tasks — 4 parallel reviews, then user okay):
 
 ### WAVE 5 — Step 2 Integration (After Wave 4)
 
-- [ ] 12. Parameterized Scoring in Attention GenServer
+- [x] 12. Parameterized Scoring in Attention GenServer
 
   **What to do**:
   - Replace the round-robin logic in `Attention` (from Task 4) with a scoring function
@@ -1079,7 +1079,7 @@ Wave FINAL (after ALL tasks — 4 parallel reviews, then user okay):
   - Files: `substrate/attention.ex`, test file
   - Pre-commit: `mix test`
 
-- [ ] 13. Tiered Inference in Driver
+- [x] 13. Tiered Inference in Driver
 
   **What to do**:
   - Update Driver (from Task 5) to use `InferenceTier.select_tier/2` based on the attention_score returned by Attention
@@ -1153,7 +1153,7 @@ Wave FINAL (after ALL tasks — 4 parallel reviews, then user okay):
   - Files: `substrate/driver.ex`, `substrate/agent_supervisor.ex` (add Task.Supervisor), test file
   - Pre-commit: `mix test`
 
-- [ ] 14. Attention Parameter Dashboard Controls
+- [x] 14. Attention Parameter Dashboard Controls
 
   **What to do**:
   - Extend the substrate LiveView (from Task 8) with:
