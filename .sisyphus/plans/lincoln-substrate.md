@@ -1459,7 +1459,7 @@ Wave FINAL (after ALL tasks — 4 parallel reviews, then user okay):
 
 ### WAVE 7 — Step 3 Integration (After Wave 6)
 
-- [ ] 18. Extend Per-Agent Supervisor to 5 Processes
+- [x] 18. Extend Per-Agent Supervisor to 5 Processes
 
   **What to do**:
   - Update `Lincoln.Substrate.AgentSupervisor` (from Task 6) to start all 5 processes: Substrate, Attention, Driver, Skeptic, Resonator
@@ -1495,7 +1495,7 @@ Wave FINAL (after ALL tasks — 4 parallel reviews, then user okay):
   - Files: `substrate/agent_supervisor.ex`, `substrate.ex`, test file
   - Pre-commit: `mix test`
 
-- [ ] 19. Wire Skeptic/Resonator Flags into Attention Scoring
+- [x] 19. Wire Skeptic/Resonator Flags into Attention Scoring
 
   **What to do**:
   - Update Attention GenServer (from Task 12) to incorporate Skeptic and Resonator signals:
@@ -1535,7 +1535,7 @@ Wave FINAL (after ALL tasks — 4 parallel reviews, then user okay):
   - Files: `substrate/attention.ex`, test file
   - Pre-commit: `mix test`
 
-- [ ] 20. Skeptic + Resonator Dashboard Panels
+- [x] 20. Skeptic + Resonator Dashboard Panels
 
   **What to do**:
   - Extend substrate LiveView (from Task 8/14) with:
@@ -1577,7 +1577,7 @@ Wave FINAL (after ALL tasks — 4 parallel reviews, then user okay):
 
 ### WAVE 8 — Step 4 Divergence Demo (After Wave 7)
 
-- [ ] 21. Multi-Instance Input Broadcaster + Trajectory Recording
+- [x] 21. Multi-Instance Input Broadcaster + Trajectory Recording
 
   **What to do**:
   - Create `lib/lincoln/substrate/input_broadcaster.ex` — module that sends the same event to multiple agent Substrate processes simultaneously
@@ -1618,7 +1618,7 @@ Wave FINAL (after ALL tasks — 4 parallel reviews, then user okay):
   - Files: `substrate/input_broadcaster.ex`, `substrate/trajectory.ex`, migration, test files
   - Pre-commit: `mix test`
 
-- [ ] 22. Comparison LiveView at /substrate/compare
+- [x] 22. Comparison LiveView at /substrate/compare
 
   **What to do**:
   - Create `lib/lincoln_web/live/substrate_compare_live.ex` at route `/substrate/compare`
@@ -1676,7 +1676,7 @@ Wave FINAL (after ALL tasks — 4 parallel reviews, then user okay):
   - Files: `live/substrate_compare_live.ex`, `router.ex`
   - Pre-commit: `mix test`
 
-- [ ] 23. Demo Seed Script
+- [x] 23. Demo Seed Script
 
   **What to do**:
   - Create `lib/mix/tasks/lincoln.demo.divergence.ex` — Mix task that sets up and runs the divergence demo

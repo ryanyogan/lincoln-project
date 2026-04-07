@@ -119,6 +119,9 @@ defmodule Lincoln.Substrate.Substrate do
     {:noreply, new_state}
   end
 
+  @impl true
+  def handle_info(_msg, state), do: {:noreply, state}
+
   # =============================================================================
   # Private — Tick Logic
   # =============================================================================
@@ -144,11 +147,7 @@ defmodule Lincoln.Substrate.Substrate do
 
     next_focus = List.first(beliefs)
 
-    if next_focus && state.current_focus && next_focus.id == state.current_focus.id do
-      %{state | current_focus: next_focus}
-    else
-      %{state | current_focus: next_focus}
-    end
+    %{state | current_focus: next_focus}
   end
 
   defp schedule_tick(interval) do

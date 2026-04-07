@@ -87,6 +87,9 @@ defmodule Lincoln.Substrate.Resonator do
     {:noreply, new_state}
   end
 
+  @impl true
+  def handle_info(_msg, state), do: {:noreply, state}
+
   # =============================================================================
   # Private — Tick Logic
   # =============================================================================

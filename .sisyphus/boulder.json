@@ -154,6 +154,69 @@
       "agent": "Sisyphus-Junior",
       "category": "deep",
       "updated_at": "2026-04-07T20:06:08.759Z"
+    },
+    "todo:18": {
+      "task_key": "todo:18",
+      "task_label": "18",
+      "task_title": "Extend Per-Agent Supervisor to 5 Processes",
+      "session_id": "ses_29671f9c9ffetOAvP0lWXsJxmi",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-07T20:07:31.124Z"
+    },
+    "todo:19": {
+      "task_key": "todo:19",
+      "task_label": "19",
+      "task_title": "Wire Skeptic/Resonator Flags into Attention Scoring",
+      "session_id": "ses_29670add3ffexnEiQI7flecvKs",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-07T20:10:57.478Z"
+    },
+    "todo:20": {
+      "task_key": "todo:20",
+      "task_label": "20",
+      "task_title": "Skeptic + Resonator Dashboard Panels",
+      "session_id": "ses_2966d884dffeRbEoa55SChyXM7",
+      "agent": "Sisyphus-Junior",
+      "category": "visual-engineering",
+      "updated_at": "2026-04-07T20:13:25.419Z"
+    },
+    "todo:21": {
+      "task_key": "todo:21",
+      "task_label": "21",
+      "task_title": "Multi-Instance Input Broadcaster + Trajectory Recording",
+      "session_id": "ses_2966b1f86ffegB8581d9pA6Qau",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-04-07T20:16:00.404Z"
+    },
+    "todo:22": {
+      "task_key": "todo:22",
+      "task_label": "22",
+      "task_title": "Comparison LiveView at /substrate/compare",
+      "session_id": "ses_296688b04ffe3Ws8oQ2vY0ub2W",
+      "agent": "Sisyphus-Junior",
+      "category": "visual-engineering",
+      "updated_at": "2026-04-07T20:20:11.547Z"
+    },
+    "todo:23": {
+      "task_key": "todo:23",
+      "task_label": "23",
+      "task_title": "Demo Seed Script",
+      "session_id": "ses_29664f162ffeDBM4fxSiSd8Esq",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-07T20:22:36.322Z"
+    },
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**Plan Compliance Audit** — `oracle`",
+      "session_id": "ses_29660c8d4ffeB1RMQVkxhnEtts",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-07T20:27:22.061Z"
     }
   }
 }

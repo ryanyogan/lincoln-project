@@ -143,6 +143,9 @@ defmodule Lincoln.Substrate.Driver do
     {:noreply, %{state | pending_tasks: Map.delete(state.pending_tasks, ref)}}
   end
 
+  @impl true
+  def handle_info(_msg, state), do: {:noreply, state}
+
   # =============================================================================
   # Private
   # =============================================================================
@@ -151,7 +154,7 @@ defmodule Lincoln.Substrate.Driver do
     budget = :full
     tier = InferenceTier.select_tier(score, budget: budget)
 
-    Logger.debug("[Driver #{state.agent_id}] score=#{Float.round(score / 1, 2)} tier=#{tier}")
+    Logger.debug("[Driver #{state.agent_id}] score=#{Float.round(score, 2)} tier=#{tier}")
 
     case tier do
       :local ->
@@ -167,7 +170,7 @@ defmodule Lincoln.Substrate.Driver do
     statement = Map.get(belief, :statement, inspect(belief))
 
     summary =
-      "Contemplating: #{statement} (confidence: #{Float.round(confidence / 1, 2)})"
+      "Contemplating: #{statement} (confidence: #{Float.round(confidence, 2)})"
 
     action = %{
       type: :belief_reflection,

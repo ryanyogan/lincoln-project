@@ -188,6 +188,9 @@ defmodule Lincoln.Substrate.Attention do
     {:noreply, %{state | attention_params: params}}
   end
 
+  @impl true
+  def handle_info(_msg, state), do: {:noreply, state}
+
   # =============================================================================
   # Scoring
   # =============================================================================
