@@ -7,6 +7,11 @@ defmodule Lincoln.PubSubBroadcaster do
   - `agent:{agent_id}:beliefs` - belief updates
   - `agent:{agent_id}:questions` - question updates
   - `agent:{agent_id}:memories` - memory updates
+  - `agent:{agent_id}:substrate` - substrate process events
+  - `agent:{agent_id}:attention` - attention updates
+  - `agent:{agent_id}:driver` - driver actions
+  - `agent:{agent_id}:skeptic` - skeptic flags
+  - `agent:{agent_id}:resonator` - resonator flags
   """
 
   @pubsub Lincoln.PubSub
@@ -90,6 +95,35 @@ defmodule Lincoln.PubSubBroadcaster do
   end
 
   # ============================================================================
+  # Substrate Processes
+  # ============================================================================
+
+  def broadcast_substrate_event(agent_id, event) do
+    broadcast(substrate_topic(agent_id), event)
+    broadcast(agent_topic(agent_id), event)
+  end
+
+  def broadcast_attention_update(agent_id, update) do
+    broadcast(attention_topic(agent_id), update)
+    broadcast(agent_topic(agent_id), update)
+  end
+
+  def broadcast_driver_action(agent_id, action) do
+    broadcast(driver_topic(agent_id), action)
+    broadcast(agent_topic(agent_id), action)
+  end
+
+  def broadcast_skeptic_flag(agent_id, flag) do
+    broadcast(skeptic_topic(agent_id), flag)
+    broadcast(agent_topic(agent_id), flag)
+  end
+
+  def broadcast_resonator_flag(agent_id, flag) do
+    broadcast(resonator_topic(agent_id), flag)
+    broadcast(agent_topic(agent_id), flag)
+  end
+
+  # ============================================================================
   # Helpers
   # ============================================================================
 
@@ -101,6 +135,12 @@ defmodule Lincoln.PubSubBroadcaster do
   defp agent_topic(agent_id, :questions), do: "agent:#{agent_id}:questions"
   defp agent_topic(agent_id, :memories), do: "agent:#{agent_id}:memories"
   defp agent_topic(agent_id, :autonomy), do: "agent:#{agent_id}:autonomy"
+
+  def substrate_topic(agent_id), do: "agent:#{agent_id}:substrate"
+  def attention_topic(agent_id), do: "agent:#{agent_id}:attention"
+  def driver_topic(agent_id), do: "agent:#{agent_id}:driver"
+  def skeptic_topic(agent_id), do: "agent:#{agent_id}:skeptic"
+  def resonator_topic(agent_id), do: "agent:#{agent_id}:resonator"
 
   @doc """
   Generic broadcast to any topic.
