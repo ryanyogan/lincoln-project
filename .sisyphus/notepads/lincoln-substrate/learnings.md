@@ -70,3 +70,12 @@
 - Memory write is fire-and-forget via `Task.start/1` — Driver doesn't block on DB.
 - `Float.round(score / 1, 2)` trick: forces integer scores through float division so `Float.round/2` doesn't crash on integer input.
 - Token budget integration deferred — defaults to `:full`. Will need session context plumbing from AgentSupervisor.
+
+## Dashboard Attention Controls (Task 15)
+
+- `<.input>` component wraps each field in `<div class="fieldset mb-2"><label>` — passing `class` overrides only the `<input>` element class, the wrapper stays.
+- `to_form/2` with `as: :attention_params` — form params arrive in `handle_event` as `%{"attention_params" => %{...}}` with string keys.
+- Agent `attention_params` from DB may have string or atom keys (JSONB → strings). `build_params_form/1` checks both: `params["key"] || params[:key] || default`.
+- Dynamic Tailwind classes like `"text-#{@color}"` won't be compiled — must use explicit class functions that return full string literals.
+- Tier tracking piggybacks on existing `:executed` handler — pattern matches `%{tier: tier}` from action map, no new PubSub subscription needed.
+- `update_top_beliefs/3` deduplicates by `belief.id` before sorting — prevents same belief appearing multiple times in the top-5 list.

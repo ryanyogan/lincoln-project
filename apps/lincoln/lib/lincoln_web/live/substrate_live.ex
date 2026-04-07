@@ -9,6 +9,7 @@ defmodule LincolnWeb.SubstrateLive do
   use LincolnWeb, :live_view
 
   alias Lincoln.{Agents, Substrate}
+  alias Lincoln.Substrate.AttentionParams
   alias Lincoln.PubSubBroadcaster
 
   @impl true
@@ -28,6 +29,9 @@ defmodule LincolnWeb.SubstrateLive do
       |> assign(:substrate_state, substrate_state)
       |> assign(:substrate_running, substrate_state != nil)
       |> assign(:recent_events, [])
+      |> assign(:attention_params_form, build_params_form(agent))
+      |> assign(:top_beliefs, [])
+      |> assign(:tier_counts, %{local: 0, ollama: 0, claude: 0})
 
     if connected?(socket) do
       Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.substrate_topic(agent.id))
@@ -79,11 +83,69 @@ defmodule LincolnWeb.SubstrateLive do
     }
 
     recent = [event_entry | socket.assigns.recent_events] |> Enum.take(20)
-    {:noreply, assign(socket, :recent_events, recent)}
+
+    tier_counts =
+      case action do
+        %{tier: tier} when tier in [:local, :ollama, :claude] ->
+          Map.update!(socket.assigns.tier_counts, tier, &(&1 + 1))
+
+        _ ->
+          socket.assigns.tier_counts
+      end
+
+    {:noreply,
+     socket
+     |> assign(:recent_events, recent)
+     |> assign(:tier_counts, tier_counts)}
+  end
+
+  def handle_info({:next_thought, belief, score}, socket) do
+    top_beliefs = update_top_beliefs(socket.assigns.top_beliefs, belief, score)
+    {:noreply, assign(socket, :top_beliefs, top_beliefs)}
   end
 
   # Catch-all for other PubSub messages
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  # ============================================================================
+  # Events
+  # ============================================================================
+
+  @impl true
+  def handle_event("select_preset", %{"preset" => preset}, socket) do
+    params =
+      case preset do
+        "focused" -> AttentionParams.focused()
+        "butterfly" -> AttentionParams.butterfly()
+        "adhd_like" -> AttentionParams.adhd_like()
+        _ -> AttentionParams.default()
+      end
+
+    form_params = Map.new(params, fn {k, v} -> {to_string(k), to_string(v)} end)
+
+    {:noreply,
+     assign(socket, :attention_params_form, to_form(form_params, as: :attention_params))}
+  end
+
+  def handle_event("apply_params", %{"attention_params" => raw_params}, socket) do
+    parsed = %{
+      novelty_weight: parse_float(raw_params["novelty_weight"], 0.3),
+      focus_momentum: parse_float(raw_params["focus_momentum"], 0.5),
+      interrupt_threshold: parse_float(raw_params["interrupt_threshold"], 0.7),
+      boredom_decay: parse_float(raw_params["boredom_decay"], 0.1),
+      depth_preference: parse_float(raw_params["depth_preference"], 0.5),
+      tick_interval_ms: parse_integer(raw_params["tick_interval_ms"], 5_000)
+    }
+
+    {:ok, _agent} = Agents.update_agent(socket.assigns.agent, %{attention_params: parsed})
+
+    case Substrate.get_process(socket.assigns.agent.id, :attention) do
+      {:ok, pid} -> GenServer.cast(pid, {:reload_params})
+      _ -> :ok
+    end
+
+    {:noreply, put_flash(socket, :info, "Attention parameters updated")}
+  end
 
   # ============================================================================
   # Render
@@ -232,11 +294,124 @@ defmodule LincolnWeb.SubstrateLive do
                   </div>
                 </div>
               </div>
+
+              <%!-- Attention Parameters Card --%>
+              <div class="card bg-base-200 border-2 border-warning/50 hover:border-warning transition-colors">
+                <div class="card-body p-0">
+                  <div class="flex items-center justify-between px-4 py-3 border-b-2 border-warning/30 bg-base-300">
+                    <h2 class="card-title text-sm font-terminal uppercase gap-2">
+                      <.icon name="hero-adjustments-horizontal" class="size-4 text-warning" />
+                      Attention Parameters
+                    </h2>
+                  </div>
+                  <div class="p-4">
+                    <div class="flex flex-wrap gap-1.5 mb-4">
+                      <button
+                        phx-click="select_preset"
+                        phx-value-preset="focused"
+                        class="btn btn-xs bg-base-300 border-warning/30 hover:border-warning text-warning font-terminal uppercase"
+                      >
+                        Focused
+                      </button>
+                      <button
+                        phx-click="select_preset"
+                        phx-value-preset="butterfly"
+                        class="btn btn-xs bg-base-300 border-warning/30 hover:border-warning text-warning font-terminal uppercase"
+                      >
+                        Butterfly
+                      </button>
+                      <button
+                        phx-click="select_preset"
+                        phx-value-preset="adhd_like"
+                        class="btn btn-xs bg-base-300 border-warning/30 hover:border-warning text-warning font-terminal uppercase"
+                      >
+                        ADHD-like
+                      </button>
+                      <button
+                        phx-click="select_preset"
+                        phx-value-preset="default"
+                        class="btn btn-xs bg-base-300 border-base-content/10 hover:border-base-content/30 text-base-content/60 font-terminal uppercase"
+                      >
+                        Default
+                      </button>
+                    </div>
+
+                    <.form
+                      for={@attention_params_form}
+                      phx-submit="apply_params"
+                      id="attention-params-form"
+                    >
+                      <div class="grid grid-cols-2 gap-3">
+                        <.input
+                          field={@attention_params_form[:novelty_weight]}
+                          type="number"
+                          label="novelty_weight"
+                          step="0.05"
+                          min="0"
+                          max="1"
+                          class="w-full input input-xs bg-base-300 border-base-content/10 font-terminal text-xs"
+                        />
+                        <.input
+                          field={@attention_params_form[:focus_momentum]}
+                          type="number"
+                          label="focus_momentum"
+                          step="0.05"
+                          min="0"
+                          max="1"
+                          class="w-full input input-xs bg-base-300 border-base-content/10 font-terminal text-xs"
+                        />
+                        <.input
+                          field={@attention_params_form[:interrupt_threshold]}
+                          type="number"
+                          label="interrupt_threshold"
+                          step="0.05"
+                          min="0"
+                          max="1"
+                          class="w-full input input-xs bg-base-300 border-base-content/10 font-terminal text-xs"
+                        />
+                        <.input
+                          field={@attention_params_form[:boredom_decay]}
+                          type="number"
+                          label="boredom_decay"
+                          step="0.05"
+                          min="0"
+                          max="1"
+                          class="w-full input input-xs bg-base-300 border-base-content/10 font-terminal text-xs"
+                        />
+                        <.input
+                          field={@attention_params_form[:depth_preference]}
+                          type="number"
+                          label="depth_preference"
+                          step="0.05"
+                          min="0"
+                          max="1"
+                          class="w-full input input-xs bg-base-300 border-base-content/10 font-terminal text-xs"
+                        />
+                        <.input
+                          field={@attention_params_form[:tick_interval_ms]}
+                          type="number"
+                          label="tick_interval_ms"
+                          step="1000"
+                          min="1000"
+                          max="60000"
+                          class="w-full input input-xs bg-base-300 border-base-content/10 font-terminal text-xs"
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        class="btn btn-sm bg-warning/20 border-warning/50 hover:bg-warning/30 text-warning font-terminal uppercase w-full mt-4"
+                      >
+                        <.icon name="hero-check" class="size-3.5" /> Apply Parameters
+                      </button>
+                    </.form>
+                  </div>
+                </div>
+              </div>
             </div>
 
-            <%!-- Right column: Event Timeline (1/3 width) --%>
-            <div class="lg:col-span-1">
-              <div class="card bg-base-200 border-2 border-secondary/50 hover:border-secondary transition-colors h-full">
+            <%!-- Right column: Event Timeline + Beliefs + Tiers (1/3 width) --%>
+            <div class="lg:col-span-1 space-y-6">
+              <div class="card bg-base-200 border-2 border-secondary/50 hover:border-secondary transition-colors">
                 <div class="card-body p-0">
                   <div class="px-4 py-3 border-b-2 border-secondary/30 bg-base-300">
                     <h2 class="card-title text-sm font-terminal uppercase gap-2">
@@ -256,6 +431,76 @@ defmodule LincolnWeb.SubstrateLive do
                         </li>
                       </ul>
                     <% end %>
+                  </div>
+                </div>
+              </div>
+
+              <%!-- Belief Score Ranking --%>
+              <div class="card bg-base-200 border-2 border-accent/50 hover:border-accent transition-colors">
+                <div class="card-body p-0">
+                  <div class="px-4 py-3 border-b-2 border-accent/30 bg-base-300">
+                    <h2 class="card-title text-sm font-terminal uppercase gap-2">
+                      <.icon name="hero-chart-bar" class="size-4 text-accent" /> Top Scored Beliefs
+                    </h2>
+                  </div>
+                  <div class="p-3">
+                    <%= if @top_beliefs == [] do %>
+                      <div class="flex flex-col items-center justify-center py-8 text-base-content/40">
+                        <.icon name="hero-chart-bar" class="size-6 mb-2" />
+                        <p class="text-xs font-terminal">No scored beliefs yet</p>
+                      </div>
+                    <% else %>
+                      <ul class="space-y-2">
+                        <li
+                          :for={{belief, score} <- @top_beliefs}
+                          class="p-2 bg-base-300 border border-accent/10 hover:border-accent/30 transition-colors"
+                        >
+                          <div class="flex items-center justify-between mb-1">
+                            <span class="text-xs font-terminal font-bold text-accent">
+                              {Float.round(score * 100, 1)}
+                            </span>
+                            <span class="badge badge-xs bg-accent/20 text-accent border-accent/30 font-terminal">
+                              E:{belief.entrenchment}
+                            </span>
+                          </div>
+                          <p class="text-xs font-terminal text-base-content/70 leading-relaxed line-clamp-2">
+                            {belief.statement}
+                          </p>
+                          <div class="flex items-center gap-2 mt-1">
+                            <span class="text-[10px] font-terminal text-base-content/40">
+                              C:{Float.round(belief.confidence * 100, 0)}%
+                            </span>
+                          </div>
+                        </li>
+                      </ul>
+                    <% end %>
+                  </div>
+                </div>
+              </div>
+
+              <%!-- Tier Distribution --%>
+              <div class="card bg-base-200 border-2 border-base-content/20 hover:border-base-content/30 transition-colors">
+                <div class="card-body p-0">
+                  <div class="px-4 py-3 border-b-2 border-base-content/10 bg-base-300">
+                    <h2 class="card-title text-sm font-terminal uppercase gap-2">
+                      <.icon name="hero-server-stack" class="size-4 text-base-content/60" />
+                      Tier Distribution
+                    </h2>
+                  </div>
+                  <div class="p-4">
+                    <div class="grid grid-cols-3 gap-3">
+                      <.tier_counter label="Local" count={@tier_counts.local} color="success" />
+                      <.tier_counter label="Ollama" count={@tier_counts.ollama} color="warning" />
+                      <.tier_counter label="Claude" count={@tier_counts.claude} color="error" />
+                    </div>
+                    <div class="mt-3 pt-3 border-t border-base-content/10">
+                      <div class="flex items-center justify-between text-xs font-terminal text-base-content/50">
+                        <span>Total</span>
+                        <span class="font-bold text-base-content/70">
+                          {@tier_counts.local + @tier_counts.ollama + @tier_counts.claude}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -375,6 +620,30 @@ defmodule LincolnWeb.SubstrateLive do
     """
   end
 
+  attr(:label, :string, required: true)
+  attr(:count, :integer, required: true)
+  attr(:color, :string, required: true)
+
+  defp tier_counter(assigns) do
+    assigns = assign(assigns, :color_class, tier_color_class(assigns.color))
+
+    ~H"""
+    <div class="text-center p-2 bg-base-300 border border-base-content/10">
+      <div class={["text-xl font-terminal font-black", @color_class]}>
+        {@count}
+      </div>
+      <div class="text-[10px] font-terminal uppercase text-base-content/50 mt-0.5">
+        {@label}
+      </div>
+    </div>
+    """
+  end
+
+  defp tier_color_class("success"), do: "text-success"
+  defp tier_color_class("warning"), do: "text-warning"
+  defp tier_color_class("error"), do: "text-error"
+  defp tier_color_class(_), do: "text-base-content"
+
   # ============================================================================
   # Helpers
   # ============================================================================
@@ -398,4 +667,46 @@ defmodule LincolnWeb.SubstrateLive do
   end
 
   defp truncate(_, _), do: ""
+
+  defp build_params_form(agent) do
+    params = agent.attention_params || %{}
+
+    string_params = %{
+      "novelty_weight" => to_string(params["novelty_weight"] || params[:novelty_weight] || 0.3),
+      "focus_momentum" => to_string(params["focus_momentum"] || params[:focus_momentum] || 0.5),
+      "interrupt_threshold" =>
+        to_string(params["interrupt_threshold"] || params[:interrupt_threshold] || 0.7),
+      "boredom_decay" => to_string(params["boredom_decay"] || params[:boredom_decay] || 0.1),
+      "depth_preference" =>
+        to_string(params["depth_preference"] || params[:depth_preference] || 0.5),
+      "tick_interval_ms" =>
+        to_string(params["tick_interval_ms"] || params[:tick_interval_ms] || 5_000)
+    }
+
+    to_form(string_params, as: :attention_params)
+  end
+
+  defp update_top_beliefs(current, belief, score) do
+    [{belief, score} | Enum.reject(current, fn {b, _} -> b.id == belief.id end)]
+    |> Enum.sort_by(fn {_, s} -> s end, :desc)
+    |> Enum.take(5)
+  end
+
+  defp parse_float(str, default) when is_binary(str) do
+    case Float.parse(str) do
+      {f, _} -> f
+      :error -> default
+    end
+  end
+
+  defp parse_float(_, default), do: default
+
+  defp parse_integer(str, default) when is_binary(str) do
+    case Integer.parse(str) do
+      {i, _} -> i
+      :error -> default
+    end
+  end
+
+  defp parse_integer(_, default), do: default
 end
