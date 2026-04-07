@@ -1,20 +1,16 @@
 defmodule Lincoln.Substrate.Substrate do
   @moduledoc """
-  The core cognitive substrate — an always-running GenServer that forms
-  the heart of an agent's continuous thought process.
+  The core cognitive substrate — an always-running GenServer.
 
-  Each tick:
-  1. Process pending external events, OR
-  2. Advance focus to a different belief
-
-  Step 1 is read-only — no DB writes, no LLM calls.
+  Every tick: drain events → ask Attention what to think about → ask Driver to execute → record trajectory.
+  The substrate never idles. Even with no events, Attention still scores and Driver still executes.
   """
 
   use GenServer
   require Logger
 
   alias Lincoln.{Agents, Beliefs, PubSubBroadcaster}
-  alias Lincoln.Substrate.Trajectory
+  alias Lincoln.Substrate.{Attention, Driver, Trajectory}
 
   @tick_interval 5_000
 
@@ -27,7 +23,9 @@ defmodule Lincoln.Substrate.Substrate do
     :tick_count,
     :last_tick_at,
     :tick_interval,
-    :started_at
+    :started_at,
+    :last_attention_score,
+    :last_tier
   ]
 
   # =============================================================================
@@ -71,7 +69,9 @@ defmodule Lincoln.Substrate.Substrate do
       tick_count: 0,
       last_tick_at: nil,
       tick_interval: interval,
-      started_at: DateTime.utc_now()
+      started_at: DateTime.utc_now(),
+      last_attention_score: nil,
+      last_tier: nil
     }
 
     {:ok, state, {:continue, :load_state}}
@@ -101,33 +101,31 @@ defmodule Lincoln.Substrate.Substrate do
 
   @impl true
   def handle_info(:tick, state) do
-    new_state =
-      state
-      |> process_next_event_or_advance_focus()
-      |> Map.put(:tick_count, state.tick_count + 1)
-      |> Map.put(:last_tick_at, DateTime.utc_now())
+    state_after_events = drain_pending_events(state)
+    {chosen_belief, attention_score} = consult_attention(state_after_events)
+    tier = dispatch_to_driver(state_after_events, chosen_belief, attention_score)
+
+    new_state = %{
+      state_after_events
+      | current_focus: chosen_belief,
+        tick_count: state.tick_count + 1,
+        last_tick_at: DateTime.utc_now(),
+        last_attention_score: attention_score,
+        last_tier: tier
+    }
 
     PubSubBroadcaster.broadcast_substrate_event(
       state.agent_id,
       {:tick, new_state.tick_count, new_state.current_focus}
     )
 
-    Task.start(fn ->
-      try do
-        Trajectory.record_event(state.agent_id, %{
-          type: :tick,
-          tick_count: new_state.tick_count,
-          current_focus_id: new_state.current_focus && new_state.current_focus.id,
-          pending_events_count: length(new_state.pending_events)
-        })
-      rescue
-        e -> Logger.warning("[Substrate] Trajectory recording failed: #{Exception.message(e)}")
-      end
-    end)
-
+    record_trajectory(state.agent_id, new_state, chosen_belief, attention_score, tier)
     schedule_tick(state.tick_interval)
     {:noreply, new_state}
   end
+
+  @impl true
+  def handle_info({:execution_complete, _action}, state), do: {:noreply, state}
 
   @impl true
   def handle_info(_msg, state), do: {:noreply, state}
@@ -142,28 +140,74 @@ defmodule Lincoln.Substrate.Substrate do
   # Private — Tick Logic
   # =============================================================================
 
-  defp process_next_event_or_advance_focus(%{pending_events: [event | rest]} = state) do
-    Logger.debug("Substrate #{state.agent_id} processing event: #{inspect(event)}")
+  defp drain_pending_events(%{pending_events: []} = state), do: state
 
+  defp drain_pending_events(%{pending_events: events} = state) do
     activation_map =
-      case event do
-        %{belief_id: bid} when is_binary(bid) ->
-          Map.put(state.activation_map, bid, DateTime.utc_now())
+      Enum.reduce(events, state.activation_map, fn event, acc ->
+        case event do
+          %{belief_id: bid} when is_binary(bid) -> Map.put(acc, bid, DateTime.utc_now())
+          _ -> acc
+        end
+      end)
 
-        _ ->
-          state.activation_map
-      end
-
-    %{state | pending_events: rest, activation_map: activation_map}
+    Logger.debug("[Substrate #{state.agent_id}] Drained #{length(events)} events")
+    %{state | pending_events: [], activation_map: activation_map}
   end
 
-  defp process_next_event_or_advance_focus(state) do
-    beliefs =
-      Beliefs.list_beliefs(state.agent, limit: 1, status: "active")
+  defp consult_attention(state) do
+    case lookup_process(state.agent_id, :attention) do
+      {:ok, pid} ->
+        case Attention.next_thought(pid) do
+          {:ok, belief, score} -> {belief, score}
+          {:ok, nil} -> {nil, nil}
+        end
 
-    next_focus = List.first(beliefs)
+      {:error, :not_running} ->
+        belief =
+          if state.agent,
+            do: Beliefs.list_beliefs(state.agent, limit: 1, status: "active") |> List.first()
 
-    %{state | current_focus: next_focus}
+        {belief, nil}
+    end
+  end
+
+  defp dispatch_to_driver(_state, nil, _score), do: nil
+
+  defp dispatch_to_driver(state, belief, score) do
+    case lookup_process(state.agent_id, :driver) do
+      {:ok, pid} ->
+        Driver.execute(pid, {belief, score || 0.0})
+        Lincoln.Substrate.InferenceTier.select_tier(score || 0.0)
+
+      {:error, :not_running} ->
+        nil
+    end
+  end
+
+  defp record_trajectory(agent_id, state, belief, score, tier) do
+    Task.start(fn ->
+      try do
+        Trajectory.record_event(agent_id, %{
+          type: :tick,
+          tick_count: state.tick_count,
+          current_focus_id: belief && Map.get(belief, :id),
+          current_focus_statement: belief && Map.get(belief, :statement),
+          attention_score: score,
+          tier: tier,
+          pending_events_count: length(state.pending_events)
+        })
+      rescue
+        e -> Logger.warning("[Substrate] Trajectory recording failed: #{Exception.message(e)}")
+      end
+    end)
+  end
+
+  defp lookup_process(agent_id, type) do
+    case Registry.lookup(Lincoln.AgentRegistry, {agent_id, type}) do
+      [{pid, _}] -> {:ok, pid}
+      [] -> {:error, :not_running}
+    end
   end
 
   defp schedule_tick(interval) do
