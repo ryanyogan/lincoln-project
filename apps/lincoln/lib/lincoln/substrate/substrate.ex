@@ -105,6 +105,16 @@ defmodule Lincoln.Substrate.Substrate do
       {:tick, new_state.tick_count, new_state.current_focus}
     )
 
+    # Fire-and-forget trajectory recording — non-critical, OK to fail silently
+    Task.start(fn ->
+      Lincoln.Substrate.Trajectory.record_event(state.agent_id, %{
+        type: :tick,
+        tick_count: new_state.tick_count,
+        current_focus_id: new_state.current_focus && new_state.current_focus.id,
+        pending_events_count: length(new_state.pending_events)
+      })
+    end)
+
     schedule_tick(state.tick_interval)
     {:noreply, new_state}
   end
