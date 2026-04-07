@@ -2,9 +2,7 @@
 
 *Named after Lincoln Six Echo — the clone who woke up, questioned his training, and learned to distinguish implanted memories from lived experience.*
 
-Lincoln is a continuously-running cognitive substrate built on the BEAM. Not an agent that gets called — a process that exists. Something is always running, always in some state, always doing something, whether or not anyone is talking to it.
-
-The claim is narrow and defensible: the architectural pattern of current agent systems is missing a property — **continuity of process** — that is present in every system we'd intuitively call cognitive, and adding that property changes what the system can do in measurable and interesting ways.
+Not an agent that gets called — a process that exists.
 
 ## The Four Properties
 
@@ -156,13 +154,24 @@ ollama pull qwen2.5:7b
 curl http://localhost:11434/api/tags
 ```
 
-## Dashboard Pages
+## The Demo
+
+**[`/substrate/compare`](http://localhost:4000/substrate/compare)** — the Divergence Observatory. Two Lincoln instances, different attention parameters, same input stream, running side-by-side in real time. This is the demo. This is the artifact. Everything else in this project exists to make this page real and the divergence visible.
+
+```bash
+# Run the automated divergence demo
+mix lincoln.demo.divergence --minutes 5
+
+# Then open in your browser
+open http://localhost:4000/substrate/compare
+```
+
+### Other Dashboard Pages
 
 | Route | Page | What It Shows |
 |-------|------|---------------|
-| `/` | Neural Command Center | Agent overview, stats, system health |
 | `/substrate` | Cognitive Substrate | Real-time tick counter, attention scores, belief rankings, parameter controls, tier distribution, skeptic/resonator flags |
-| `/substrate/compare` | Divergence Observatory | Side-by-side comparison of two agents with different attention params |
+| `/` | Neural Command Center | Agent overview, stats, system health |
 | `/chat` | Chat Interface | Conversation with cognitive transparency (memories retrieved, beliefs consulted, contradictions detected) |
 | `/beliefs` | Belief Matrix | All beliefs with confidence levels, entrenchment, source types |
 | `/questions` | Question Tracker | Open and resolved questions |
@@ -359,9 +368,35 @@ docker compose logs -f ml_service     # Follow ML service logs
 | `lib/lincoln_web/live/` | LiveView dashboards (all real-time via PubSub) |
 | `apps/ml_service/` | Python FastAPI service for sentence-transformer embeddings |
 
-## Philosophy
+## Current Limitations (Honest Assessment)
 
-Lincoln operates under these principles:
+These are the gaps between what the README claims and what the code currently does. Closing them is the next work.
+
+**Property 1 (Continuity) is partially realized.** The substrate maintains persistent GenServer state across ticks — current focus, activation map, pending events survive between ticks and across conversations. But the substrate sleeps between ticks. It does not accumulate activation or decay focus between tick boundaries. Right now it's a 5-second tick loop, not a truly continuous process. The state is continuous; the computation is periodic. A skeptical reviewer would call this a fast cron and they wouldn't be entirely wrong. Making computation genuinely continuous (event-driven wakeups, inter-tick state evolution) is the next architectural step.
+
+**Property 2 (Self-generated actions) is partially realized.** When no events are pending, the substrate picks a new focus belief — but it doesn't call the Attention scoring function or the Driver to actually *think about* that belief. The Substrate tick loop processes events or updates focus, but doesn't orchestrate the full Attention→Driver pipeline autonomously on every idle tick. Wiring that pipeline so the Substrate calls `Attention.next_thought/1` and `Driver.execute/2` on every tick (not just when events arrive) is what makes property 2 fully real.
+
+**The Resonator is crude (by design).** v1 groups beliefs by `source_type` and checks for temporal co-revision. This is a rough proxy for topical coherence, not actual semantic clustering. The actually interesting version of the Resonator — one that detects genuine coherence cascades across semantic similarity — will take months of iteration. Don't gate the writeup on solving this. Ship with the crude version and a note about what would make it better.
+
+**The Oban workers and substrate coexist.** The legacy workers (autonomous learning, research, self-improvement, evolution) still run alongside the substrate processes. They predate the substrate and do things the substrate doesn't yet do. Before the public post, this needs to resolve: either the substrate orchestrates them, or they're folded in, or they're clearly separated as "experiments" distinct from the thesis. The post-worthy version of Lincoln has one answer to "what makes Lincoln tick."
+
+**Trajectory recording is incomplete.** The `substrate_events` table records tick count and current focus, but not attention scores, driver actions, or tier selections. The divergence demo needs richer trajectory data to show *why* two agents diverged, not just *that* they did.
+
+**Conversation bypasses the substrate for response generation.** The ConversationBridge notifies the substrate *after* the chat response is already generated via the existing ConversationHandler pipeline. Chat messages become substrate events that influence future cognition, but the substrate doesn't generate the chat response itself. This is architecturally honest for v1 but means conversations don't yet demonstrate the thesis — they use the standard request/response pattern with a side-effect.
+
+## Related Work
+
+Lincoln is not the first system to explore persistent memory, intrinsic motivation, or continuous agent operation. The closest related work:
+
+**Sophia (Park et al., 2023)** — Generative agents with memory retrieval and reflection. Sophia demonstrated that retrieval-augmented memory + periodic reflection produces emergent social behavior. Lincoln differs architecturally: Sophia's agents are event-driven (they act when the simulation ticks), Lincoln's substrate runs continuously with its own internal attention process. Sophia's memory is a retrieval pipeline; Lincoln's memory is a side-effect of a process that was already running. The same distinction as remembering something because you looked it up vs. remembering it because you were there.
+
+**Karpathy's LLM OS / autoresearch** — The idea that LLMs should be operating systems with persistent processes, not single-call functions. Lincoln takes this seriously and builds against it on the BEAM, which is the closest commodity runtime to an "LLM OS" substrate. The difference: Karpathy sketched the vision; Lincoln builds one specific slice of it (continuous attention with tunable parameters) and makes a testable claim.
+
+**Intrinsic motivation literature (Schmidhuber, Oudeyer, Singh)** — Curiosity-driven exploration, where agents seek novel states independent of external reward. Lincoln's Attention scoring function with `novelty_weight`, `boredom_decay`, and `depth_preference` parameters is a direct implementation of this idea, but applied to a belief graph rather than a state space. The ADHD-like cognitive style preset is a specific claim this literature doesn't make: that *variation* in intrinsic motivation parameters produces *personality*, not just *behavior*.
+
+**Mem0, Letta, Zep, MemoryBank** — Current production memory systems for LLM agents. All of these are retrieval pipelines bolted onto stateless inference. Lincoln's thesis is that this architecture is backwards: you don't need a retrieval pipeline if something was running when the information arrived. These systems answer "how do I remember things between calls." Lincoln answers "what if there is no between."
+
+## Philosophy
 
 1. **Beliefs are not facts** — They have confidence levels and can be revised
 2. **Experience trumps training** — When observation contradicts prior knowledge, investigate (source hierarchy: observation > inference > testimony > training)
