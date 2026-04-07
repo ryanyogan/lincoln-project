@@ -97,10 +97,10 @@ defmodule Lincoln.Substrate do
   @doc """
   Get a specific process PID for an agent.
 
-  `type` must be one of `:substrate`, `:attention`, `:driver`, `:skeptic`, or `:resonator`.
+  `type` must be one of `:substrate`, `:attention`, `:driver`, `:skeptic`, `:resonator`, or `:thought_supervisor`.
   """
   def get_process(agent_id, type)
-      when type in [:substrate, :attention, :driver, :skeptic, :resonator] do
+      when type in [:substrate, :attention, :driver, :skeptic, :resonator, :thought_supervisor] do
     case Registry.lookup(Lincoln.AgentRegistry, {agent_id, type}) do
       [{pid, _}] -> {:ok, pid}
       [] -> {:error, :not_running}
