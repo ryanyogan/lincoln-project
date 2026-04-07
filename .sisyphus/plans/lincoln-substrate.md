@@ -1218,7 +1218,7 @@ Wave FINAL (after ALL tasks — 4 parallel reviews, then user okay):
 
 ### WAVE 6 — Step 3 Scaffolding (After Wave 5)
 
-- [ ] 15. Belief Relationships Migration + Schema
+- [x] 15. Belief Relationships Migration + Schema
 
   **What to do**:
   - Create migration for `belief_relationships` table:
@@ -1297,7 +1297,7 @@ Wave FINAL (after ALL tasks — 4 parallel reviews, then user okay):
   - Files: migration, `beliefs/belief_relationship.ex`, `beliefs/belief.ex` (add associations), `beliefs.ex` (add functions), test file
   - Pre-commit: `mix test`
 
-- [ ] 16. Skeptic GenServer
+- [x] 16. Skeptic GenServer
 
   **What to do**:
   - Create `lib/lincoln/substrate/skeptic.ex` — GenServer that runs in background looking for contradictions
@@ -1378,7 +1378,7 @@ Wave FINAL (after ALL tasks — 4 parallel reviews, then user okay):
   - Files: `substrate/skeptic.ex`, test file
   - Pre-commit: `mix test`
 
-- [ ] 17. Resonator GenServer
+- [x] 17. Resonator GenServer
 
   **What to do**:
   - Create `lib/lincoln/substrate/resonator.ex` — GenServer that detects unexpected coherences and "interesting" belief regions

@@ -2,10 +2,12 @@ defmodule Lincoln.Substrate do
   @moduledoc """
   Public API for managing agent cognitive substrate processes.
 
-  Each agent runs three processes under a per-agent supervisor:
+  Each agent runs five processes under a per-agent supervisor:
   - **Substrate** — the core tick loop and event processing
   - **Attention** — decides what to think about next
   - **Driver** — executes decided actions
+  - **Skeptic** — questions and validates beliefs
+  - **Resonator** — reflects on experiences and extracts insights
   """
 
   alias Lincoln.Agents
@@ -95,9 +97,10 @@ defmodule Lincoln.Substrate do
   @doc """
   Get a specific process PID for an agent.
 
-  `type` must be one of `:substrate`, `:attention`, or `:driver`.
+  `type` must be one of `:substrate`, `:attention`, `:driver`, `:skeptic`, or `:resonator`.
   """
-  def get_process(agent_id, type) when type in [:substrate, :attention, :driver] do
+  def get_process(agent_id, type)
+      when type in [:substrate, :attention, :driver, :skeptic, :resonator] do
     case Registry.lookup(Lincoln.AgentRegistry, {agent_id, type}) do
       [{pid, _}] -> {:ok, pid}
       [] -> {:error, :not_running}

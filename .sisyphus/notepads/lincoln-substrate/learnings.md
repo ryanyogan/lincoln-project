@@ -79,3 +79,55 @@
 - Dynamic Tailwind classes like `"text-#{@color}"` won't be compiled — must use explicit class functions that return full string literals.
 - Tier tracking piggybacks on existing `:executed` handler — pattern matches `%{tier: tier}` from action map, no new PubSub subscription needed.
 - `update_top_beliefs/3` deduplicates by `belief.id` before sorting — prevents same belief appearing multiple times in the top-5 list.
+
+## 2026-04-07: Belief Relationships Implementation
+
+### Created
+- Migration: `20260407195716_add_belief_relationships.exs`
+  - Table: `belief_relationships` with binary_id primary key
+  - Fields: agent_id, source_belief_id, target_belief_id, relationship_type, confidence, detected_by, evidence
+  - Indexes on agent_id, source_belief_id, target_belief_id
+  - Unique constraint on (source_belief_id, target_belief_id, relationship_type)
+
+- Schema: `Lincoln.Beliefs.BeliefRelationship`
+  - Relationship types: contradicts, supports, refines, depends_on, related
+  - Detected by: skeptic, resonator, manual, inference
+  - Confidence: 0.0-1.0 float
+  - Belongs to: agent, source_belief, target_belief
+
+- Context functions in `Lincoln.Beliefs`:
+  - `create_relationship/1` - Create new relationship
+  - `find_relationships/2` - Find all relationships for a belief (incoming + outgoing)
+  - `find_contradictions/1` - Find all contradictions for an agent
+  - `find_support_cluster/2` - Find beliefs connected by "supports" relationships
+  - `relationship_exists?/4` - Check if relationship already exists
+
+- Updated `Lincoln.Beliefs.Belief` schema:
+  - Added `has_many :outgoing_relationships` (source_belief_id)
+  - Added `has_many :incoming_relationships` (target_belief_id)
+
+### Design Notes
+- Relationships are directional (source → target)
+- Unique constraint prevents duplicate relationships of same type between same beliefs
+- Preloading beliefs in find_contradictions and find_support_cluster for efficient querying
+- Follows existing pattern from BeliefRevision associations
+
+## Skeptic GenServer
+
+- `find_similar_beliefs/3` returns plain maps with atom keys (raw SQL), not `%Belief{}` structs. Dot access works on maps but they lack struct guarantees.
+- `Pgvector.Ecto.Vector` loads as `%Pgvector{}` struct. Can pass directly to `Repo.query!` — the `Pgvector.Extensions.Vector` Postgrex extension handles encoding.
+- `relationship_exists?/4` only checks one direction (source→target). Skeptic checks both directions to avoid duplicate contradictions when beliefs are investigated in opposite order on later ticks.
+- Beliefs without embeddings are silently skipped (no crash) — `get_embedding/1` returns nil, caller pattern-matches on it.
+
+## Resonator GenServer (Coherence Cascade Detection)
+
+- Follows Skeptic pattern exactly: GenServer with tick, Registry naming `{agent_id, :resonator}`, `child_spec/1`, `defstruct`.
+- Tick interval 60s (slower than Skeptic's 30s) — cascades are macro patterns, don't need frequent checks.
+- v1 clustering is trivially simple: `Enum.group_by(& &1.source_type)` — groups beliefs by source type, checks each group for cascade conditions.
+- Cascade condition: 3+ beliefs in same source_type cluster that were all updated within the last hour (`@cascade_window_hours * 3600` seconds).
+- `cascade_active?/1` uses `DateTime.diff(now, belief.updated_at, :second)` — consistent with Attention's time math patterns.
+- `process_cascade/2` creates "supports" relationships between all pairs: `for a <- cluster, b <- cluster, a.id < b.id` — UUID string comparison for dedup ordering.
+- `relationship_exists?/4` only checks one direction (source→target), but since pair generation enforces `a.id < b.id`, each pair is only processed once.
+- `broadcast_resonator_flag/2` already existed in PubSubBroadcaster — was pre-built alongside `broadcast_skeptic_flag/2`.
+- Cascade score = `cluster_size * avg_confidence` — simple product, useful for Attention weighting later.
+- Test for relationship deduplication: run two ticks, assert same count. 3 beliefs = 3 pairs = 3 "supports" relationships, each belief involved in 2.

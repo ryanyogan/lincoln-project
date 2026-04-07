@@ -127,6 +127,33 @@
       "agent": "Sisyphus-Junior",
       "category": "visual-engineering",
       "updated_at": "2026-04-07T19:56:18.813Z"
+    },
+    "todo:15": {
+      "task_key": "todo:15",
+      "task_label": "15",
+      "task_title": "Belief Relationships Migration + Schema",
+      "session_id": "ses_2967ac111ffeY423stpupkuasE",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-07T19:58:05.818Z"
+    },
+    "todo:16": {
+      "task_key": "todo:16",
+      "task_label": "16",
+      "task_title": "Skeptic GenServer",
+      "session_id": "ses_2967900ebffe7eAiV2OFAtiI3t",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-04-07T20:02:57.954Z"
+    },
+    "todo:17": {
+      "task_key": "todo:17",
+      "task_label": "17",
+      "task_title": "Resonator GenServer",
+      "session_id": "ses_296749036ffeUeXKhQ0TQYbDcL",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-04-07T20:06:08.759Z"
     }
   }
 }
