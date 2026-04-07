@@ -32,6 +32,11 @@ defmodule Lincoln.Agents do
   def get_agent!(id), do: Repo.get!(Agent, id)
 
   @doc """
+  Gets a single agent. Returns nil if the Agent does not exist.
+  """
+  def get_agent(id), do: Repo.get(Agent, id)
+
+  @doc """
   Gets a single agent by name.
 
   Returns nil if the Agent does not exist.
