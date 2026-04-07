@@ -269,8 +269,7 @@ defmodule Lincoln.Autonomy.Research do
         # Validate and normalize the facts
         normalized =
           facts
-          |> Enum.filter(&is_map/1)
-          |> Enum.filter(fn f -> Map.has_key?(f, "fact") end)
+          |> Enum.filter(fn f -> is_map(f) and Map.has_key?(f, "fact") end)
           |> Enum.map(fn f ->
             %{
               "fact" => Map.get(f, "fact", ""),
@@ -346,9 +345,7 @@ defmodule Lincoln.Autonomy.Research do
     summary_tokens = div(String.length(summary), 4)
 
     facts_text =
-      facts
-      |> Enum.map(fn f -> f["fact"] || "" end)
-      |> Enum.join(" ")
+      Enum.map_join(facts, " ", fn f -> f["fact"] || "" end)
 
     facts_tokens = div(String.length(facts_text), 4)
 

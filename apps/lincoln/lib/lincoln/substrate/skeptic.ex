@@ -56,19 +56,25 @@ defmodule Lincoln.Substrate.Skeptic do
 
   @impl true
   def init(%{agent_id: agent_id} = opts) do
-    agent = Agents.get_agent!(agent_id)
     interval = Map.get(opts, :tick_interval, @tick_interval)
-    schedule_tick(interval)
 
     state = %__MODULE__{
       agent_id: agent_id,
-      agent: agent,
+      agent: nil,
       tick_count: 0,
       last_tick_at: nil,
       tick_interval: interval
     }
 
-    {:ok, state}
+    {:ok, state, {:continue, :load_state}}
+  end
+
+  @impl true
+  def handle_continue(:load_state, state) do
+    agent = Agents.get_agent!(state.agent_id)
+    schedule_tick(state.tick_interval)
+
+    {:noreply, %{state | agent: agent}}
   end
 
   @impl true
@@ -92,6 +98,12 @@ defmodule Lincoln.Substrate.Skeptic do
 
   @impl true
   def handle_info(_msg, state), do: {:noreply, state}
+
+  @impl true
+  def terminate(reason, state) do
+    Logger.info("[Skeptic #{state.agent_id}] Terminating: #{inspect(reason)}")
+    :ok
+  end
 
   # =============================================================================
   # Private — Tick Logic

@@ -5,8 +5,8 @@ defmodule Lincoln.Agents do
   Manages agent lifecycle and provides the entry point for agent-related operations.
   """
   import Ecto.Query
-  alias Lincoln.Repo
   alias Lincoln.Agents.Agent
+  alias Lincoln.Repo
 
   @doc """
   Returns the list of agents.

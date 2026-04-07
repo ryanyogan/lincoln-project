@@ -25,8 +25,8 @@ defmodule Lincoln.Workers.AutonomousLearningWorker do
     max_attempts: 1,
     unique: [period: 30]
 
-  alias Lincoln.{Agents, Autonomy, Beliefs, Memory, Cognition}
-  alias Lincoln.Autonomy.{Research, Evolution, SelfImprovement, TokenBudget, LearningSession}
+  alias Lincoln.{Agents, Autonomy, Beliefs, Cognition, Memory}
+  alias Lincoln.Autonomy.{Evolution, LearningSession, Research, SelfImprovement, TokenBudget}
 
   require Logger
 
@@ -196,8 +196,8 @@ defmodule Lincoln.Workers.AutonomousLearningWorker do
       if beliefs == [] and recent_memories == [] do
         "I am just beginning to learn. I want to understand computers and how they work."
       else
-        belief_text = Enum.map(beliefs, & &1.statement) |> Enum.join("\n- ")
-        memory_text = Enum.map(recent_memories, & &1.content) |> Enum.join("\n- ")
+        belief_text = Enum.map_join(beliefs, "\n- ", & &1.statement)
+        memory_text = Enum.map_join(recent_memories, "\n- ", & &1.content)
 
         """
         My current beliefs:
@@ -368,14 +368,10 @@ defmodule Lincoln.Workers.AutonomousLearningWorker do
       recent_beliefs = Beliefs.list_beliefs(agent, limit: 10)
 
       topics_text =
-        recent_topics
-        |> Enum.map(& &1.topic)
-        |> Enum.join(", ")
+        Enum.map_join(recent_topics, ", ", & &1.topic)
 
       beliefs_text =
-        recent_beliefs
-        |> Enum.map(&"- #{&1.statement} (#{round(&1.confidence * 100)}%)")
-        |> Enum.join("\n")
+        Enum.map_join(recent_beliefs, "\n", &"- #{&1.statement} (#{round(&1.confidence * 100)}%)")
 
       prompt = """
       You are Lincoln, reflecting on your autonomous learning session.
@@ -475,8 +471,7 @@ defmodule Lincoln.Workers.AutonomousLearningWorker do
     error_logs =
       recent_logs
       |> Enum.filter(&(&1.activity_type == "error"))
-      |> Enum.map(& &1.description)
-      |> Enum.join("\n")
+      |> Enum.map_join("\n", & &1.description)
 
     context = %{
       recent_learnings:

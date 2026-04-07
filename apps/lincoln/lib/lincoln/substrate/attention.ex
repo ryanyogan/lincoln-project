@@ -20,6 +20,7 @@ defmodule Lincoln.Substrate.Attention do
   require Logger
 
   alias Lincoln.{Agents, Beliefs, PubSubBroadcaster}
+  alias Lincoln.Substrate.AttentionParams
 
   defstruct [
     :agent_id,
@@ -78,19 +79,24 @@ defmodule Lincoln.Substrate.Attention do
 
   @impl true
   def init(%{agent_id: agent_id}) do
-    agent = Agents.get_agent!(agent_id)
-    attention_params = get_attention_params(agent)
-
     state = %__MODULE__{
       agent_id: agent_id,
-      agent: agent,
-      attention_params: attention_params,
+      agent: nil,
+      attention_params: nil,
       current_focus_id: nil,
       last_scored_at: nil,
       activation_map: %{}
     }
 
-    {:ok, state}
+    {:ok, state, {:continue, :load_state}}
+  end
+
+  @impl true
+  def handle_continue(:load_state, state) do
+    agent = Agents.get_agent!(state.agent_id)
+    attention_params = get_attention_params(agent)
+
+    {:noreply, %{state | agent: agent, attention_params: attention_params}}
   end
 
   @impl true
@@ -124,7 +130,10 @@ defmodule Lincoln.Substrate.Attention do
 
         {best_belief, best_score} = hd(scored)
 
-        new_activation_map = Map.put(state.activation_map, best_belief.id, now)
+        new_activation_map =
+          state.activation_map
+          |> Map.put(best_belief.id, now)
+          |> bound_map(500)
 
         new_state = %{
           state
@@ -190,6 +199,12 @@ defmodule Lincoln.Substrate.Attention do
 
   @impl true
   def handle_info(_msg, state), do: {:noreply, state}
+
+  @impl true
+  def terminate(reason, state) do
+    Logger.info("[Attention #{state.agent_id}] Terminating: #{inspect(reason)}")
+    :ok
+  end
 
   # =============================================================================
   # Scoring
@@ -339,19 +354,28 @@ defmodule Lincoln.Substrate.Attention do
   end
 
   # =============================================================================
+  # Helpers
+  # =============================================================================
+
+  defp bound_map(map, max_size) when map_size(map) <= max_size, do: map
+
+  defp bound_map(map, max_size) do
+    map
+    |> Enum.sort_by(fn {_k, v} -> v end, DateTime)
+    |> Enum.take(max_size)
+    |> Map.new()
+  end
+
+  # =============================================================================
   # Params
   # =============================================================================
 
   defp get_attention_params(agent) do
     raw = agent.attention_params || %{}
+    defaults = AttentionParams.default()
 
-    %{
-      novelty_weight: raw["novelty_weight"] || raw[:novelty_weight] || 0.3,
-      focus_momentum: raw["focus_momentum"] || raw[:focus_momentum] || 0.5,
-      interrupt_threshold: raw["interrupt_threshold"] || raw[:interrupt_threshold] || 0.7,
-      boredom_decay: raw["boredom_decay"] || raw[:boredom_decay] || 0.1,
-      depth_preference: raw["depth_preference"] || raw[:depth_preference] || 0.5,
-      tick_interval_ms: raw["tick_interval_ms"] || raw[:tick_interval_ms] || 5_000
-    }
+    Map.new(defaults, fn {key, default_val} ->
+      {key, raw[to_string(key)] || raw[key] || default_val}
+    end)
   end
 end

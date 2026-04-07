@@ -11,7 +11,7 @@ defmodule Lincoln.Events.Emitter do
   require Logger
 
   alias Lincoln.Events
-  alias Lincoln.Events.Cache
+  alias Lincoln.Events.{Cache, Handlers}
   alias Lincoln.PubSubBroadcaster
 
   @doc """
@@ -38,7 +38,7 @@ defmodule Lincoln.Events.Emitter do
 
         # Run immediate handlers (async)
         Task.start(fn ->
-          Lincoln.Events.Handlers.handle(event)
+          Handlers.handle(event)
         end)
 
         Logger.debug("Event emitted: #{type} for agent #{agent.id}")

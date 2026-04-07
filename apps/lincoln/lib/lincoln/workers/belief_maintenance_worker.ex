@@ -26,14 +26,12 @@ defmodule Lincoln.Workers.BeliefMaintenanceWorker do
   def perform(%Oban.Job{args: args}) do
     agent_id = args["agent_id"]
 
-    cond do
-      agent_id ->
-        agent = Agents.get_agent!(agent_id)
-        maintain_beliefs(agent)
-
-      true ->
-        Agents.list_active_agents()
-        |> Enum.each(&maintain_beliefs/1)
+    if agent_id do
+      agent = Agents.get_agent!(agent_id)
+      maintain_beliefs(agent)
+    else
+      Agents.list_active_agents()
+      |> Enum.each(&maintain_beliefs/1)
     end
 
     :ok
@@ -43,18 +41,15 @@ defmodule Lincoln.Workers.BeliefMaintenanceWorker do
     Logger.info("Starting belief maintenance for agent: #{agent.name}")
 
     beliefs = Beliefs.list_beliefs(agent)
-    cutoff = DateTime.add(DateTime.utc_now(), -@decay_threshold_days * 86400, :second)
+    cutoff = DateTime.add(DateTime.utc_now(), -@decay_threshold_days * 86_400, :second)
 
     # Decay unreinforced beliefs
     decayed_count =
       beliefs
       |> Enum.filter(fn belief ->
-        is_nil(belief.last_reinforced_at) or
-          DateTime.compare(belief.last_reinforced_at, cutoff) == :lt
-      end)
-      |> Enum.filter(fn belief ->
-        # Don't decay highly entrenched or very confident beliefs
-        belief.entrenchment < 5 and belief.confidence > 0.1
+        (is_nil(belief.last_reinforced_at) or
+           DateTime.compare(belief.last_reinforced_at, cutoff) == :lt) and
+          belief.entrenchment < 5 and belief.confidence > 0.1
       end)
       |> Enum.reduce(0, fn belief, count ->
         new_confidence = max(0.1, belief.confidence - @decay_rate)

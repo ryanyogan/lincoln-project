@@ -1,4 +1,6 @@
 defmodule Mix.Tasks.Lincoln.TestLlm do
+  alias Lincoln.Adapters.LLM
+
   @moduledoc """
   Tests the connection to the Claude API.
 
@@ -43,7 +45,7 @@ defmodule Mix.Tasks.Lincoln.TestLlm do
 
     start_time = System.monotonic_time(:millisecond)
 
-    case Lincoln.Adapters.LLM.Anthropic.complete(
+    case LLM.Anthropic.complete(
            "Respond with exactly: Hello Lincoln!",
            system: "You are a helpful assistant. Follow instructions precisely."
          ) do

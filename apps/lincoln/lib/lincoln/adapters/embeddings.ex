@@ -92,11 +92,8 @@ defmodule Lincoln.Adapters.Embeddings.PythonService do
 
   @impl true
   def semantic_hash(embedding) do
-    # Create a hash by quantizing the embedding to a binary string
-    # This allows quick comparison for near-duplicate detection
     embedding
-    |> Enum.map(fn x -> if x >= 0, do: "1", else: "0" end)
-    |> Enum.join()
+    |> Enum.map_join(fn x -> if x >= 0, do: "1", else: "0" end)
     |> then(&:crypto.hash(:md5, &1))
     |> Base.encode16(case: :lower)
   end
@@ -151,8 +148,7 @@ defmodule Lincoln.Adapters.Embeddings.Mock do
   @impl true
   def semantic_hash(embedding) do
     embedding
-    |> Enum.map(fn x -> if x >= 0, do: "1", else: "0" end)
-    |> Enum.join()
+    |> Enum.map_join(fn x -> if x >= 0, do: "1", else: "0" end)
     |> then(&:crypto.hash(:md5, &1))
     |> Base.encode16(case: :lower)
   end

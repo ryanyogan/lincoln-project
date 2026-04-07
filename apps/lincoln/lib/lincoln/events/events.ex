@@ -8,8 +8,8 @@ defmodule Lincoln.Events do
   """
 
   import Ecto.Query
-  alias Lincoln.Repo
   alias Lincoln.Events.{Event, ImprovementOpportunity}
+  alias Lincoln.Repo
 
   # =============================================================================
   # Events CRUD

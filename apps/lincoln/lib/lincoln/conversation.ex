@@ -17,8 +17,8 @@ defmodule Lincoln.Conversation do
 
   import Ecto.Query, warn: false
 
-  alias Lincoln.Repo
   alias Lincoln.Conversation.{Conversation, Message}
+  alias Lincoln.Repo
 
   # ============================================================================
   # Conversation Functions

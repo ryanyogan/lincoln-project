@@ -12,9 +12,10 @@ defmodule Lincoln.Autonomy do
   """
 
   import Ecto.Query
-  alias Lincoln.Repo
-  alias Lincoln.Autonomy.{LearningSession, ResearchTopic, WebSource, CodeChange, LearningLog}
+  alias Lincoln.Autonomy.{CodeChange, LearningLog, LearningSession, ResearchTopic, WebSource}
   alias Lincoln.PubSubBroadcaster
+  alias Lincoln.Repo
+  alias Lincoln.Workers.AutonomousLearningWorker
 
   require Logger
 
@@ -93,7 +94,7 @@ defmodule Lincoln.Autonomy do
 
   defp enqueue_learning_worker(session) do
     %{session_id: session.id, cycle: 1}
-    |> Lincoln.Workers.AutonomousLearningWorker.new()
+    |> AutonomousLearningWorker.new()
     |> Oban.insert()
   end
 

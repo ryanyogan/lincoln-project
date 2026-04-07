@@ -33,8 +33,8 @@ defmodule Lincoln.Cognition.ThoughtLoop do
 
   require Logger
 
+  alias Lincoln.Events.{AdaptiveThresholds, Emitter}
   alias Lincoln.Learning.BeliefFormation
-  alias Lincoln.Events.{Emitter, AdaptiveThresholds}
 
   @max_iterations 3
   @confidence_threshold 0.6
@@ -399,12 +399,11 @@ defmodule Lincoln.Cognition.ThoughtLoop do
 
   defp build_reconsider_prompt(state, loop_state, issues) do
     issue_guidance =
-      Enum.map(issues, fn
+      Enum.map_join(issues, "\n", fn
         :low_consistency -> "- Ensure your response aligns with your beliefs"
         :high_uncertainty -> "- Acknowledge uncertainty where appropriate"
         :low_relevance -> "- Make sure you directly address the user's message"
       end)
-      |> Enum.join("\n")
 
     """
     You are Lincoln, revising your response draft.
@@ -448,13 +447,10 @@ defmodule Lincoln.Cognition.ThoughtLoop do
   defp maybe_add_uncertainty_context(state, _loop_state), do: state
 
   defp get_confidence_profile do
-    # Try to get profile from BeliefFormation, fall back to default
-    try do
-      BeliefFormation.start_confidence_tracking()
-      BeliefFormation.get_decision_making_confidence_profile()
-    rescue
-      _ -> %{uncertainty_adjusted_confidence: 0.5, decision_reliability: :unknown}
-    end
+    BeliefFormation.start_confidence_tracking()
+    BeliefFormation.get_decision_making_confidence_profile()
+  rescue
+    _ -> %{uncertainty_adjusted_confidence: 0.5, decision_reliability: :unknown}
   end
 
   defp add_trace(loop_state, message) do
@@ -472,8 +468,7 @@ defmodule Lincoln.Cognition.ThoughtLoop do
   defp format_memories(memories) do
     memories
     |> Enum.take(3)
-    |> Enum.map(fn m -> "- #{truncate(m.content, 100)}" end)
-    |> Enum.join("\n")
+    |> Enum.map_join("\n", fn m -> "- #{truncate(m.content, 100)}" end)
   end
 
   defp format_beliefs([]), do: "None"
@@ -481,10 +476,9 @@ defmodule Lincoln.Cognition.ThoughtLoop do
   defp format_beliefs(beliefs) do
     beliefs
     |> Enum.take(3)
-    |> Enum.map(fn b ->
+    |> Enum.map_join("\n", fn b ->
       "- #{truncate(b.statement, 80)} (#{round(b.confidence * 100)}% confident)"
     end)
-    |> Enum.join("\n")
   end
 
   defp truncate(str, len) when is_binary(str) do

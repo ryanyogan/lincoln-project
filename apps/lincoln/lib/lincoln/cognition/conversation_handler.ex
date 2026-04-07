@@ -345,17 +345,13 @@ defmodule Lincoln.Cognition.ConversationHandler do
 
     # Determine the target file
     {target_file, file_content} =
-      cond do
-        # Specific file requested
-        file != nil ->
-          case find_and_read_code(file) do
-            {:ok, path, content} -> {path, content}
-            {:error, _} -> {nil, nil}
-          end
-
-        # No file specified - Lincoln should choose based on description
-        true ->
-          suggest_modification_target(description, llm)
+      if file != nil do
+        case find_and_read_code(file) do
+          {:ok, path, content} -> {path, content}
+          {:error, _} -> {nil, nil}
+        end
+      else
+        suggest_modification_target(description, llm)
       end
 
     if target_file do
@@ -595,24 +591,21 @@ defmodule Lincoln.Cognition.ConversationHandler do
             "user_correction"
           ])
       )
-      |> Enum.map(&"- #{&1.type}: #{inspect(&1.context)}")
       |> Enum.take(5)
-      |> Enum.join("\n")
+      |> Enum.map_join("\n", &"- #{&1.type}: #{inspect(&1.context)}")
 
     errors =
       recent_events
       |> Enum.filter(&(&1.type in ["error_occurred", "research_failed"]))
-      |> Enum.map(&"- #{&1.type}: #{inspect(&1.context)}")
       |> Enum.take(5)
-      |> Enum.join("\n")
+      |> Enum.map_join("\n", &"- #{&1.type}: #{inspect(&1.context)}")
 
     # Get recent code changes Lincoln has made
     recent_changes = Autonomy.list_recent_code_changes(agent, limit: 5)
 
     changes_summary =
       recent_changes
-      |> Enum.map(&"- #{&1.file_path}: #{&1.description}")
-      |> Enum.join("\n")
+      |> Enum.map_join("\n", &"- #{&1.file_path}: #{&1.description}")
 
     # Get codebase statistics
     stats = SelfAwareness.stats()
@@ -621,8 +614,7 @@ defmodule Lincoln.Cognition.ConversationHandler do
     modules =
       SelfAwareness.Introspection.modules()
       |> Enum.filter(&String.contains?(to_string(&1), "Lincoln.Cognition"))
-      |> Enum.map(&"  - #{&1}")
-      |> Enum.join("\n")
+      |> Enum.map_join("\n", &"  - #{&1}")
 
     # Read a key cognitive file so Lincoln can see actual code
     key_file_content =
@@ -635,8 +627,7 @@ defmodule Lincoln.Cognition.ConversationHandler do
     todos =
       SelfAwareness.Search.find_todos()
       |> Enum.take(5)
-      |> Enum.map(fn {path, line, content} -> "  - #{path}:#{line}: #{content}" end)
-      |> Enum.join("\n")
+      |> Enum.map_join("\n", fn {path, line, content} -> "  - #{path}:#{line}: #{content}" end)
 
     %{
       recent_learnings: """
@@ -761,7 +752,7 @@ defmodule Lincoln.Cognition.ConversationHandler do
     end
 
     # Emit event if contradictions detected
-    if length(contradictions) > 0 do
+    if contradictions != [] do
       Emitter.emit(state.agent, :belief_contradiction, %{
         conversation_id: state.conversation.id,
         contradiction_count: length(contradictions),
@@ -778,7 +769,7 @@ defmodule Lincoln.Cognition.ConversationHandler do
       state
       |> Map.put(:perception, perception)
       |> Map.put(:contradictions, contradictions)
-      |> update_metadata(:contradiction_detected, length(contradictions) > 0)
+      |> update_metadata(:contradiction_detected, contradictions != [])
 
     {:ok, state}
   end
@@ -1081,14 +1072,12 @@ defmodule Lincoln.Cognition.ConversationHandler do
     changes =
       if code_changes != [] do
         formatted =
-          code_changes
-          |> Enum.map(fn c ->
+          Enum.map_join(code_changes, "\n", fn c ->
             date =
               if c.committed_at, do: Calendar.strftime(c.committed_at, "%b %d"), else: "recent"
 
             "- #{date}: #{c.description}"
           end)
-          |> Enum.join("\n")
 
         """
 
@@ -1289,8 +1278,7 @@ defmodule Lincoln.Cognition.ConversationHandler do
 
   defp format_commit_history(changes) do
     formatted =
-      changes
-      |> Enum.map(fn change ->
+      Enum.map_join(changes, "\n", fn change ->
         date =
           if change.committed_at do
             Calendar.strftime(change.committed_at, "%Y-%m-%d %H:%M")
@@ -1322,7 +1310,6 @@ defmodule Lincoln.Cognition.ConversationHandler do
         - Change type: #{change.change_type}#{diff_preview}
         """
       end)
-      |> Enum.join("\n")
 
     """
     ## Your Self-Modifications
@@ -1347,28 +1334,22 @@ defmodule Lincoln.Cognition.ConversationHandler do
   end
 
   defp format_memories(memories) when is_list(memories) do
-    memories
-    |> Enum.map(fn m -> "- #{m.content}" end)
-    |> Enum.join("\n")
+    Enum.map_join(memories, "\n", fn m -> "- #{m.content}" end)
   end
 
   defp format_beliefs(beliefs) when is_list(beliefs) do
-    beliefs
-    |> Enum.map(fn b ->
+    Enum.map_join(beliefs, "\n", fn b ->
       confidence = round(b.confidence * 100)
       "- #{b.statement} (#{confidence}% confident, source: #{b.source_type})"
     end)
-    |> Enum.join("\n")
   end
 
   defp format_contradictions(state) do
     if state.contradictions != [] do
       contradiction_text =
-        state.contradictions
-        |> Enum.map(fn %{belief: b, contradiction_type: type} ->
+        Enum.map_join(state.contradictions, "\n", fn %{belief: b, contradiction_type: type} ->
           "- Your belief \"#{truncate(b.statement, 50)}\" may be #{type} contradicted"
         end)
-        |> Enum.join("\n")
 
       """
       ## Potential Contradictions Detected

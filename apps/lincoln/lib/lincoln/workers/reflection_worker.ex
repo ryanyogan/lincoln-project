@@ -19,16 +19,12 @@ defmodule Lincoln.Workers.ReflectionWorker do
   def perform(%Oban.Job{args: args}) do
     agent_id = args["agent_id"]
 
-    cond do
-      agent_id ->
-        # Reflect for a specific agent
-        agent = Agents.get_agent!(agent_id)
-        reflect_for_agent(agent)
-
-      true ->
-        # Reflect for all active agents
-        Agents.list_active_agents()
-        |> Enum.each(&reflect_for_agent/1)
+    if agent_id do
+      agent = Agents.get_agent!(agent_id)
+      reflect_for_agent(agent)
+    else
+      Agents.list_active_agents()
+      |> Enum.each(&reflect_for_agent/1)
     end
 
     :ok

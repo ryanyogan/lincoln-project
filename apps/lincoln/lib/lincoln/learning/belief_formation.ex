@@ -1,9 +1,15 @@
-# Self-created by Lincoln for adaptive belief formation and metacognitive awareness
-# This module implements confidence scoring and belief quality assessment
-# Self-modified: Enhanced with active belief confidence tracking and uncertainty quantification for improved metacognitive reasoning
-# Self-modified: Added comprehensive belief revision mechanisms and enhanced confidence scoring for better knowledge management
-# Self-modified: Enhanced confidence scoring precision and added belief uncertainty tracking for better decision-making under uncertainty
-# Self-modified: Completed confidence precision scoring and uncertainty component calculations for comprehensive belief assessment
+# Self-created by Lincoln for adaptive belief formation and
+# metacognitive awareness. Implements confidence scoring and
+# belief quality assessment.
+#
+# Self-modified: Enhanced with active belief confidence tracking
+# and uncertainty quantification.
+# Self-modified: Added belief revision mechanisms and enhanced
+# confidence scoring.
+# Self-modified: Enhanced confidence scoring precision and added
+# belief uncertainty tracking.
+# Self-modified: Completed confidence precision scoring and
+# uncertainty component calculations.
 
 defmodule Lincoln.Learning.BeliefFormation do
   @moduledoc """
@@ -683,7 +689,7 @@ defmodule Lincoln.Learning.BeliefFormation do
 
   defp should_consider_revision?({_topic, formation}) do
     (formation.uncertainty_score || 0) > @revision_threshold or
-      length(formation.contradictions_detected || []) > 0 or
+      (formation.contradictions_detected || []) != [] or
       :high_uncertainty in (formation.metacognitive_flags || [])
   end
 
@@ -703,8 +709,10 @@ defmodule Lincoln.Learning.BeliefFormation do
   end
 
   defp get_revision_type(formation) do
+    contradiction_count = Enum.count(formation.contradictions_detected || [])
+
     cond do
-      length(formation.contradictions_detected || []) > 2 -> :major_revision
+      contradiction_count > 2 -> :major_revision
       (formation.uncertainty_score || 0) > 0.7 -> :evidence_gathering
       true -> :minor_update
     end
@@ -712,7 +720,7 @@ defmodule Lincoln.Learning.BeliefFormation do
 
   defp needs_attention?(formation, threshold) do
     (formation.uncertainty_score || 0) > threshold or
-      length(formation.contradictions_detected || []) > 0 or
+      (formation.contradictions_detected || []) != [] or
       calculate_revision_urgency(formation) > threshold
   end
 
@@ -723,7 +731,7 @@ defmodule Lincoln.Learning.BeliefFormation do
       if (formation.uncertainty_score || 0) > 0.6, do: [:high_uncertainty | issues], else: issues
 
     issues =
-      if length(formation.contradictions_detected || []) > 0,
+      if (formation.contradictions_detected || []) != [],
         do: [:has_contradictions | issues],
         else: issues
 
@@ -853,19 +861,19 @@ defmodule Lincoln.Learning.BeliefFormation do
         (formation.uncertainty_factors.conflicting_evidence || 0) > 0.3
       )
 
-    flags = maybe_add_flag(flags, :novel_domain, is_novel_domain?(formation.topic))
+    flags = maybe_add_flag(flags, :novel_domain, novel_domain?(formation.topic))
 
     Map.put(formation, :metacognitive_flags, flags)
   end
 
-  defp is_novel_domain?(nil), do: false
+  defp novel_domain?(nil), do: false
 
-  defp is_novel_domain?(topic) when is_binary(topic) do
+  defp novel_domain?(topic) when is_binary(topic) do
     novel_indicators = ["experimental", "cutting-edge", "emerging", "theoretical", "speculative"]
     Enum.any?(novel_indicators, &String.contains?(String.downcase(topic), &1))
   end
 
-  defp is_novel_domain?(_), do: false
+  defp novel_domain?(_), do: false
 
   defp adjust_confidence(formation) do
     base = formation.adjusted_confidence || formation.base_confidence

@@ -6,10 +6,10 @@ defmodule Lincoln.Questions do
   Includes loop detection to prevent repetitive questioning.
   """
   import Ecto.Query
-  alias Lincoln.Repo
-  alias Lincoln.Questions.{Question, QuestionCluster, Finding, Interest, ActionLog}
   alias Lincoln.Agents.Agent
   alias Lincoln.PubSubBroadcaster
+  alias Lincoln.Questions.{ActionLog, Finding, Interest, Question, QuestionCluster}
+  alias Lincoln.Repo
 
   # ============================================================================
   # Questions

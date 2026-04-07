@@ -379,7 +379,7 @@ defmodule LincolnWeb.ChatLive do
          "topic_complete"
        ] do
       event = %{
-        type: String.to_atom(log.activity_type),
+        type: log.activity_type,
         icon: activity_icon(log.activity_type),
         message: truncate_text(log.description, 40),
         detail: nil,
@@ -1102,7 +1102,7 @@ defmodule LincolnWeb.ChatLive do
     cond do
       diff < 60 -> "just now"
       diff < 3600 -> "#{div(diff, 60)}m ago"
-      diff < 86400 -> "#{div(diff, 3600)}h ago"
+      diff < 86_400 -> "#{div(diff, 3600)}h ago"
       true -> Calendar.strftime(dt, "%b %d")
     end
   end

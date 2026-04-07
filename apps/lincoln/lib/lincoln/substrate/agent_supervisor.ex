@@ -9,7 +9,7 @@ defmodule Lincoln.Substrate.AgentSupervisor do
 
   use Supervisor
 
-  alias Lincoln.Substrate.{Substrate, Attention, Driver, Skeptic, Resonator}
+  alias Lincoln.Substrate.{Attention, Driver, Resonator, Skeptic, Substrate}
 
   def start_link(agent_id) when is_binary(agent_id) do
     Supervisor.start_link(__MODULE__, agent_id, name: via(agent_id))

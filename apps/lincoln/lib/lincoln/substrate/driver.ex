@@ -146,6 +146,17 @@ defmodule Lincoln.Substrate.Driver do
   @impl true
   def handle_info(_msg, state), do: {:noreply, state}
 
+  @impl true
+  def terminate(reason, state) do
+    Logger.info("[Driver #{state.agent_id}] Terminating: #{inspect(reason)}")
+
+    Enum.each(state.pending_tasks, fn {ref, _tier} ->
+      Process.demonitor(ref, [:flush])
+    end)
+
+    :ok
+  end
+
   # =============================================================================
   # Private
   # =============================================================================
@@ -245,13 +256,17 @@ defmodule Lincoln.Substrate.Driver do
     statement = Map.get(belief, :statement, "unknown")
 
     Task.start(fn ->
-      agent = Lincoln.Agents.get_agent!(agent_id)
+      try do
+        agent = Lincoln.Agents.get_agent!(agent_id)
 
-      Lincoln.Memory.create_memory(agent, %{
-        content: "Reflection on belief '#{statement}': #{text}",
-        memory_type: "reflection",
-        importance: 5
-      })
+        Lincoln.Memory.create_memory(agent, %{
+          content: "Reflection on belief '#{statement}': #{text}",
+          memory_type: "reflection",
+          importance: 5
+        })
+      rescue
+        e -> Logger.warning("[Driver] Background task failed: #{Exception.message(e)}")
+      end
     end)
   end
 

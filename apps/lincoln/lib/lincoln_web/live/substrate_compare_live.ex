@@ -191,7 +191,10 @@ defmodule LincolnWeb.SubstrateCompareLive do
               </p>
             </div>
           </div>
-          <.link navigate={~p"/substrate"} class="btn btn-sm bg-base-300 border-base-content/10 font-terminal text-xs uppercase">
+          <.link
+            navigate={~p"/substrate"}
+            class="btn btn-sm bg-base-300 border-base-content/10 font-terminal text-xs uppercase"
+          >
             <.icon name="hero-cpu-chip" class="size-3.5" /> Single View
           </.link>
         </div>
@@ -432,8 +435,7 @@ defmodule LincolnWeb.SubstrateCompareLive do
               panel_header_border(@color)
             ]}>
               <h2 class="card-title text-sm font-terminal uppercase gap-2">
-                <.icon name="hero-signal" class={["size-4", panel_text_class(@color)]} />
-                Event Stream
+                <.icon name="hero-signal" class={["size-4", panel_text_class(@color)]} /> Event Stream
                 <span class="ml-auto text-[10px] text-base-content/40 font-terminal normal-case">
                   {length(@events)} events
                 </span>
@@ -539,7 +541,7 @@ defmodule LincolnWeb.SubstrateCompareLive do
           <% :driver_action -> %>
             <p class="text-xs font-terminal">
               <span class="text-info">Action</span>
-              <span class="text-base-content/60"> {inspect(@event.action)}</span>
+              <span class="text-base-content/60">{inspect(@event.action)}</span>
             </p>
           <% _ -> %>
             <p class="text-xs font-terminal text-base-content/50">Event</p>

@@ -6,6 +6,8 @@ defmodule Lincoln.Substrate.ConversationBridge do
   Call `notify/3` after `ConversationHandler.process_message/3` returns.
   """
 
+  require Logger
+
   alias Lincoln.Substrate
 
   @doc """
@@ -24,10 +26,13 @@ defmodule Lincoln.Substrate.ConversationBridge do
       occurred_at: DateTime.utc_now()
     }
 
-    # Silently skip if Substrate isn't running
     case Substrate.send_event(agent_id, event) do
-      :ok -> :ok
-      {:error, :not_running} -> :ok
+      :ok ->
+        :ok
+
+      {:error, :not_running} ->
+        Logger.debug("[ConversationBridge] Substrate not running for agent #{agent_id}, skipping")
+        :ok
     end
   end
 end

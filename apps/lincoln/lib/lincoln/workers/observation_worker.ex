@@ -8,10 +8,10 @@ defmodule Lincoln.Workers.ObservationWorker do
 
   require Logger
 
-  alias Lincoln.Events
-  alias Lincoln.Events.{Emitter, ImprovementQueue}
   alias Lincoln.Autonomy
   alias Lincoln.{Beliefs, Memory}
+  alias Lincoln.Events
+  alias Lincoln.Events.{Emitter, ImprovementQueue}
 
   @impl true
   def perform(%Oban.Job{args: %{"opportunity_id" => opp_id, "code_change_id" => change_id}}) do

@@ -10,8 +10,8 @@ defmodule Lincoln.Events.ImprovementOpportunity do
   import Ecto.Changeset
 
   alias Lincoln.Agents.Agent
-  alias Lincoln.Events.Event
   alias Lincoln.Autonomy.CodeChange
+  alias Lincoln.Events.Event
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id

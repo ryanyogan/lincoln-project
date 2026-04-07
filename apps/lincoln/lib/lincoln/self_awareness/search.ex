@@ -173,7 +173,7 @@ defmodule Lincoln.SelfAwareness.Search do
       # => %{"lib/lincoln/cognition/thought_loop.ex" => 15, ...}
   """
   def count_occurrences(pattern) do
-    grep(pattern, limit: 10000)
+    grep(pattern, limit: 10_000)
     |> Enum.group_by(fn {path, _line_no, _content} -> path end)
     |> Enum.map(fn {path, matches} -> {path, length(matches)} end)
     |> Enum.into(%{})

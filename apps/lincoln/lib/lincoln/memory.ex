@@ -6,10 +6,10 @@ defmodule Lincoln.Memory do
   Implements a retrieval system based on the Generative Agents paper.
   """
   import Ecto.Query
-  alias Lincoln.Repo
-  alias Lincoln.Memory.Memory
   alias Lincoln.Agents.Agent
+  alias Lincoln.Memory.Memory
   alias Lincoln.PubSubBroadcaster
+  alias Lincoln.Repo
 
   # ============================================================================
   # Memory CRUD

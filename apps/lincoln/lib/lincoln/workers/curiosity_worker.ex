@@ -18,14 +18,12 @@ defmodule Lincoln.Workers.CuriosityWorker do
   def perform(%Oban.Job{args: args}) do
     agent_id = args["agent_id"]
 
-    cond do
-      agent_id ->
-        agent = Agents.get_agent!(agent_id)
-        curiosity_for_agent(agent)
-
-      true ->
-        Agents.list_active_agents()
-        |> Enum.each(&curiosity_for_agent/1)
+    if agent_id do
+      agent = Agents.get_agent!(agent_id)
+      curiosity_for_agent(agent)
+    else
+      Agents.list_active_agents()
+      |> Enum.each(&curiosity_for_agent/1)
     end
 
     :ok

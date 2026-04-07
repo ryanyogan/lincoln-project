@@ -9,8 +9,8 @@ defmodule LincolnWeb.SubstrateLive do
   use LincolnWeb, :live_view
 
   alias Lincoln.{Agents, Substrate}
-  alias Lincoln.Substrate.AttentionParams
   alias Lincoln.PubSubBroadcaster
+  alias Lincoln.Substrate.AttentionParams
 
   @impl true
   def mount(_params, _session, socket) do
@@ -279,7 +279,9 @@ defmodule LincolnWeb.SubstrateLive do
                     <div class="mt-4 p-3 bg-base-300 border border-accent/30">
                       <div class="flex items-center gap-2 mb-2">
                         <span class="node-indicator active"></span>
-                        <span class="text-xs font-terminal uppercase text-base-content/60">Current Focus</span>
+                        <span class="text-xs font-terminal uppercase text-base-content/60">
+                          Current Focus
+                        </span>
                       </div>
                       <%= if @substrate_state.current_focus do %>
                         <p class="text-sm font-terminal text-accent leading-relaxed">
@@ -547,7 +549,10 @@ defmodule LincolnWeb.SubstrateLive do
                         <%= for entry <- @recent_contradictions do %>
                           <div class="p-2 bg-base-300 border border-error/10 hover:border-error/30 transition-colors">
                             <div class="text-[10px] text-error/70 font-terminal mb-1">
-                              {format_time(entry.detected_at)} · confidence: {Float.round(entry.relationship.confidence, 2)}
+                              {format_time(entry.detected_at)} · confidence: {Float.round(
+                                entry.relationship.confidence,
+                                2
+                              )}
                             </div>
                             <div class="text-xs font-terminal text-base-content/70 truncate">
                               {entry.source.statement}
@@ -571,8 +576,7 @@ defmodule LincolnWeb.SubstrateLive do
                 <div class="card-body p-0">
                   <div class="px-4 py-3 border-b-2 border-success/30 bg-base-300">
                     <h2 class="card-title text-sm font-terminal uppercase gap-2">
-                      <.icon name="hero-bolt" class="size-4 text-success" />
-                      Resonator — Cascades
+                      <.icon name="hero-bolt" class="size-4 text-success" /> Resonator — Cascades
                     </h2>
                   </div>
                   <div class="p-3 max-h-[24rem] overflow-y-auto">
@@ -708,7 +712,7 @@ defmodule LincolnWeb.SubstrateLive do
       <% :driver_action -> %>
         <p class="text-xs font-terminal">
           <span class="text-info">Action</span>
-          <span class="text-base-content/60"> {inspect(@event.action)}</span>
+          <span class="text-base-content/60">{inspect(@event.action)}</span>
         </p>
       <% _ -> %>
         <p class="text-xs font-terminal text-base-content/50">Unknown event</p>
@@ -765,19 +769,15 @@ defmodule LincolnWeb.SubstrateLive do
   defp truncate(_, _), do: ""
 
   defp build_params_form(agent) do
-    params = agent.attention_params || %{}
+    raw = agent.attention_params || %{}
+    defaults = AttentionParams.default()
 
-    string_params = %{
-      "novelty_weight" => to_string(params["novelty_weight"] || params[:novelty_weight] || 0.3),
-      "focus_momentum" => to_string(params["focus_momentum"] || params[:focus_momentum] || 0.5),
-      "interrupt_threshold" =>
-        to_string(params["interrupt_threshold"] || params[:interrupt_threshold] || 0.7),
-      "boredom_decay" => to_string(params["boredom_decay"] || params[:boredom_decay] || 0.1),
-      "depth_preference" =>
-        to_string(params["depth_preference"] || params[:depth_preference] || 0.5),
-      "tick_interval_ms" =>
-        to_string(params["tick_interval_ms"] || params[:tick_interval_ms] || 5_000)
-    }
+    string_params =
+      Map.new(defaults, fn {key, default_val} ->
+        str_key = to_string(key)
+        val = raw[str_key] || raw[key] || default_val
+        {str_key, to_string(val)}
+      end)
 
     to_form(string_params, as: :attention_params)
   end

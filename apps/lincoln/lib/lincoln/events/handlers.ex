@@ -6,9 +6,9 @@ defmodule Lincoln.Events.Handlers do
 
   require Logger
 
+  alias Lincoln.Agents
   alias Lincoln.Events
   alias Lincoln.Events.Cache
-  alias Lincoln.Agents
 
   @doc """
   Handle an event - check for patterns and queue improvements if needed.
@@ -153,7 +153,9 @@ defmodule Lincoln.Events.Handlers do
     # Don't queue if there's already a pending opportunity for this pattern
     existing = Events.list_improvement_opportunities(agent, status: "pending")
 
-    unless Enum.any?(existing, fn opp -> opp.pattern == pattern end) do
+    if Enum.any?(existing, fn opp -> opp.pattern == pattern end) do
+      Logger.debug("Improvement opportunity already exists for pattern: #{pattern}")
+    else
       attrs = %{
         agent_id: agent.id,
         trigger_event_id: trigger_event.id,
@@ -175,8 +177,7 @@ defmodule Lincoln.Events.Handlers do
           Logger.error("Failed to queue improvement: #{inspect(changeset.errors)}")
           {:error, changeset}
       end
-    else
-      Logger.debug("Improvement opportunity already exists for pattern: #{pattern}")
+
       :already_exists
     end
   end

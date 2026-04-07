@@ -1,8 +1,8 @@
 defmodule Lincoln.Substrate.ResonatorTest do
   use Lincoln.DataCase
 
-  alias Lincoln.Substrate.Resonator
   alias Lincoln.{Agents, Beliefs}
+  alias Lincoln.Substrate.Resonator
 
   setup do
     {:ok, agent} = Agents.create_agent(%{name: "Resonator Test #{System.unique_integer()}"})
@@ -99,7 +99,7 @@ defmodule Lincoln.Substrate.ResonatorTest do
       first_belief = hd(beliefs)
       supports = Beliefs.find_support_cluster(agent, first_belief.id)
 
-      assert length(supports) >= 1
+      assert supports != []
     end
 
     test "does not duplicate relationships on repeated ticks", %{agent: agent} do

@@ -14,6 +14,7 @@ defmodule Lincoln.Substrate.Substrate do
   require Logger
 
   alias Lincoln.{Agents, Beliefs, PubSubBroadcaster}
+  alias Lincoln.Substrate.Trajectory
 
   @tick_interval 5_000
 
@@ -59,17 +60,12 @@ defmodule Lincoln.Substrate.Substrate do
 
   @impl true
   def init(%{agent_id: agent_id} = opts) do
-    agent = Agents.get_agent!(agent_id)
-    beliefs = Beliefs.list_beliefs(agent, limit: 10, status: "active")
-    current_focus = List.first(beliefs)
     interval = Map.get(opts, :tick_interval, @tick_interval)
-
-    schedule_tick(interval)
 
     state = %__MODULE__{
       agent_id: agent_id,
-      agent: agent,
-      current_focus: current_focus,
+      agent: nil,
+      current_focus: nil,
       activation_map: %{},
       pending_events: [],
       tick_count: 0,
@@ -78,7 +74,18 @@ defmodule Lincoln.Substrate.Substrate do
       started_at: DateTime.utc_now()
     }
 
-    {:ok, state}
+    {:ok, state, {:continue, :load_state}}
+  end
+
+  @impl true
+  def handle_continue(:load_state, state) do
+    agent = Agents.get_agent!(state.agent_id)
+    beliefs = Beliefs.list_beliefs(agent, limit: 10, status: "active")
+    current_focus = List.first(beliefs)
+
+    schedule_tick(state.tick_interval)
+
+    {:noreply, %{state | agent: agent, current_focus: current_focus}}
   end
 
   @impl true
@@ -88,7 +95,7 @@ defmodule Lincoln.Substrate.Substrate do
 
   @impl true
   def handle_cast({:event, event}, state) do
-    pending = [event | state.pending_events] |> Enum.take(100)
+    pending = (state.pending_events ++ [event]) |> Enum.take(100)
     {:noreply, %{state | pending_events: pending}}
   end
 
@@ -105,14 +112,17 @@ defmodule Lincoln.Substrate.Substrate do
       {:tick, new_state.tick_count, new_state.current_focus}
     )
 
-    # Fire-and-forget trajectory recording — non-critical, OK to fail silently
     Task.start(fn ->
-      Lincoln.Substrate.Trajectory.record_event(state.agent_id, %{
-        type: :tick,
-        tick_count: new_state.tick_count,
-        current_focus_id: new_state.current_focus && new_state.current_focus.id,
-        pending_events_count: length(new_state.pending_events)
-      })
+      try do
+        Trajectory.record_event(state.agent_id, %{
+          type: :tick,
+          tick_count: new_state.tick_count,
+          current_focus_id: new_state.current_focus && new_state.current_focus.id,
+          pending_events_count: length(new_state.pending_events)
+        })
+      rescue
+        e -> Logger.warning("[Substrate] Trajectory recording failed: #{Exception.message(e)}")
+      end
     end)
 
     schedule_tick(state.tick_interval)
@@ -121,6 +131,12 @@ defmodule Lincoln.Substrate.Substrate do
 
   @impl true
   def handle_info(_msg, state), do: {:noreply, state}
+
+  @impl true
+  def terminate(reason, state) do
+    Logger.info("[Substrate #{state.agent_id}] Terminating: #{inspect(reason)}")
+    :ok
+  end
 
   # =============================================================================
   # Private — Tick Logic

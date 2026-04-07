@@ -11,8 +11,8 @@ defmodule LincolnWeb.DashboardLive do
   """
   use LincolnWeb, :live_view
 
-  alias Lincoln.{Agents, Beliefs, Memory, Questions}
   alias Lincoln.Adapters.LLM
+  alias Lincoln.{Agents, Beliefs, Memory, Questions}
 
   @impl true
   def mount(_params, _session, socket) do

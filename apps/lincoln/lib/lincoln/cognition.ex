@@ -11,8 +11,8 @@ defmodule Lincoln.Cognition do
   Named after Lincoln Six Echo's cognitive awakening in "The Island".
   """
 
+  alias Lincoln.Adapters.{Embeddings, LLM}
   alias Lincoln.{Beliefs, Memory, Questions}
-  alias Lincoln.Adapters.{LLM, Embeddings}
 
   # ============================================================================
   # Adapter Resolution (Runtime for Mox compatibility)
@@ -67,16 +67,14 @@ defmodule Lincoln.Cognition do
     {:ok, candidates}
   end
 
-  defp generate_insights(memories, _llm) when length(memories) < 3 do
+  defp generate_insights(memories, _llm) when is_list(memories) and length(memories) < 3 do
     # Not enough material for reflection
     {:ok, []}
   end
 
   defp generate_insights(memories, llm) do
     memory_text =
-      memories
-      |> Enum.map(fn m -> "- #{m.content}" end)
-      |> Enum.join("\n")
+      Enum.map_join(memories, "\n", fn m -> "- #{m.content}" end)
 
     prompt = """
     You are a reflective agent examining your recent experiences.
@@ -209,32 +207,32 @@ defmodule Lincoln.Cognition do
     parts = []
 
     parts =
-      if length(context.recent_memories) > 0 do
-        memories = Enum.map(context.recent_memories, & &1.content) |> Enum.join("\n- ")
+      if context.recent_memories != [] do
+        memories = Enum.map_join(context.recent_memories, "\n- ", & &1.content)
         ["Recent memories:\n- #{memories}" | parts]
       else
         parts
       end
 
     parts =
-      if length(context.open_questions) > 0 do
-        questions = Enum.map(context.open_questions, & &1.question) |> Enum.join("\n- ")
+      if context.open_questions != [] do
+        questions = Enum.map_join(context.open_questions, "\n- ", & &1.question)
         ["Open questions:\n- #{questions}" | parts]
       else
         parts
       end
 
     parts =
-      if length(context.interests) > 0 do
-        interests = Enum.map(context.interests, & &1.topic) |> Enum.join(", ")
+      if context.interests != [] do
+        interests = Enum.map_join(context.interests, ", ", & &1.topic)
         ["Interests: #{interests}" | parts]
       else
         parts
       end
 
     parts =
-      if length(context.beliefs) > 0 do
-        beliefs = Enum.map(context.beliefs, & &1.statement) |> Enum.join("\n- ")
+      if context.beliefs != [] do
+        beliefs = Enum.map_join(context.beliefs, "\n- ", & &1.statement)
         ["Current beliefs:\n- #{beliefs}" | parts]
       else
         parts
@@ -289,8 +287,7 @@ defmodule Lincoln.Cognition do
         belief = Beliefs.get_belief!(strongest_match.id)
         Beliefs.strengthen_belief(belief, evidence || content)
 
-      # Somewhat similar beliefs - check for contradiction
-      length(existing_similar) > 0 ->
+      existing_similar != [] ->
         check_and_resolve_contradictions(
           agent,
           content,
@@ -317,9 +314,9 @@ defmodule Lincoln.Cognition do
     llm = llm_adapter(opts)
 
     similar_text =
-      similar_beliefs
-      |> Enum.map(fn b -> "- #{b.statement} (confidence: #{b.confidence})" end)
-      |> Enum.join("\n")
+      Enum.map_join(similar_beliefs, "\n", fn b ->
+        "- #{b.statement} (confidence: #{b.confidence})"
+      end)
 
     prompt = """
     Compare this new potential belief:
@@ -356,7 +353,7 @@ defmodule Lincoln.Cognition do
 
       {:ok, %{"relationship" => "SUPERSEDES"}} ->
         # Supersede the most similar belief
-        if length(similar_beliefs) > 0 do
+        if similar_beliefs != [] do
           old_belief = Beliefs.get_belief!(hd(similar_beliefs).id)
 
           Beliefs.supersede_belief(

@@ -207,10 +207,10 @@ defmodule Lincoln.Autonomy.Evolution do
   Allows all .ex/.exs/.py files except protected ones.
   """
   def can_modify?(relative_path) do
-    is_code_file?(relative_path) && relative_path not in @protected_files
+    code_file?(relative_path) && relative_path not in @protected_files
   end
 
-  defp is_code_file?(path) do
+  defp code_file?(path) do
     String.ends_with?(path, [".ex", ".exs", ".py"])
   end
 
@@ -218,9 +218,7 @@ defmodule Lincoln.Autonomy.Evolution do
   Proposes a code change with LLM-generated implementation.
   """
   def propose_change(agent, session, file_path, description, reasoning, llm) do
-    unless can_modify?(file_path) do
-      {:error, :protected_file}
-    else
+    if can_modify?(file_path) do
       # Read current content
       original_content =
         case read_file(file_path) do
@@ -289,6 +287,8 @@ defmodule Lincoln.Autonomy.Evolution do
         error ->
           error
       end
+    else
+      {:error, :protected_file}
     end
   end
 
@@ -395,8 +395,7 @@ defmodule Lincoln.Autonomy.Evolution do
     # New file - show all as additions
     new_content
     |> String.split("\n")
-    |> Enum.map(&("+ " <> &1))
-    |> Enum.join("\n")
+    |> Enum.map_join("\n", &("+ " <> &1))
   end
 
   defp generate_diff(old_content, new_content) do

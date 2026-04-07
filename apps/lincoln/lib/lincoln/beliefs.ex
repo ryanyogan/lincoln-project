@@ -6,10 +6,10 @@ defmodule Lincoln.Beliefs do
   Implements concepts from the AGM belief revision framework.
   """
   import Ecto.Query
-  alias Lincoln.Repo
-  alias Lincoln.Beliefs.{Belief, BeliefRevision, BeliefRelationship}
   alias Lincoln.Agents.Agent
+  alias Lincoln.Beliefs.{Belief, BeliefRelationship, BeliefRevision}
   alias Lincoln.PubSubBroadcaster
+  alias Lincoln.Repo
 
   # ============================================================================
   # Belief CRUD
@@ -387,6 +387,7 @@ defmodule Lincoln.Beliefs do
   def find_all_relationships(%Agent{id: agent_id}) do
     BeliefRelationship
     |> where([r], r.agent_id == ^agent_id)
+    |> preload([:source_belief, :target_belief])
     |> Repo.all()
   end
 

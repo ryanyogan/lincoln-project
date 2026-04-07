@@ -11,8 +11,8 @@ defmodule Lincoln.Workers.InvestigationWorker do
     queue: :investigation,
     max_attempts: 3
 
-  alias Lincoln.{Agents, Beliefs, Memory, Questions, Cognition}
-  alias Lincoln.Adapters.{LLM, Embeddings}
+  alias Lincoln.Adapters.{Embeddings, LLM}
+  alias Lincoln.{Agents, Beliefs, Cognition, Memory, Questions}
 
   require Logger
 
@@ -138,11 +138,11 @@ defmodule Lincoln.Workers.InvestigationWorker do
     parts = []
 
     parts =
-      if length(context.relevant_memories) > 0 do
+      if context.relevant_memories != [] do
         memories =
-          context.relevant_memories
-          |> Enum.map(fn m -> "- #{m[:content] || m.content}" end)
-          |> Enum.join("\n")
+          Enum.map_join(context.relevant_memories, "\n", fn m ->
+            "- #{m[:content] || m.content}"
+          end)
 
         ["Relevant memories:\n#{memories}" | parts]
       else
@@ -150,15 +150,13 @@ defmodule Lincoln.Workers.InvestigationWorker do
       end
 
     parts =
-      if length(context.relevant_beliefs) > 0 do
+      if context.relevant_beliefs != [] do
         beliefs =
-          context.relevant_beliefs
-          |> Enum.map(fn b ->
+          Enum.map_join(context.relevant_beliefs, "\n", fn b ->
             statement = b[:statement] || b.statement
             confidence = b[:confidence] || b.confidence
             "- #{statement} (confidence: #{confidence})"
           end)
-          |> Enum.join("\n")
 
         ["Relevant beliefs:\n#{beliefs}" | parts]
       else

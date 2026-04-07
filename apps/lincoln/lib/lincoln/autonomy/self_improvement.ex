@@ -15,7 +15,8 @@ defmodule Lincoln.Autonomy.SelfImprovement do
 
   alias Lincoln.Autonomy
   alias Lincoln.Autonomy.Evolution
-  alias Lincoln.Events.{Emitter, ImprovementQueue, AdaptiveThresholds}
+  alias Lincoln.Events.{AdaptiveThresholds, Emitter, ImprovementQueue}
+  alias Lincoln.Workers.ObservationWorker
 
   @doc """
   Process the next improvement opportunity in the queue.
@@ -303,7 +304,7 @@ defmodule Lincoln.Autonomy.SelfImprovement do
       opportunity_id: opportunity.id,
       code_change_id: code_change.id
     }
-    |> Lincoln.Workers.ObservationWorker.new(schedule_in: seconds)
+    |> ObservationWorker.new(schedule_in: seconds)
     |> Oban.insert()
   end
 end

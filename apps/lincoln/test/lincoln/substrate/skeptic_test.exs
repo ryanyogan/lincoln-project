@@ -1,8 +1,8 @@
 defmodule Lincoln.Substrate.SkepticTest do
   use Lincoln.DataCase
 
-  alias Lincoln.Substrate.Skeptic
   alias Lincoln.{Agents, Beliefs}
+  alias Lincoln.Substrate.Skeptic
 
   setup do
     {:ok, agent} = Agents.create_agent(%{name: "Skeptic Test #{System.unique_integer()}"})

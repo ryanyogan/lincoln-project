@@ -16,7 +16,7 @@ defmodule LincolnWeb.AutonomyLive do
   use LincolnWeb, :live_view
 
   alias Lincoln.{Agents, Autonomy}
-  alias Lincoln.Autonomy.{LearningSession, TokenBudget, LearningLog}
+  alias Lincoln.Autonomy.{LearningLog, LearningSession, TokenBudget}
   alias Lincoln.Workers.AutonomousLearningWorker
 
   @impl true
@@ -78,7 +78,7 @@ defmodule LincolnWeb.AutonomyLive do
       |> Enum.map(&String.trim/1)
       |> Enum.reject(&(&1 == ""))
 
-    if length(seed_topics) > 0 do
+    if seed_topics != [] do
       {:ok, session} = AutonomousLearningWorker.start_session(agent, seed_topics)
 
       socket =
