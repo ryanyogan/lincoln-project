@@ -15,6 +15,7 @@ defmodule LincolnWeb.ChatLive do
 
   alias Lincoln.{Agents, Autonomy, Conversation}
   alias Lincoln.Cognition.ConversationHandler
+  alias Lincoln.Substrate.ConversationBridge
 
   # Maximum worker events to keep in sidebar
   @max_worker_events 50
@@ -175,6 +176,8 @@ defmodule LincolnWeb.ChatLive do
 
     case result do
       {:ok, cognitive_result} ->
+        ConversationBridge.notify(agent.id, content, cognitive_result.cognitive_metadata)
+
         # Add Lincoln's response with cognitive metadata
         {:ok, assistant_msg} =
           Conversation.add_assistant_message(
