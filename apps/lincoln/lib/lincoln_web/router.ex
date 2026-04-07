@@ -39,6 +39,9 @@ defmodule LincolnWeb.Router do
     # Autonomy - Night Shift
     live("/autonomy", AutonomyLive, :index)
 
+    # Substrate - Real-time cognitive state
+    live("/substrate", SubstrateLive, :index)
+
     # Keep the old page controller for reference
     get("/welcome", PageController, :home)
   end
