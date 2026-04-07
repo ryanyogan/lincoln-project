@@ -131,3 +131,47 @@
 - `broadcast_resonator_flag/2` already existed in PubSubBroadcaster — was pre-built alongside `broadcast_skeptic_flag/2`.
 - Cascade score = `cluster_size * avg_confidence` — simple product, useful for Attention weighting later.
 - Test for relationship deduplication: run two ticks, assert same count. 3 beliefs = 3 pairs = 3 "supports" relationships, each belief involved in 2.
+
+## 2026-04-07: Extended AgentSupervisor to 5 Processes
+
+**Task**: Add Skeptic and Resonator to per-agent AgentSupervisor.
+
+**Changes**:
+1. **AgentSupervisor.init/1**: Added Skeptic (30s tick) and Resonator (60s tick) to children list
+   - Skeptic: `%{agent_id: agent_id, tick_interval: 30_000}`
+   - Resonator: `%{agent_id: agent_id, tick_interval: 60_000}`
+   - Updated aliases to include both new modules
+   - Updated @moduledoc to reflect 5 processes
+
+2. **Lincoln.Substrate.get_process/2**: Extended guard clause to accept `:skeptic` and `:resonator`
+   - Now supports all 5 process types: `:substrate`, `:attention`, `:driver`, `:skeptic`, `:resonator`
+   - Updated @doc to reflect new types
+
+3. **Lincoln.Substrate @moduledoc**: Updated to document all 5 processes
+
+**Verification**:
+- `mix compile --warnings-as-errors` passes ✓
+- Commit: `feat(substrate): extend per-agent supervisor to 5 processes`
+
+**Architecture Notes**:
+- Supervision strategy remains `:one_for_all` (all processes restart together)
+- Skeptic and Resonator register via Registry as `{agent_id, :skeptic}` and `{agent_id, :resonator}`
+- No changes to public API (start_agent, stop_agent, get_agent_state remain unchanged)
+
+## 2026-04-07: Wired Skeptic/Resonator Flags into Attention Scoring
+
+**Task**: Add `contradiction_bonus` and `cascade_bonus` scoring components to Attention.
+
+**Changes**:
+1. **beliefs.ex**: Added `find_all_relationships/1` — bulk-loads all relationships for an agent (avoids N+1 in scoring loop)
+2. **attention.ex**: `score_belief/5` now accepts pre-loaded `belief_rels`, computes two new bonuses:
+   - `contradiction_bonus`: filters for "contradicts" relationships, averages their confidence, scales by `interrupt_threshold * 0.4`
+   - `cascade_bonus`: filters for "supports" relationships, counts them, scales by `novelty_weight * min(count/5, 1.0) * 0.3`
+3. **handle_call(:next_thought)**: Pre-loads all relationships once via `find_all_relationships/1`, passes to each `score_belief` call
+4. **score_breakdown**: Now returns `contradiction_bonus` and `cascade_bonus` fields alongside existing components
+
+**Design Decisions**:
+- Empty relationship list fast-paths to 0.0 via pattern match on `[]` — no DB queries, no filtering
+- `interrupt_threshold` param controls contradiction bonus magnitude (high = contradictions disrupt focus)
+- `novelty_weight` param controls cascade bonus magnitude (novel regions with support clusters get attention)
+- Capped at `min(1.0, max(0.0, ...))` after adding bonuses to base score

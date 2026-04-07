@@ -380,6 +380,17 @@ defmodule Lincoln.Beliefs do
   end
 
   @doc """
+  Returns all belief relationships for an agent.
+
+  Used by Attention to pre-load relationships in bulk (avoiding N+1 queries).
+  """
+  def find_all_relationships(%Agent{id: agent_id}) do
+    BeliefRelationship
+    |> where([r], r.agent_id == ^agent_id)
+    |> Repo.all()
+  end
+
+  @doc """
   Checks if a relationship already exists between two beliefs.
   """
   def relationship_exists?(%Agent{id: agent_id}, source_id, target_id, type) do

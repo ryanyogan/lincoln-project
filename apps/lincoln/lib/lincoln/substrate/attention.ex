@@ -9,6 +9,8 @@ defmodule Lincoln.Substrate.Attention do
   - **tension**: beliefs worth investigating (challenged + confident, or low-confidence + entrenched)
   - **staleness**: beliefs least recently activated
   - **depth**: preference for core beliefs (high confidence + entrenchment)
+  - **contradiction_bonus**: tension boost from Skeptic-detected contradictions (scaled by `interrupt_threshold`)
+  - **cascade_bonus**: interest boost from Resonator-detected support clusters (scaled by `novelty_weight`)
 
   Attention is reactive — called by Substrate/Driver, not proactive.
   No internal tick loop.
@@ -63,7 +65,8 @@ defmodule Lincoln.Substrate.Attention do
   @doc """
   Returns the score breakdown for a specific belief.
 
-  Returns `%{novelty: float, tension: float, staleness: float, depth: float, total: float}`.
+  Returns `%{novelty: float, tension: float, staleness: float, depth: float,
+  contradiction_bonus: float, cascade_bonus: float, total: float}`.
   """
   def score_breakdown(pid, belief_id) do
     GenServer.call(pid, {:score_breakdown, belief_id})
@@ -101,11 +104,12 @@ defmodule Lincoln.Substrate.Attention do
       beliefs ->
         now = DateTime.utc_now()
         params = state.attention_params
+        all_relationships = Beliefs.find_all_relationships(state.agent)
 
         scored =
           beliefs
           |> Enum.map(fn belief ->
-            score = score_belief(belief, state, params, now)
+            score = score_belief(belief, state, params, now, all_relationships)
 
             score =
               if state.current_focus_id == belief.id do
@@ -143,14 +147,20 @@ defmodule Lincoln.Substrate.Attention do
     belief = Beliefs.get_belief!(belief_id)
     now = DateTime.utc_now()
     params = state.attention_params
+    belief_rels = Beliefs.find_relationships(state.agent, belief_id)
 
     novelty = novelty_score(belief, now)
     tension = tension_score(belief, now)
     staleness = staleness_score(belief, state, now)
     depth = depth_score(belief)
 
+    cb = contradiction_bonus(belief.id, belief_rels, params)
+    csb = cascade_bonus(belief.id, belief_rels, params)
+
+    base = compute_combined_score(novelty, tension, staleness, depth, params)
+
     total =
-      compute_combined_score(novelty, tension, staleness, depth, params)
+      min(1.0, max(0.0, base + cb + csb))
       |> maybe_apply_focus_boost(belief.id, state)
 
     breakdown = %{
@@ -158,6 +168,8 @@ defmodule Lincoln.Substrate.Attention do
       tension: tension,
       staleness: staleness,
       depth: depth,
+      contradiction_bonus: cb,
+      cascade_bonus: csb,
       total: total
     }
 
@@ -180,13 +192,19 @@ defmodule Lincoln.Substrate.Attention do
   # Scoring
   # =============================================================================
 
-  defp score_belief(belief, state, params, now) do
+  defp score_belief(belief, state, params, now, belief_rels) do
     novelty = novelty_score(belief, now)
     tension = tension_score(belief, now)
     staleness = staleness_score(belief, state, now)
     depth = depth_score(belief)
 
-    compute_combined_score(novelty, tension, staleness, depth, params)
+    base = compute_combined_score(novelty, tension, staleness, depth, params)
+
+    # Skeptic/Resonator flag bonuses
+    contradiction_bonus = contradiction_bonus(belief.id, belief_rels, params)
+    cascade_bonus = cascade_bonus(belief.id, belief_rels, params)
+
+    min(1.0, max(0.0, base + contradiction_bonus + cascade_bonus))
   end
 
   defp compute_combined_score(novelty, tension, staleness, depth, params) do
@@ -273,6 +291,48 @@ defmodule Lincoln.Substrate.Attention do
 
   defp depth_score(belief) do
     belief.confidence * 0.5 + belief.entrenchment / 20.0 * 0.5
+  end
+
+  defp contradiction_bonus(_belief_id, [], _params), do: 0.0
+
+  defp contradiction_bonus(belief_id, belief_rels, params) do
+    contradictions =
+      Enum.filter(belief_rels, fn r ->
+        r.relationship_type == "contradicts" and
+          (r.source_belief_id == belief_id or r.target_belief_id == belief_id)
+      end)
+
+    case contradictions do
+      [] ->
+        0.0
+
+      confs ->
+        avg_confidence =
+          confs
+          |> Enum.map(& &1.confidence)
+          |> then(fn vals -> Enum.sum(vals) / length(vals) end)
+
+        params.interrupt_threshold * avg_confidence * 0.4
+    end
+  end
+
+  defp cascade_bonus(_belief_id, [], _params), do: 0.0
+
+  defp cascade_bonus(belief_id, belief_rels, params) do
+    supports =
+      Enum.filter(belief_rels, fn r ->
+        r.relationship_type == "supports" and
+          (r.source_belief_id == belief_id or r.target_belief_id == belief_id)
+      end)
+
+    case supports do
+      [] ->
+        0.0
+
+      matched ->
+        support_count = length(matched)
+        params.novelty_weight * min(support_count / 5.0, 1.0) * 0.3
+    end
   end
 
   # =============================================================================
