@@ -109,6 +109,27 @@ services:
       - full
     restart: unless-stopped
 
+  # ===========================================================================
+  # Ollama (Optional - use profile: ollama)
+  # ===========================================================================
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: lincoln_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    profiles:
+      - ollama
+    restart: unless-stopped
+
 # ===========================================================================
 # Volumes
 # ===========================================================================
@@ -120,6 +141,8 @@ volumes:
     name: lincoln_postgres_test_data
   ml_model_cache:
     name: lincoln_ml_model_cache
+  ollama_data:
+    name: lincoln_ollama_data
 
 # ===========================================================================
 # Networks (optional, for isolation)

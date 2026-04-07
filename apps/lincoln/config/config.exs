@@ -95,6 +95,10 @@ config :lincoln, :llm,
   model: "claude-sonnet-4-20250514",
   max_tokens: 4096
 
+config :lincoln, :ollama,
+  service_url: "http://localhost:11434",
+  model: "qwen2.5:7b"
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"
