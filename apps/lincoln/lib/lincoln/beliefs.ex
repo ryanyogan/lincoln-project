@@ -23,6 +23,8 @@ defmodule Lincoln.Beliefs do
   - `:max_confidence` - filter by maximum confidence
   - `:status` - filter by status
   - `:limit` - limit results
+  - `:offset` - offset results
+  - `:order_by` - custom ordering (e.g. `[asc: :updated_at]`), defaults to `[desc: :confidence]`
   """
   def list_beliefs(%Agent{id: agent_id}, opts \\ []) do
     query =
@@ -59,9 +61,13 @@ defmodule Lincoln.Beliefs do
         limit -> limit(query, ^limit)
       end
 
-    query
-    |> order_by([b], desc: b.confidence)
-    |> Repo.all()
+    query =
+      case Keyword.get(opts, :order_by) do
+        nil -> order_by(query, [b], desc: b.confidence)
+        ordering -> order_by(query, ^ordering)
+      end
+
+    Repo.all(query)
   end
 
   @doc """
