@@ -10,89 +10,260 @@ defmodule Lincoln.Substrate.AttentionTest do
   end
 
   describe "next_thought/1" do
-    test "returns oldest belief first", %{agent: agent} do
-      {:ok, _b1} =
-        Beliefs.create_belief(agent, %{
-          statement: "First",
-          source_type: "observation",
-          confidence: 0.9,
-          entrenchment: 2
-        })
-
-      :timer.sleep(10)
-
-      {:ok, _b2} =
-        Beliefs.create_belief(agent, %{
-          statement: "Second",
-          source_type: "observation",
-          confidence: 0.8,
-          entrenchment: 2
-        })
-
-      pid = start_supervised!({Attention, %{agent_id: agent.id}})
-      {:ok, belief, _score} = Attention.next_thought(pid)
-      assert belief.statement == "First"
-    end
-
-    test "advances cursor on successive calls", %{agent: agent} do
-      {:ok, _b1} =
-        Beliefs.create_belief(agent, %{
-          statement: "Alpha",
-          source_type: "observation",
-          confidence: 0.9,
-          entrenchment: 2
-        })
-
-      :timer.sleep(10)
-
-      {:ok, _b2} =
-        Beliefs.create_belief(agent, %{
-          statement: "Beta",
-          source_type: "observation",
-          confidence: 0.8,
-          entrenchment: 2
-        })
-
-      pid = start_supervised!({Attention, %{agent_id: agent.id}})
-      {:ok, b1, _} = Attention.next_thought(pid)
-      {:ok, b2, _} = Attention.next_thought(pid)
-      assert b1.id != b2.id
-      assert b1.statement == "Alpha"
-      assert b2.statement == "Beta"
-    end
-
     test "returns nil for agent with no beliefs", %{agent: agent} do
       pid = start_supervised!({Attention, %{agent_id: agent.id}})
       assert {:ok, nil} = Attention.next_thought(pid)
     end
 
-    test "wraps around when all beliefs visited", %{agent: agent} do
+    test "returns a belief with a computed score", %{agent: agent} do
       {:ok, _b1} =
         Beliefs.create_belief(agent, %{
-          statement: "Only",
+          statement: "Scored belief",
           source_type: "observation",
           confidence: 0.9,
           entrenchment: 2
         })
 
       pid = start_supervised!({Attention, %{agent_id: agent.id}})
-      {:ok, b1, _} = Attention.next_thought(pid)
-      {:ok, b2, _} = Attention.next_thought(pid)
-      assert b1.id == b2.id
+      {:ok, belief, score} = Attention.next_thought(pid)
+      assert belief.statement == "Scored belief"
+      assert is_float(score)
+      assert score > 0.0
     end
 
-    test "returns flat 0.5 score placeholder", %{agent: agent} do
-      {:ok, _b1} =
-        Beliefs.create_belief(agent, %{
-          statement: "Scored",
+    test "focused params rank high-confidence tensioned beliefs higher", %{agent: _agent} do
+      focused_params = %{
+        "novelty_weight" => 0.2,
+        "focus_momentum" => 0.8,
+        "interrupt_threshold" => 0.8,
+        "boredom_decay" => 0.05,
+        "depth_preference" => 0.8,
+        "tick_interval_ms" => 5_000
+      }
+
+      {:ok, focused_agent} =
+        Agents.create_agent(%{
+          name: "Focused #{System.unique_integer()}",
+          attention_params: focused_params
+        })
+
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+      one_hour_ago = DateTime.add(now, -3600, :second)
+
+      {:ok, _deep} =
+        Beliefs.create_belief(focused_agent, %{
+          statement: "Deep entrenched belief",
+          source_type: "training",
+          confidence: 0.95,
+          entrenchment: 9
+        })
+
+      {:ok, _shallow} =
+        Beliefs.create_belief(focused_agent, %{
+          statement: "Shallow new belief",
           source_type: "observation",
+          confidence: 0.3,
+          entrenchment: 1
+        })
+
+      {:ok, _tensioned} =
+        Beliefs.create_belief(focused_agent, %{
+          statement: "Tensioned belief",
+          source_type: "inference",
           confidence: 0.9,
-          entrenchment: 2
+          entrenchment: 2,
+          last_challenged_at: one_hour_ago
+        })
+
+      pid = start_supervised!({Attention, %{agent_id: focused_agent.id}})
+      {:ok, belief, _score} = Attention.next_thought(pid)
+
+      assert belief.statement in ["Deep entrenched belief", "Tensioned belief"]
+    end
+
+    test "butterfly params rank novel beliefs higher", %{agent: _agent} do
+      butterfly_params = %{
+        "novelty_weight" => 0.8,
+        "focus_momentum" => 0.2,
+        "interrupt_threshold" => 0.3,
+        "boredom_decay" => 0.3,
+        "depth_preference" => 0.2,
+        "tick_interval_ms" => 5_000
+      }
+
+      {:ok, butterfly_agent} =
+        Agents.create_agent(%{
+          name: "Butterfly #{System.unique_integer()}",
+          attention_params: butterfly_params
+        })
+
+      {:ok, _old_deep} =
+        Beliefs.create_belief(butterfly_agent, %{
+          statement: "Old deep belief",
+          source_type: "training",
+          confidence: 0.95,
+          entrenchment: 9
+        })
+
+      {:ok, _novel} =
+        Beliefs.create_belief(butterfly_agent, %{
+          statement: "Fresh observation",
+          source_type: "observation",
+          confidence: 0.4,
+          entrenchment: 1
+        })
+
+      pid = start_supervised!({Attention, %{agent_id: butterfly_agent.id}})
+      {:ok, belief, _score} = Attention.next_thought(pid)
+      assert belief.statement == "Fresh observation"
+    end
+
+    test "different params produce different orderings from same beliefs" do
+      focused_params = %{
+        "novelty_weight" => 0.2,
+        "focus_momentum" => 0.8,
+        "interrupt_threshold" => 0.8,
+        "boredom_decay" => 0.05,
+        "depth_preference" => 0.8,
+        "tick_interval_ms" => 5_000
+      }
+
+      butterfly_params = %{
+        "novelty_weight" => 0.8,
+        "focus_momentum" => 0.2,
+        "interrupt_threshold" => 0.3,
+        "boredom_decay" => 0.3,
+        "depth_preference" => 0.2,
+        "tick_interval_ms" => 5_000
+      }
+
+      {:ok, agent_a} =
+        Agents.create_agent(%{
+          name: "AgentA #{System.unique_integer()}",
+          attention_params: focused_params
+        })
+
+      {:ok, agent_b} =
+        Agents.create_agent(%{
+          name: "AgentB #{System.unique_integer()}",
+          attention_params: butterfly_params
+        })
+
+      for agent <- [agent_a, agent_b] do
+        {:ok, _} =
+          Beliefs.create_belief(agent, %{
+            statement: "Core training belief",
+            source_type: "training",
+            confidence: 0.95,
+            entrenchment: 9
+          })
+
+        {:ok, _} =
+          Beliefs.create_belief(agent, %{
+            statement: "Fresh observation",
+            source_type: "observation",
+            confidence: 0.3,
+            entrenchment: 1
+          })
+      end
+
+      pid_a = start_supervised!({Attention, %{agent_id: agent_a.id}}, id: :attn_a)
+      pid_b = start_supervised!({Attention, %{agent_id: agent_b.id}}, id: :attn_b)
+
+      {:ok, belief_a, score_a} = Attention.next_thought(pid_a)
+      {:ok, belief_b, score_b} = Attention.next_thought(pid_b)
+
+      assert belief_a.statement != belief_b.statement
+      assert score_a != score_b
+    end
+
+    test "successive calls rotate through beliefs via staleness" do
+      {:ok, rotator} =
+        Agents.create_agent(%{
+          name: "Rotator #{System.unique_integer()}",
+          attention_params: %{
+            "novelty_weight" => 0.1,
+            "focus_momentum" => 0.0,
+            "interrupt_threshold" => 0.7,
+            "boredom_decay" => 0.5,
+            "depth_preference" => 0.1,
+            "tick_interval_ms" => 5_000
+          }
+        })
+
+      {:ok, _b1} =
+        Beliefs.create_belief(rotator, %{
+          statement: "Alpha",
+          source_type: "observation",
+          confidence: 0.5,
+          entrenchment: 5
+        })
+
+      {:ok, _b2} =
+        Beliefs.create_belief(rotator, %{
+          statement: "Beta",
+          source_type: "observation",
+          confidence: 0.5,
+          entrenchment: 5
+        })
+
+      pid = start_supervised!({Attention, %{agent_id: rotator.id}})
+      {:ok, b1, _} = Attention.next_thought(pid)
+      {:ok, b2, _} = Attention.next_thought(pid)
+
+      assert b1.id != b2.id
+    end
+  end
+
+  describe "score_breakdown/2" do
+    test "returns map with expected keys", %{agent: agent} do
+      {:ok, belief} =
+        Beliefs.create_belief(agent, %{
+          statement: "Breakdownable",
+          source_type: "observation",
+          confidence: 0.7,
+          entrenchment: 5
         })
 
       pid = start_supervised!({Attention, %{agent_id: agent.id}})
-      {:ok, _belief, score} = Attention.next_thought(pid)
-      assert score == 0.5
+      breakdown = Attention.score_breakdown(pid, belief.id)
+
+      assert is_map(breakdown)
+      assert Map.has_key?(breakdown, :novelty)
+      assert Map.has_key?(breakdown, :tension)
+      assert Map.has_key?(breakdown, :staleness)
+      assert Map.has_key?(breakdown, :depth)
+      assert Map.has_key?(breakdown, :total)
+
+      assert is_float(breakdown.novelty)
+      assert is_float(breakdown.tension)
+      assert is_float(breakdown.staleness)
+      assert is_float(breakdown.depth)
+      assert is_float(breakdown.total)
+    end
+
+    test "novelty is higher for observations than training", %{agent: agent} do
+      {:ok, obs} =
+        Beliefs.create_belief(agent, %{
+          statement: "Observed",
+          source_type: "observation",
+          confidence: 0.5,
+          entrenchment: 5
+        })
+
+      {:ok, train} =
+        Beliefs.create_belief(agent, %{
+          statement: "Trained",
+          source_type: "training",
+          confidence: 0.5,
+          entrenchment: 5
+        })
+
+      pid = start_supervised!({Attention, %{agent_id: agent.id}})
+      obs_breakdown = Attention.score_breakdown(pid, obs.id)
+      train_breakdown = Attention.score_breakdown(pid, train.id)
+
+      assert obs_breakdown.novelty > train_breakdown.novelty
     end
   end
 

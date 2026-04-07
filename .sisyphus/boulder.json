@@ -82,6 +82,24 @@
       "agent": "Sisyphus-Junior",
       "category": "visual-engineering",
       "updated_at": "2026-04-07T19:32:40.559Z"
+    },
+    "todo:9": {
+      "task_key": "todo:9",
+      "task_label": "9",
+      "task_title": "Agent Attention Parameters Migration + Schema",
+      "session_id": "ses_296902366ffeIq8d2G8hvZca0Q",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-07T19:35:16.455Z"
+    },
+    "todo:10": {
+      "task_key": "todo:10",
+      "task_label": "10",
+      "task_title": "Ollama LLM Adapter",
+      "session_id": "ses_2968c44f0ffeGfoSA8XsfdkEa8",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-04-07T19:40:46.263Z"
     }
   }
 }

@@ -800,7 +800,7 @@ Wave FINAL (after ALL tasks — 4 parallel reviews, then user okay):
 
 ### WAVE 4 — Step 2 Scaffolding (After Wave 3)
 
-- [ ] 9. Agent Attention Parameters Migration + Schema
+- [x] 9. Agent Attention Parameters Migration + Schema
 
   **What to do**:
   - Create migration: add `attention_params` column to `agents` table — type `:map` (JSONB)
@@ -861,7 +861,7 @@ Wave FINAL (after ALL tasks — 4 parallel reviews, then user okay):
   - Files: migration file, `agents/agent.ex`, `substrate/attention_params.ex`, test file
   - Pre-commit: `mix test`
 
-- [ ] 10. Ollama LLM Adapter
+- [x] 10. Ollama LLM Adapter
 
   **What to do**:
   - Create `lib/lincoln/adapters/llm/ollama.ex` — implements `Lincoln.Adapters.LLM` behaviour
@@ -937,7 +937,7 @@ Wave FINAL (after ALL tasks — 4 parallel reviews, then user okay):
   - Files: `adapters/llm/ollama.ex`, test file, `docker-compose.yml`, `config/config.exs`
   - Pre-commit: `mix test`
 
-- [ ] 11. Inference Tier Selection Function
+- [x] 11. Inference Tier Selection Function
 
   **What to do**:
   - Create `lib/lincoln/substrate/inference_tier.ex` — pure function module, no GenServer
