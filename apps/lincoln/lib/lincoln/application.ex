@@ -12,6 +12,8 @@ defmodule Lincoln.Application do
       Lincoln.Repo,
       {DNSCluster, query: Application.get_env(:lincoln, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: Lincoln.PubSub},
+      {Registry, keys: :unique, name: Lincoln.AgentRegistry},
+      {DynamicSupervisor, name: Lincoln.AgentSupervisor, strategy: :one_for_one},
       # Oban for background job processing
       {Oban, Application.fetch_env!(:lincoln, Oban)},
       # Events cache for fast pattern analysis
