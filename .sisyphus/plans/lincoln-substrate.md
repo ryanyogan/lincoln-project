@@ -1744,11 +1744,11 @@ Wave FINAL (after ALL tasks — 4 parallel reviews, then user okay):
 
 > 4 review agents run in PARALLEL. ALL must APPROVE. Present consolidated results to user and get explicit "okay" before completing.
 
-- [ ] F1. **Plan Compliance Audit** — `oracle`
+- [x] F1. **Plan Compliance Audit** — `oracle`
   Read `.sisyphus/plans/lincoln-substrate.md` end-to-end. For each "Must Have": verify implementation exists (read file, query state via iex, run command). For each "Must NOT Have": search codebase for forbidden patterns — reject with file:line if found. Check evidence files exist in `.sisyphus/evidence/`. Compare deliverables against plan.
   Output: `Must Have [N/N] | Must NOT Have [N/N] | Tasks [N/N] | VERDICT: APPROVE/REJECT`
 
-- [ ] F2. **Code Quality Review** — `unspecified-high`
+- [x] F2. **Code Quality Review** — `unspecified-high`
   Run `mix compile --warnings-as-errors` + `mix credo` + `mix test`. Review all new files in `lib/lincoln/substrate/` for: `as any` equivalents, empty rescue clauses, IO.inspect in prod, commented-out code, unused imports. Check AI slop: excessive comments, over-abstraction, generic names. Verify all GenServer modules implement proper `terminate/2` and handle unknown messages gracefully.
   Output: `Build [PASS/FAIL] | Credo [PASS/FAIL] | Tests [N pass/N fail] | Files [N clean/N issues] | VERDICT`
 
