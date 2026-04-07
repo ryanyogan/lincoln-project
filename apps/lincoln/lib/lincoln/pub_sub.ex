@@ -12,6 +12,7 @@ defmodule Lincoln.PubSubBroadcaster do
   - `agent:{agent_id}:driver` - driver actions
   - `agent:{agent_id}:skeptic` - skeptic flags
   - `agent:{agent_id}:resonator` - resonator flags
+  - `agent:{agent_id}:thoughts` - thought lifecycle events
   """
 
   @pubsub Lincoln.PubSub
@@ -124,6 +125,15 @@ defmodule Lincoln.PubSubBroadcaster do
   end
 
   # ============================================================================
+  # Thought Processes
+  # ============================================================================
+
+  def broadcast_thought_event(agent_id, event) do
+    broadcast(thought_topic(agent_id), event)
+    broadcast(agent_topic(agent_id), event)
+  end
+
+  # ============================================================================
   # Helpers
   # ============================================================================
 
@@ -141,6 +151,7 @@ defmodule Lincoln.PubSubBroadcaster do
   def driver_topic(agent_id), do: "agent:#{agent_id}:driver"
   def skeptic_topic(agent_id), do: "agent:#{agent_id}:skeptic"
   def resonator_topic(agent_id), do: "agent:#{agent_id}:resonator"
+  def thought_topic(agent_id), do: "agent:#{agent_id}:thoughts"
 
   @doc """
   Generic broadcast to any topic.
