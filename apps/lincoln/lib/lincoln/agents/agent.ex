@@ -18,6 +18,7 @@ defmodule Lincoln.Agents.Agent do
     field(:name, :string)
     field(:description, :string)
     field(:personality, :map, default: %{})
+    field(:attention_params, :map, default: %{})
     field(:status, :string, default: "active")
     field(:last_active_at, :utc_datetime)
 
@@ -38,7 +39,14 @@ defmodule Lincoln.Agents.Agent do
   @doc false
   def changeset(agent, attrs) do
     agent
-    |> cast(attrs, [:name, :description, :personality, :status, :last_active_at])
+    |> cast(attrs, [
+      :name,
+      :description,
+      :personality,
+      :attention_params,
+      :status,
+      :last_active_at
+    ])
     |> validate_required([:name])
     |> validate_inclusion(:status, @statuses)
     |> unique_constraint(:name)
