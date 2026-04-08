@@ -17,7 +17,7 @@
 
 ## TODOs
 
-- [ ] 1. Migration + Schema + Context
+- [x] 1. Migration + Schema + Context
 
   **Generate**: `mix ecto.gen.migration create_narrative_reflections`
   
@@ -70,7 +70,7 @@
   **Recommended Agent Profile**: `quick`
   **Commit**: `feat(narrative): add narrative_reflections table, schema, and context`
 
-- [ ] 2. Narrative Thought Trigger in Substrate
+- [x] 2. Narrative Thought Trigger in Substrate
 
   Every N ticks (default 200, configurable), spawn a special narrative Thought.
 
@@ -180,7 +180,7 @@
   **Recommended Agent Profile**: `deep`
   **Commit**: `feat(narrative): trigger narrative reflections every N substrate ticks`
 
-- [ ] 3. `/narrative` LiveView — Lincoln's Autobiography
+- [x] 3. `/narrative` LiveView — Lincoln's Autobiography
 
   Simple read-only page showing narrative reflections in reverse chronological order.
 
