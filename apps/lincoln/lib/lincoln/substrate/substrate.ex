@@ -291,11 +291,22 @@ defmodule Lincoln.Substrate.Substrate do
   end
 
   defp get_interrupt_threshold(state) do
-    params = state.agent && state.agent.attention_params
+    agent =
+      try do
+        Agents.get_agent!(state.agent_id)
+      rescue
+        _ -> state.agent
+      end
 
+    parse_interrupt_threshold(agent && agent.attention_params)
+  end
+
+  defp parse_interrupt_threshold(nil), do: 0.7
+
+  defp parse_interrupt_threshold(params) do
     raw =
-      (params && Map.get(params, "interrupt_threshold")) ||
-        (params && Map.get(params, :interrupt_threshold)) ||
+      Map.get(params, "interrupt_threshold") ||
+        Map.get(params, :interrupt_threshold) ||
         0.7
 
     case raw do

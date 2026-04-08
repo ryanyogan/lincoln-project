@@ -51,7 +51,32 @@ defmodule Lincoln.Workers.AutonomousLearningWorker do
     session = Autonomy.get_session!(session_id)
     agent = Agents.get_agent!(session.agent_id)
 
-    # Check if session should continue
+    if substrate_active?(agent.id) do
+      Logger.debug(
+        "[AutonomousLearningWorker] Substrate active for #{agent.id}, skipping legacy cycle"
+      )
+
+      :ok
+    else
+      do_perform(agent, session, session_id, cycle)
+    end
+  end
+
+  # Initial job (no cycle count yet)
+  def perform(%Oban.Job{args: %{"session_id" => session_id}}) do
+    perform(%Oban.Job{args: %{"session_id" => session_id, "cycle" => 1}})
+  end
+
+  defp substrate_active?(nil), do: false
+
+  defp substrate_active?(agent_id) do
+    case Registry.lookup(Lincoln.AgentRegistry, {agent_id, :substrate}) do
+      [{_pid, _}] -> true
+      [] -> false
+    end
+  end
+
+  defp do_perform(agent, session, session_id, cycle) do
     cond do
       not LearningSession.running?(session) ->
         Logger.info("[Lincoln] Session #{session_id} is no longer running, stopping")
@@ -68,14 +93,8 @@ defmodule Lincoln.Workers.AutonomousLearningWorker do
         :ok
 
       true ->
-        # Run a learning cycle
         run_learning_cycle(agent, session, cycle)
     end
-  end
-
-  # Initial job (no cycle count yet)
-  def perform(%Oban.Job{args: %{"session_id" => session_id}}) do
-    perform(%Oban.Job{args: %{"session_id" => session_id, "cycle" => 1}})
   end
 
   # ============================================================================
