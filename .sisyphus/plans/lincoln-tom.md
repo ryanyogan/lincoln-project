@@ -198,7 +198,7 @@ For v1: JSONB-backed model with topic tracking + message stats. No ML extraction
   **Recommended Agent Profile**: `quick`
   **Commit**: `feat(tom): add user_models table, schema, and context`
 
-- [ ] 2. Hook ConversationBridge + Chat LiveView Panel
+- [x] 2. Hook ConversationBridge + Chat LiveView Panel
 
   **Two changes in one task:**
 
