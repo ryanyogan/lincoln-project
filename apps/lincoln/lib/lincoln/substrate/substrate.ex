@@ -14,6 +14,7 @@ defmodule Lincoln.Substrate.Substrate do
 
   @tick_interval 5_000
   @narrative_interval 200
+  @self_model_interval 50
 
   defstruct [
     :agent_id,
@@ -126,6 +127,10 @@ defmodule Lincoln.Substrate.Substrate do
     # Trigger narrative reflection at regular intervals
     if rem(new_state.tick_count, @narrative_interval) == 0 and new_state.tick_count > 0 do
       spawn_narrative_thought(new_state)
+    end
+
+    if rem(new_state.tick_count, @self_model_interval) == 0 and new_state.tick_count > 0 do
+      update_self_model(state.agent_id)
     end
 
     schedule_tick(state.tick_interval)
@@ -350,6 +355,16 @@ defmodule Lincoln.Substrate.Substrate do
       {:error, reason} ->
         Logger.debug("[Substrate #{state.agent_id}] Narrative thought failed: #{inspect(reason)}")
     end
+  end
+
+  defp update_self_model(agent_id) do
+    Task.start(fn ->
+      try do
+        Lincoln.SelfModel.update_from_trajectory(agent_id)
+      rescue
+        e -> Logger.debug("[Substrate] SelfModel update failed: #{Exception.message(e)}")
+      end
+    end)
   end
 
   defp schedule_tick(interval) do

@@ -34,6 +34,7 @@ defmodule LincolnWeb.SubstrateLive do
       |> assign(:tier_counts, %{local: 0, ollama: 0, claude: 0})
       |> assign(:recent_contradictions, [])
       |> assign(:recent_cascades, [])
+      |> assign(:self_model, Lincoln.SelfModel.get(agent.id))
 
     if connected?(socket) do
       Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.substrate_topic(agent.id))
@@ -302,6 +303,25 @@ defmodule LincolnWeb.SubstrateLive do
                       <% end %>
                     </div>
                   </div>
+                </div>
+              </div>
+
+              <%!-- Self Model Card --%>
+              <div class="card bg-base-200/50 border border-base-content/10">
+                <div class="card-body p-4">
+                  <h3 class="font-terminal text-sm text-base-content/50 mb-2">SELF MODEL</h3>
+                  <%= if @self_model do %>
+                    <p class="text-xs text-base-content/60">
+                      {Lincoln.SelfModel.to_summary_string(@self_model)}
+                    </p>
+                    <div class="flex gap-3 mt-2 text-xs font-terminal text-base-content/30">
+                      <span>L0:{@self_model.local_tier_count}</span>
+                      <span>L1:{@self_model.ollama_tier_count}</span>
+                      <span>L2:{@self_model.claude_tier_count}</span>
+                    </div>
+                  <% else %>
+                    <p class="text-xs text-base-content/30">Updates every 50 ticks</p>
+                  <% end %>
                 </div>
               </div>
 
