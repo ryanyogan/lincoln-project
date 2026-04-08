@@ -1,6 +1,8 @@
 defmodule Mix.Tasks.Lincoln.Benchmark.Run do
   use Mix.Task
 
+  alias Lincoln.Substrate.InferenceTier
+
   @shortdoc "Run Lincoln's contradiction detection benchmark"
   @moduledoc """
   Runs the contradiction detection benchmark against Lincoln's substrate.
@@ -231,7 +233,7 @@ defmodule Mix.Tasks.Lincoln.Benchmark.Run do
       %{role: "user", content: prompt}
     ]
 
-    case Lincoln.Substrate.InferenceTier.execute_at_tier(:claude, messages, []) do
+    case InferenceTier.execute_at_tier(:claude, messages, []) do
       {:ok, response} -> response
       _ -> "error"
     end
