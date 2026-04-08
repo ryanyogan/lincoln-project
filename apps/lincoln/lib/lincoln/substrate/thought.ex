@@ -385,6 +385,14 @@ defmodule Lincoln.Substrate.Thought do
   end
 
   defp spawn_exploration_children(candidates, state) do
+    # Subscribe BEFORE spawning any children to avoid race condition:
+    # local-tier children complete instantly in handle_continue and broadcast
+    # before the parent would subscribe, causing the parent to miss messages.
+    Phoenix.PubSub.subscribe(
+      Lincoln.PubSub,
+      PubSubBroadcaster.thought_topic(state.agent_id)
+    )
+
     Enum.reduce(candidates, state, fn {belief, score}, acc ->
       case do_spawn_child(belief, score, acc) do
         {:ok, _child_id, new_acc} -> new_acc
@@ -406,13 +414,6 @@ defmodule Lincoln.Substrate.Thought do
 
     case ThoughtSupervisor.spawn_thought(state.agent_id, child_opts) do
       {:ok, _pid} ->
-        if map_size(state.pending_children) == 0 do
-          Phoenix.PubSub.subscribe(
-            Lincoln.PubSub,
-            PubSubBroadcaster.thought_topic(state.agent_id)
-          )
-        end
-
         pending = Map.put(state.pending_children, child_id, nil)
         new_state = %{state | pending_children: pending, status: :awaiting_children}
         {:ok, child_id, new_state}
