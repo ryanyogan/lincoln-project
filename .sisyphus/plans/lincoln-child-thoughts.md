@@ -308,7 +308,7 @@ Parent waits → collects 3 local reflections → synthesizes via Ollama → fin
   **Recommended Agent Profile**: `deep`
   **Commit**: `feat(child-thoughts): wire child exploration into LLM execution path`
 
-- [ ] 3. Dashboard Tree View + Thoughts.list_tree/1
+- [x] 3. Dashboard Tree View + Thoughts.list_tree/1
 
   **What to do**:
   Update the dashboard and public API to show parent-child structure.
