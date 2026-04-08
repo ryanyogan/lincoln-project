@@ -43,7 +43,7 @@ defmodule LincolnWeb.SubstrateThoughtsLive do
   # ============================================================================
 
   @impl true
-  def handle_info({:thought_spawned, thought_id, belief_statement, tier}, socket) do
+  def handle_info({:thought_spawned, thought_id, belief_statement, tier, parent_id}, socket) do
     new_thought = %{
       id: thought_id,
       belief_statement: belief_statement,
@@ -51,7 +51,8 @@ defmodule LincolnWeb.SubstrateThoughtsLive do
       status: :executing,
       started_at: DateTime.utc_now(),
       completed_at: nil,
-      result: nil
+      result: nil,
+      parent_id: parent_id
     }
 
     active = [new_thought | socket.assigns.active_thoughts]
@@ -75,7 +76,8 @@ defmodule LincolnWeb.SubstrateThoughtsLive do
             belief_statement: "Unknown",
             tier: :local,
             started_at: DateTime.utc_now(),
-            completed_at: DateTime.utc_now()
+            completed_at: DateTime.utc_now(),
+            parent_id: nil
           }
       end
 
@@ -104,7 +106,8 @@ defmodule LincolnWeb.SubstrateThoughtsLive do
             belief_statement: "Unknown",
             tier: :local,
             started_at: DateTime.utc_now(),
-            completed_at: DateTime.utc_now()
+            completed_at: DateTime.utc_now(),
+            parent_id: nil
           }
       end
 
@@ -133,7 +136,8 @@ defmodule LincolnWeb.SubstrateThoughtsLive do
             belief_statement: "Unknown",
             tier: :local,
             started_at: DateTime.utc_now(),
-            completed_at: DateTime.utc_now()
+            completed_at: DateTime.utc_now(),
+            parent_id: nil
           }
       end
 
@@ -200,29 +204,84 @@ defmodule LincolnWeb.SubstrateThoughtsLive do
               </p>
             </div>
           <% else %>
+            <% roots = Enum.filter(@active_thoughts, fn t -> is_nil(t.parent_id) end) %>
+            <% children_by_parent =
+              @active_thoughts
+              |> Enum.filter(fn t -> t.parent_id end)
+              |> Enum.group_by(& &1.parent_id) %>
+            <% root_ids = MapSet.new(roots, & &1.id) %>
+            <% orphans =
+              @active_thoughts
+              |> Enum.filter(fn t -> t.parent_id && not MapSet.member?(root_ids, t.parent_id) end) %>
+
             <div class="space-y-2">
-              <%= for thought <- @active_thoughts do %>
+              <%= for root <- roots do %>
                 <div class="border border-primary/20 rounded p-3 bg-primary/5 hover:border-primary/40 transition-colors">
                   <div class="flex items-start justify-between gap-3">
                     <div class="flex-1 min-w-0">
                       <p class="text-sm text-base-content truncate">
-                        {thought.belief_statement}
+                        {root.belief_statement}
                       </p>
                       <div class="flex items-center gap-3 mt-1">
-                        <span class={["font-terminal text-xs", tier_color(thought.tier)]}>
-                          {tier_label(thought.tier)}
+                        <span class={["font-terminal text-xs", tier_color(root.tier)]}>
+                          {tier_label(root.tier)}
                         </span>
                         <span class="text-base-content/30 text-xs font-terminal">
-                          {format_duration(thought.started_at)}
+                          {format_duration(root.started_at)}
                         </span>
                         <span class="font-mono text-base-content/20 text-xs">
-                          {String.slice(thought.id, 0, 8)}
+                          {String.slice(root.id, 0, 8)}
                         </span>
                       </div>
                     </div>
                     <div>
-                      <.status_badge status={thought.status} />
+                      <.status_badge status={root.status} />
                     </div>
+                  </div>
+                </div>
+
+                <%= for child <- Map.get(children_by_parent, root.id, []) do %>
+                  <div class="ml-6 border border-base-content/10 rounded p-2 bg-base-200/20 border-l-2 border-l-info/30 hover:border-base-content/20 transition-colors">
+                    <div class="flex items-center justify-between gap-2">
+                      <div class="flex-1 min-w-0">
+                        <p class="text-xs text-base-content/70 truncate">
+                          {child.belief_statement}
+                        </p>
+                        <div class="flex items-center gap-2 mt-0.5">
+                          <span class={["font-terminal text-[10px]", tier_color(child.tier)]}>
+                            {tier_label(child.tier)}
+                          </span>
+                          <span class="text-base-content/20 text-[10px] font-terminal">
+                            {format_duration(child.started_at)}
+                          </span>
+                          <span class="font-mono text-base-content/15 text-[10px]">
+                            {String.slice(child.id, 0, 8)}
+                          </span>
+                        </div>
+                      </div>
+                      <.status_badge status={child.status} />
+                    </div>
+                  </div>
+                <% end %>
+              <% end %>
+
+              <%= for orphan <- orphans do %>
+                <div class="ml-2 border border-base-content/10 rounded p-2 bg-base-200/20 hover:border-base-content/15 transition-colors opacity-70">
+                  <div class="flex items-center justify-between gap-2">
+                    <div class="flex-1 min-w-0">
+                      <p class="text-xs text-base-content/50 truncate">
+                        {orphan.belief_statement}
+                      </p>
+                      <div class="flex items-center gap-2 mt-0.5">
+                        <span class={["font-terminal text-[10px]", tier_color(orphan.tier)]}>
+                          {tier_label(orphan.tier)}
+                        </span>
+                        <span class="text-base-content/20 text-[10px] font-terminal">
+                          {format_duration(orphan.started_at)}
+                        </span>
+                      </div>
+                    </div>
+                    <.status_badge status={orphan.status} />
                   </div>
                 </div>
               <% end %>
@@ -308,7 +367,8 @@ defmodule LincolnWeb.SubstrateThoughtsLive do
       status: thought.status,
       started_at: thought.started_at,
       completed_at: thought.completed_at,
-      result: thought.result
+      result: thought.result,
+      parent_id: thought.parent_id
     }
   end
 

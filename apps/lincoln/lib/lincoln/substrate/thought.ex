@@ -92,7 +92,7 @@ defmodule Lincoln.Substrate.Thought do
 
     PubSubBroadcaster.broadcast_thought_event(
       agent_id,
-      {:thought_spawned, id, belief_statement, tier}
+      {:thought_spawned, id, belief_statement, tier, Map.get(opts, :parent_id)}
     )
 
     Logger.debug("[Thought #{id}] Spawned: #{tier} — #{belief_statement}")
@@ -157,7 +157,9 @@ defmodule Lincoln.Substrate.Thought do
   def handle_info({:thought_completed, _other_id, _result}, state), do: {:noreply, state}
 
   # Other thought events from the subscription — ignore
-  def handle_info({:thought_spawned, _id, _statement, _tier}, state), do: {:noreply, state}
+  def handle_info({:thought_spawned, _id, _statement, _tier, _parent_id}, state),
+    do: {:noreply, state}
+
   def handle_info({:thought_interrupted, _id, _reason}, state), do: {:noreply, state}
   def handle_info({:thought_failed, _id, _reason}, state), do: {:noreply, state}
 

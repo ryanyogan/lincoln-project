@@ -42,6 +42,34 @@ defmodule Lincoln.Substrate.Thoughts do
   end
 
   @doc """
+  Returns running thoughts organized as a tree — parents with children nested.
+  Returns [%{thought: parent_state, children: [child_states]}].
+  Orphaned children (parent already completed) appear as roots with empty children.
+  """
+  def list_tree(agent_id) when is_binary(agent_id) do
+    all_thoughts = list(agent_id)
+
+    {roots, children} =
+      Enum.split_with(all_thoughts, fn t -> is_nil(t.parent_id) end)
+
+    children_by_parent = Enum.group_by(children, & &1.parent_id)
+
+    root_ids = MapSet.new(roots, & &1.id)
+
+    tree =
+      Enum.map(roots, fn root ->
+        %{thought: root, children: Map.get(children_by_parent, root.id, [])}
+      end)
+
+    orphans =
+      children
+      |> Enum.reject(fn c -> MapSet.member?(root_ids, c.parent_id) end)
+      |> Enum.map(fn orphan -> %{thought: orphan, children: []} end)
+
+    tree ++ orphans
+  end
+
+  @doc """
   Find a specific thought by its ID.
   Returns `{:ok, state}` if found, `{:error, :not_found}` if not.
   """
