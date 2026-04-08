@@ -78,64 +78,19 @@ defmodule LincolnWeb.SubstrateCompareLive do
   def handle_info({:tick, tick_count, current_focus}, socket) do
     prev_a = socket.assigns.agent_a_state
     prev_b = socket.assigns.agent_b_state
-
     new_a = fetch_state(socket.assigns.agent_a_id) || prev_a
     new_b = fetch_state(socket.assigns.agent_b_id) || prev_b
 
-    # Determine which agent ticked by comparing tick counts to previous
     events_a =
-      if new_a && prev_a && new_a.tick_count != prev_a.tick_count do
-        event = %{
-          time: DateTime.utc_now(),
-          type: :tick,
-          tick_count: new_a.tick_count,
-          focus: focus_label(new_a.current_focus)
-        }
-
-        prepend_event(socket.assigns.events_a, event)
-      else
-        socket.assigns.events_a
+      case build_agent_tick_event(new_a, prev_a, tick_count, current_focus) do
+        nil -> socket.assigns.events_a
+        event -> prepend_event(socket.assigns.events_a, event)
       end
 
     events_b =
-      if new_b && prev_b && new_b.tick_count != prev_b.tick_count do
-        event = %{
-          time: DateTime.utc_now(),
-          type: :tick,
-          tick_count: new_b.tick_count,
-          focus: focus_label(new_b.current_focus)
-        }
-
-        prepend_event(socket.assigns.events_b, event)
-      else
-        socket.assigns.events_b
-      end
-
-    # First tick case — no previous state
-    {events_a, events_b} =
-      cond do
-        prev_a == nil and new_a != nil ->
-          event = %{
-            time: DateTime.utc_now(),
-            type: :tick,
-            tick_count: tick_count,
-            focus: focus_label(current_focus)
-          }
-
-          {prepend_event(events_a, event), events_b}
-
-        prev_b == nil and new_b != nil ->
-          event = %{
-            time: DateTime.utc_now(),
-            type: :tick,
-            tick_count: tick_count,
-            focus: focus_label(current_focus)
-          }
-
-          {events_a, prepend_event(events_b, event)}
-
-        true ->
-          {events_a, events_b}
+      case build_agent_tick_event(new_b, prev_b, tick_count, current_focus) do
+        nil -> socket.assigns.events_b
+        event -> prepend_event(socket.assigns.events_b, event)
       end
 
     {:noreply,
@@ -621,6 +576,30 @@ defmodule LincolnWeb.SubstrateCompareLive do
       agent -> agent.name
     end
   end
+
+  defp build_agent_tick_event(nil, _prev, _tick, _focus), do: nil
+
+  defp build_agent_tick_event(new_state, nil, fallback_tick, fallback_focus)
+       when new_state != nil do
+    %{
+      time: DateTime.utc_now(),
+      type: :tick,
+      tick_count: fallback_tick,
+      focus: focus_label(fallback_focus)
+    }
+  end
+
+  defp build_agent_tick_event(new_state, prev_state, _tick, _focus)
+       when new_state.tick_count != prev_state.tick_count do
+    %{
+      time: DateTime.utc_now(),
+      type: :tick,
+      tick_count: new_state.tick_count,
+      focus: focus_label(new_state.current_focus)
+    }
+  end
+
+  defp build_agent_tick_event(_new, _prev, _tick, _focus), do: nil
 
   defp focus_label(nil), do: nil
   defp focus_label(%{statement: s}), do: s
