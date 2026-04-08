@@ -141,6 +141,21 @@ defmodule Lincoln.Substrate.Substrate do
         state.activation_map
       end
 
+    Task.start(fn ->
+      try do
+        Trajectory.record_event(state.agent_id, %{
+          type: :thought_completed,
+          thought_id: thought_id,
+          belief_id: state.current_focus && Map.get(state.current_focus, :id),
+          belief_statement: state.current_focus && Map.get(state.current_focus, :statement),
+          result_summary: String.slice(to_string(result), 0, 200),
+          tick_count: state.tick_count
+        })
+      rescue
+        e -> Logger.warning("[Substrate] Thought trajectory failed: #{Exception.message(e)}")
+      end
+    end)
+
     {:noreply, %{state | activation_map: activation_map}}
   end
 
@@ -149,6 +164,20 @@ defmodule Lincoln.Substrate.Substrate do
     Logger.warning(
       "[Substrate #{state.agent_id}] Thought #{thought_id} failed: #{inspect(reason)}"
     )
+
+    Task.start(fn ->
+      try do
+        Trajectory.record_event(state.agent_id, %{
+          type: :thought_failed,
+          thought_id: thought_id,
+          reason: inspect(reason),
+          tick_count: state.tick_count
+        })
+      rescue
+        e ->
+          Logger.warning("[Substrate] Thought failure trajectory failed: #{Exception.message(e)}")
+      end
+    end)
 
     {:noreply, state}
   end

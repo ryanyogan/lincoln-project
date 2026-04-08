@@ -53,10 +53,29 @@ defmodule Lincoln.Substrate.Trajectory do
       |> Enum.group_by(& &1.inference_tier)
       |> Map.new(fn {tier, evs} -> {tier, length(evs)} end)
 
+    thought_events =
+      Enum.filter(events, fn e ->
+        e.event_type in ["thought_completed", "thought_failed"]
+      end)
+
+    thought_completed = Enum.count(thought_events, &(&1.event_type == "thought_completed"))
+    thought_failed = Enum.count(thought_events, &(&1.event_type == "thought_failed"))
+
+    thought_by_tier =
+      thought_events
+      |> Enum.group_by(& &1.inference_tier)
+      |> Map.new(fn {tier, evs} -> {tier, length(evs)} end)
+
     %{
       agent_id: agent_id,
       total_events: length(events),
       tier_distribution: tier_distribution,
+      thought_counts: %{
+        total: thought_completed + thought_failed,
+        completed: thought_completed,
+        failed: thought_failed,
+        by_tier: thought_by_tier
+      },
       time_range: %{since: since, now: DateTime.utc_now()}
     }
   end
