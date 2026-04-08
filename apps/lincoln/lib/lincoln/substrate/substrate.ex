@@ -13,6 +13,7 @@ defmodule Lincoln.Substrate.Substrate do
   alias Lincoln.Substrate.{Attention, Thought, ThoughtSupervisor, Trajectory}
 
   @tick_interval 5_000
+  @narrative_interval 200
 
   defstruct [
     :agent_id,
@@ -121,6 +122,12 @@ defmodule Lincoln.Substrate.Substrate do
     )
 
     record_trajectory(state.agent_id, new_state, chosen_belief, attention_score, tier)
+
+    # Trigger narrative reflection at regular intervals
+    if rem(new_state.tick_count, @narrative_interval) == 0 and new_state.tick_count > 0 do
+      spawn_narrative_thought(new_state)
+    end
+
     schedule_tick(state.tick_interval)
     {:noreply, new_state}
   end
@@ -315,6 +322,33 @@ defmodule Lincoln.Substrate.Substrate do
     case Registry.lookup(Lincoln.AgentRegistry, {agent_id, type}) do
       [{pid, _}] -> {:ok, pid}
       [] -> {:error, :not_running}
+    end
+  end
+
+  defp spawn_narrative_thought(state) do
+    narrative_belief = %{
+      id: nil,
+      statement: "Reflect on what I have been thinking about and learning recently",
+      confidence: 1.0,
+      source_type: "introspection"
+    }
+
+    thought_opts = %{
+      agent_id: state.agent_id,
+      belief: narrative_belief,
+      attention_score: 0.9,
+      is_narrative: true,
+      narrative_tick: state.tick_count
+    }
+
+    case ThoughtSupervisor.spawn_thought(state.agent_id, thought_opts) do
+      {:ok, _pid} ->
+        Logger.info(
+          "[Substrate #{state.agent_id}] Narrative thought spawned at tick #{state.tick_count}"
+        )
+
+      {:error, reason} ->
+        Logger.debug("[Substrate #{state.agent_id}] Narrative thought failed: #{inspect(reason)}")
     end
   end
 

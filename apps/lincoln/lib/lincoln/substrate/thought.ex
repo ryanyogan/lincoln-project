@@ -28,6 +28,8 @@ defmodule Lincoln.Substrate.Thought do
     :started_at,
     :completed_at,
     :parent_id,
+    :is_narrative,
+    :narrative_tick,
     pending_children: %{},
     child_results: []
   ]
@@ -85,7 +87,9 @@ defmodule Lincoln.Substrate.Thought do
       completed_at: nil,
       parent_id: Map.get(opts, :parent_id),
       pending_children: %{},
-      child_results: []
+      child_results: [],
+      is_narrative: Map.get(opts, :is_narrative, false),
+      narrative_tick: Map.get(opts, :narrative_tick, 0)
     }
 
     belief_statement = get_statement(belief)
@@ -105,6 +109,13 @@ defmodule Lincoln.Substrate.Thought do
     new_state = execute_local(state)
     finalize(new_state)
     {:stop, :normal, new_state}
+  end
+
+  @impl true
+  def handle_continue(:execute, %{is_narrative: true} = state) do
+    Logger.info("[Thought #{state.id}] Narrative reflection at tick #{state.narrative_tick}")
+    _task = Task.async(fn -> run_narrative_llm(state) end)
+    {:noreply, %{state | status: :awaiting_llm}}
   end
 
   @impl true
@@ -314,6 +325,66 @@ defmodule Lincoln.Substrate.Thought do
     ]
 
     InferenceTier.execute_at_tier(tier, messages, [])
+  end
+
+  defp run_narrative_llm(state) do
+    trajectory_summary =
+      try do
+        Lincoln.Substrate.Trajectory.summary(state.agent_id, hours: 1)
+      rescue
+        _ -> %{total_events: 0, thought_counts: %{completed: 0}}
+      end
+
+    completed_thoughts = get_in(trajectory_summary, [:thought_counts, :completed]) || 0
+
+    messages = [
+      %{
+        role: "system",
+        content: """
+        You are Lincoln's introspective voice. Write a short autobiographical passage
+        (3-5 sentences) in first person describing what you have been thinking about,
+        what you have noticed, and how your understanding has shifted recently.
+        Be specific about beliefs and topics you have encountered.
+        Be honest about uncertainties. Write as a continuous cognitive entity.
+        Begin with "I have been..." or "In the last stretch of ticks..."
+        """
+      },
+      %{
+        role: "user",
+        content: """
+        Recent activity (last hour):
+        - Substrate events processed: #{trajectory_summary.total_events}
+        - Thoughts completed: #{completed_thoughts}
+        - Current tick: #{state.narrative_tick}
+
+        Write your reflection now.
+        """
+      }
+    ]
+
+    case InferenceTier.execute_at_tier(:claude, messages, []) do
+      {:ok, text} ->
+        Task.start(fn ->
+          try do
+            Lincoln.Narratives.create_reflection(state.agent_id, %{
+              content: text,
+              tick_number: state.narrative_tick,
+              period_start_tick: max(0, state.narrative_tick - 200),
+              period_end_tick: state.narrative_tick,
+              thought_count: completed_thoughts
+            })
+          rescue
+            e ->
+              Logger.warning("[Thought] Narrative persist failed: #{Exception.message(e)}")
+          end
+        end)
+
+        {:ok, text}
+
+      {:error, reason} ->
+        Logger.warning("[Thought] Narrative LLM failed: #{inspect(reason)}")
+        {:error, reason}
+    end
   end
 
   defp find_exploration_candidates(state) do
