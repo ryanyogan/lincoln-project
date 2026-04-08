@@ -21,7 +21,7 @@ lincoln/
 │   │   │   ├── substrate/          # The 5 cognitive processes (NEW)
 │   │   │   │   ├── substrate.ex    # Core tick loop — always running
 │   │   │   │   ├── attention.ex    # Parameterized belief scoring
-│   │   │   │   ├── driver.ex       # Tiered execution (local/Ollama/Claude)
+│   │   │   │   ├── thought.ex      # Individual thought execution (NEW)
 │   │   │   │   ├── skeptic.ex      # Background contradiction detection
 │   │   │   │   ├── resonator.ex    # Coherence cascade detection
 │   │   │   │   ├── agent_supervisor.ex  # Per-agent OTP supervision tree
@@ -41,6 +41,7 @@ lincoln/
 │   │       └── live/
 │   │           ├── substrate_live.ex         # Real-time cognitive state dashboard
 │   │           ├── substrate_compare_live.ex # Side-by-side divergence observatory
+│   │           ├── substrate_thoughts_live.ex # Live thought tree visualization (NEW)
 │   │           ├── dashboard_live.ex         # Neural command center
 │   │           ├── chat_live.ex              # Chat with cognitive transparency
 │   │           ├── beliefs_live.ex           # Belief matrix viewer
@@ -58,9 +59,9 @@ Every agent runs five long-lived supervised GenServer processes under a per-agen
 
 | Process | Tick Rate | Purpose |
 |---------|-----------|---------|
-| **Substrate** | 5s | The thing that's always running. Holds the current cognitive state, processes events, maintains working memory. |
+| **Substrate** | 5s | The thing that's always running. Holds the current cognitive state, processes events, maintains working memory. Spawns Thought processes for beliefs it decides to think about. |
 | **Attention** | On-demand | Decides what to think about next. Parameterized scoring over beliefs: novelty, tension, staleness, depth. Different params = different cognitive style. |
-| **Driver** | On-demand | Executes whatever Attention decided. Three-tier inference: free local computation, cheap Ollama, expensive Claude. |
+| **Thought** | Lifecycle-driven | Executes a single belief. Spawned by Substrate, manages its own execution (local/Ollama/Claude), can be interrupted if a higher-priority belief emerges, can spawn child thoughts. Reports completion back to Substrate. |
 | **Skeptic** | 30s | Looks for contradictions. Finds beliefs that disagree and flags them for investigation. |
 | **Resonator** | 60s | Looks for coherence. Detects belief clusters where small changes cascade — the mechanism behind "getting hooked on a topic." |
 
@@ -171,6 +172,8 @@ open http://localhost:4000/substrate/compare
 | Route | Page | What It Shows |
 |-------|------|---------------|
 | `/substrate` | Cognitive Substrate | Real-time tick counter, attention scores, belief rankings, parameter controls, tier distribution, skeptic/resonator flags |
+| `/substrate/thoughts` | Thought Tree | Live tree of currently-executing thoughts, their status, execution tier, child thoughts, and completion time |
+| `/substrate/compare` | Divergence Observatory | Two agents side-by-side with different attention parameters, same input stream, showing how they diverge |
 | `/` | Neural Command Center | Agent overview, stats, system health |
 | `/chat` | Chat Interface | Conversation with cognitive transparency (memories retrieved, beliefs consulted, contradictions detected) |
 | `/beliefs` | Belief Matrix | All beliefs with confidence levels, entrenchment, source types |
@@ -356,7 +359,7 @@ docker compose logs -f ml_service     # Follow ML service logs
 
 | Directory | Purpose |
 |-----------|---------|
-| `lib/lincoln/substrate/` | The 5 cognitive processes + supporting modules. The core of the thesis. |
+| `lib/lincoln/substrate/` | The 5 cognitive processes + supporting modules. The core of the thesis. Includes Substrate, Attention, Thought, Skeptic, Resonator. |
 | `lib/lincoln/beliefs/` | Belief schemas, AGM revision framework, relationship graph |
 | `lib/lincoln/cognition/` | Conversation handler, perception, thought loops |
 | `lib/lincoln/memory/` | Memory storage, retrieval, embedding-based search |
@@ -365,7 +368,7 @@ docker compose logs -f ml_service     # Follow ML service logs
 | `lib/lincoln/autonomy/` | Autonomous learning, research, self-improvement, evolution |
 | `lib/lincoln/agents/` | Agent CRUD, personality, attention parameters |
 | `lib/lincoln/events/` | Event emission, caching, improvement queue |
-| `lib/lincoln_web/live/` | LiveView dashboards (all real-time via PubSub) |
+| `lib/lincoln_web/live/` | LiveView dashboards (all real-time via PubSub) including thought tree visualization |
 | `apps/ml_service/` | Python FastAPI service for sentence-transformer embeddings |
 
 ## Current Limitations (Honest Assessment)
@@ -374,7 +377,7 @@ These are the gaps between what the README claims and what the code currently do
 
 **Property 1 (Continuity) is partially realized.** The substrate maintains persistent GenServer state across ticks — current focus, activation map, pending events survive between ticks and across conversations. But the substrate sleeps between ticks. It does not accumulate activation or decay focus between tick boundaries. Right now it's a 5-second tick loop, not a truly continuous process. The state is continuous; the computation is periodic. A skeptical reviewer would call this a fast cron and they wouldn't be entirely wrong. Making computation genuinely continuous (event-driven wakeups, inter-tick state evolution) is the next architectural step.
 
-**Property 2 (Self-generated actions) is partially realized.** When no events are pending, the substrate picks a new focus belief — but it doesn't call the Attention scoring function or the Driver to actually *think about* that belief. The Substrate tick loop processes events or updates focus, but doesn't orchestrate the full Attention→Driver pipeline autonomously on every idle tick. Wiring that pipeline so the Substrate calls `Attention.next_thought/1` and `Driver.execute/2` on every tick (not just when events arrive) is what makes property 2 fully real.
+**Property 2 (Self-generated actions) is being realized via thoughts-as-processes.** The Substrate now spawns individual Thought processes for each belief it decides to think about. Each Thought is a supervised GenServer that manages its own lifecycle: it executes (local, Ollama, or Claude), handles interruption, can spawn child thoughts, and reports back to the Substrate when complete. This replaces the old Driver model where execution was synchronous or fire-and-forget. With thoughts-as-processes, the Substrate can interrupt a running thought if a higher-priority belief emerges, and the system can maintain a live tree of what it's currently thinking about. The `/substrate/thoughts` dashboard visualizes this tree in real time.
 
 **The Resonator is crude (by design).** v1 groups beliefs by `source_type` and checks for temporal co-revision. This is a rough proxy for topical coherence, not actual semantic clustering. The actually interesting version of the Resonator — one that detects genuine coherence cascades across semantic similarity — will take months of iteration. Don't gate the writeup on solving this. Ship with the crude version and a note about what would make it better.
 

@@ -36,21 +36,33 @@ The scoring function (attention.ex lines 213-226) combines novelty, tension, sta
 
 ---
 
-## Audit 3: Driver → Thought Refactoring Path
+## Audit 3: Thoughts-as-Processes (IN PROGRESS)
 
-**Current**: Attention picks a belief → calls Driver.execute → Driver does local work or spawns async Task for LLM.
-**Needed**: Attention picks a belief → spawns a Thought process → Thought manages its own lifecycle.
+**Status**: Being built. The Thought module is now the core execution unit.
 
-The cleanest refactor: **Thought replaces Driver**. The Driver's current logic becomes utility functions that Thoughts call. Specifically:
+**Architecture**: Attention picks a belief → Substrate spawns a Thought process → Thought manages its own lifecycle.
 
-- `do_local_execution/2` (driver.ex:179-208) → becomes `Thought.execute_local/2`
-- `do_async_execution/3` (driver.ex:211-252) → becomes `Thought.execute_llm/3`
-- The tier selection stays in `InferenceTier` (already decoupled)
-- The `pending_tasks` map in Driver becomes unnecessary — each Thought manages its own Task
-- The `action_history` moves to the Trajectory recorder
-- The `tier_counts` move to the Substrate or a metrics module
+**Thought lifecycle**:
+1. **Spawn** — Substrate calls `Thought.start_link(agent_id, belief, attention_score)` under a DynamicSupervisor
+2. **Execute** — Thought determines tier (local/Ollama/Claude) and runs inference
+3. **Interrupt** — If a higher-priority belief emerges, Substrate can send `:interrupt` message
+4. **Child thoughts** — Thought can spawn child thoughts for sub-problems
+5. **Complete** — Thought reports result back to Substrate, updates belief confidence, records trajectory
+6. **Cleanup** — Thought exits, supervisor cleans up
 
-The Driver can remain as a thin coordination layer, or be removed entirely with the Substrate calling Thoughts directly.
+**Implementation details**:
+- Each Thought is a GenServer with state: `{agent_id, belief, parent_pid, children, status, result}`
+- Tier selection via `InferenceTier` (already decoupled)
+- Execution logic extracted from Driver into `Thought.execute_local/2` and `Thought.execute_llm/3`
+- Trajectory recording now captures: thought spawn, tier selection, execution time, result, interruption events
+- The `/substrate/thoughts` dashboard visualizes the live thought tree in real time
+
+**What this enables**:
+- Interruption of running thoughts when attention shifts
+- Visible tree of what the agent is currently thinking about
+- Accurate measurement of cognitive effort (which beliefs took how long to think about)
+- Child thoughts for decomposing complex problems
+- Resumable interrupted thoughts (future work)
 
 ---
 
@@ -147,7 +159,7 @@ Six workers still running alongside the substrate:
 |-----------|--------|-------|
 | `/substrate` | ✅ Built | Tick counter, events, attention params, tier counts, skeptic/resonator panels |
 | `/substrate/compare` | ✅ Built | Side-by-side agent comparison, divergence indicator |
-| `/substrate/thoughts` | ❌ Doesn't exist | Needs to be built for thoughts-as-processes |
+| `/substrate/thoughts` | 🔨 IN PROGRESS | Live thought tree visualization for thoughts-as-processes |
 | `/` (Dashboard) | ✅ Pre-existing | Agent overview, system stats |
 | `/chat` | ✅ Pre-existing | Chat with cognitive transparency |
 | `/beliefs` | ✅ Pre-existing | Belief matrix |
@@ -155,7 +167,7 @@ Six workers still running alongside the substrate:
 | `/memories` | ✅ Pre-existing | Memory bank |
 | `/autonomy` | ✅ Pre-existing | Autonomous learning sessions |
 
-**For the writeup**: `/substrate/compare` (the divergence demo) and `/substrate/thoughts` (live thought tree) are the two URLs people will screenshot. `/substrate/thoughts` doesn't exist yet.
+**For the writeup**: `/substrate/compare` (the divergence demo) and `/substrate/thoughts` (live thought tree) are the two URLs people will screenshot. `/substrate/thoughts` is being built now.
 
 ---
 
@@ -183,15 +195,15 @@ Six workers still running alongside the substrate:
 - `skeptic_test.exs` — Tests tick counting. Does NOT test actual contradiction detection (needs embeddings).
 - `resonator_test.exs` — Tests cascade detection with seeded data. Decent coverage.
 
-### Things the master plan requires that don't exist yet:
+### Things the master plan requires that are in progress or pending:
 
-1. **Thoughts as processes** — The biggest gap. No `Lincoln.Substrate.Thought` module.
-2. **Theory of Mind (user model)** — No `user_models` table or module.
-3. **Self-model** — No self-model representation.
-4. **Narrative reflections** — No `narrative_reflections` table.
-5. **Quantitative metrics harness** — No benchmark infrastructure.
-6. **`/substrate/thoughts` dashboard** — No LiveView for thought tree visualization.
-7. **Thought interruption** — Can't interrupt running work (no thought lifecycle).
-8. **Child thoughts** — No tree-of-thought process spawning.
-9. **Resumable interrupted thoughts** — No checkpointing.
-10. **Cognitive bias documentation** — No systematic failure mode analysis.
+1. **Thoughts as processes** — ✅ IN PROGRESS. `Lincoln.Substrate.Thought` module being built. Enables interruption, child thoughts, and live visualization.
+2. **`/substrate/thoughts` dashboard** — ✅ IN PROGRESS. LiveView for thought tree visualization being built.
+3. **Thought interruption** — ✅ IN PROGRESS. Substrate can now send `:interrupt` to running thoughts.
+4. **Child thoughts** — ✅ IN PROGRESS. Thoughts can spawn child thoughts for sub-problems.
+5. **Theory of Mind (user model)** — Pending. No `user_models` table or module yet.
+6. **Self-model** — Pending. No self-model representation yet.
+7. **Narrative reflections** — Pending. No `narrative_reflections` table yet.
+8. **Quantitative metrics harness** — Pending. No benchmark infrastructure yet.
+9. **Resumable interrupted thoughts** — Pending. No checkpointing yet (future work).
+10. **Cognitive bias documentation** — Pending. No systematic failure mode analysis yet.
