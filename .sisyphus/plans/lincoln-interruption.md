@@ -200,7 +200,7 @@ Wave 3 (Dashboard + docs):
 
   **Commit**: `feat(interrupt): wire interruption logic into Substrate tick with threshold`
 
-- [ ] 3. Handle `:thought_interrupted` in SubstrateThoughtsLive
+- [x] 3. Handle `:thought_interrupted` in SubstrateThoughtsLive
 
   **What to do**:
   In `apps/lincoln_web/live/substrate_thoughts_live.ex`, add handler:
@@ -238,7 +238,7 @@ Wave 3 (Dashboard + docs):
   **Recommended Agent Profile**: `quick`
   **Commit**: `feat(interrupt): handle :thought_interrupted in thoughts dashboard`
 
-- [ ] 4. Update LEARNINGS.md
+- [x] 4. Update LEARNINGS.md
 
   **What to do**:
   - Mark "Thought interruption (Step 2)" as DONE in LEARNINGS.md
