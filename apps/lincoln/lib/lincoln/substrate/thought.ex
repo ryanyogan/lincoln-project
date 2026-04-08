@@ -27,7 +27,9 @@ defmodule Lincoln.Substrate.Thought do
     :result,
     :started_at,
     :completed_at,
-    :parent_id
+    :parent_id,
+    pending_children: %{},
+    child_results: []
   ]
 
   # ============================================================================
@@ -53,13 +55,22 @@ defmodule Lincoln.Substrate.Thought do
   @doc "Interrupt this thought — it will terminate gracefully after broadcasting the event."
   def interrupt(pid), do: GenServer.cast(pid, :interrupt)
 
+  @doc """
+  Spawn a child thought that explores a related belief.
+  The child runs under the same ThoughtSupervisor with parent_id set.
+  Returns {:ok, child_id} or {:error, reason}.
+  """
+  def spawn_child(parent_pid, belief, score) do
+    GenServer.call(parent_pid, {:spawn_child, belief, score})
+  end
+
   # ============================================================================
   # GenServer callbacks
   # ============================================================================
 
   @impl true
   def init(%{agent_id: agent_id, belief: belief, attention_score: score} = opts) do
-    id = Ecto.UUID.generate()
+    id = Map.get(opts, :id) || Ecto.UUID.generate()
     tier = InferenceTier.select_tier(score)
 
     state = %__MODULE__{
@@ -72,7 +83,9 @@ defmodule Lincoln.Substrate.Thought do
       result: nil,
       started_at: DateTime.utc_now(),
       completed_at: nil,
-      parent_id: Map.get(opts, :parent_id)
+      parent_id: Map.get(opts, :parent_id),
+      pending_children: %{},
+      child_results: []
     }
 
     belief_statement = get_statement(belief)
@@ -96,9 +109,57 @@ defmodule Lincoln.Substrate.Thought do
 
   @impl true
   def handle_continue(:execute, state) do
-    _task = Task.async(fn -> run_llm(state.belief, state.tier) end)
-    {:noreply, %{state | status: :awaiting_llm}}
+    # Don't spawn grandchildren — only top-level thoughts explore
+    if state.parent_id do
+      _task = Task.async(fn -> run_llm(state.belief, state.tier) end)
+      {:noreply, %{state | status: :awaiting_llm}}
+    else
+      case find_exploration_candidates(state) do
+        [] ->
+          _task = Task.async(fn -> run_llm(state.belief, state.tier) end)
+          {:noreply, %{state | status: :awaiting_llm}}
+
+        candidates ->
+          Logger.debug(
+            "[Thought #{state.id}] Spawning #{length(candidates)} children for exploration"
+          )
+
+          Enum.each(candidates, fn {belief, score} ->
+            spawn_child(self(), belief, score)
+          end)
+
+          # Status is set to :awaiting_children by spawn_child via handle_call
+          {:noreply, state}
+      end
+    end
   end
+
+  # Child thought completed — track it, synthesize when all done
+  @impl true
+  def handle_info({:thought_completed, child_id, result}, state)
+      when is_map_key(state.pending_children, child_id) do
+    pending = Map.put(state.pending_children, child_id, result)
+    child_results = [result | state.child_results]
+    new_state = %{state | pending_children: pending, child_results: child_results}
+
+    if Enum.all?(pending, fn {_id, r} -> r != nil end) do
+      Logger.debug("[Thought #{state.id}] All #{map_size(pending)} children done, synthesizing")
+      _task = Task.async(fn -> run_llm_with_children(state.belief, state.tier, child_results) end)
+      {:noreply, %{new_state | status: :awaiting_llm}}
+    else
+      remaining = Enum.count(pending, fn {_id, r} -> r == nil end)
+      Logger.debug("[Thought #{state.id}] Waiting for #{remaining} more children")
+      {:noreply, new_state}
+    end
+  end
+
+  # Non-child thought_completed events (from siblings) — ignore
+  def handle_info({:thought_completed, _other_id, _result}, state), do: {:noreply, state}
+
+  # Other thought events from the subscription — ignore
+  def handle_info({:thought_spawned, _id, _statement, _tier}, state), do: {:noreply, state}
+  def handle_info({:thought_interrupted, _id, _reason}, state), do: {:noreply, state}
+  def handle_info({:thought_failed, _id, _reason}, state), do: {:noreply, state}
 
   @impl true
   def handle_info({ref, result}, state) when is_reference(ref) do
@@ -155,6 +216,36 @@ defmodule Lincoln.Substrate.Thought do
   end
 
   @impl true
+  def handle_call({:spawn_child, belief, score}, _from, state) do
+    child_id = Ecto.UUID.generate()
+
+    child_opts = %{
+      id: child_id,
+      agent_id: state.agent_id,
+      belief: belief,
+      attention_score: score,
+      parent_id: state.id
+    }
+
+    case Lincoln.Substrate.ThoughtSupervisor.spawn_thought(state.agent_id, child_opts) do
+      {:ok, _pid} ->
+        if map_size(state.pending_children) == 0 do
+          Phoenix.PubSub.subscribe(
+            Lincoln.PubSub,
+            PubSubBroadcaster.thought_topic(state.agent_id)
+          )
+        end
+
+        pending = Map.put(state.pending_children, child_id, nil)
+        new_state = %{state | pending_children: pending, status: :awaiting_children}
+        {:reply, {:ok, child_id}, new_state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
+    end
+  end
+
+  @impl true
   def handle_call(:get_state, _from, state) do
     {:reply, state, state}
   end
@@ -190,6 +281,73 @@ defmodule Lincoln.Substrate.Thought do
     ]
 
     InferenceTier.execute_at_tier(tier, messages, [])
+  end
+
+  defp run_llm_with_children(belief, tier, child_results) do
+    statement = get_statement(belief)
+
+    child_context =
+      child_results
+      |> Enum.reject(&is_nil/1)
+      |> Enum.with_index(1)
+      |> Enum.map_join("\n", fn {result, i} -> "#{i}. #{result}" end)
+
+    messages = [
+      %{
+        role: "system",
+        content:
+          "You are synthesizing insights from parallel explorations. Be concise (3-4 sentences)."
+      },
+      %{
+        role: "user",
+        content: """
+        Main belief: #{statement}
+
+        Parallel explorations of related beliefs:
+        #{child_context}
+
+        Synthesize these into a coherent reflection on the main belief.
+        """
+      }
+    ]
+
+    InferenceTier.execute_at_tier(tier, messages, [])
+  end
+
+  defp find_exploration_candidates(state) do
+    import Ecto.Query
+
+    belief_id =
+      Map.get(state.belief, :id) ||
+        Map.get(state.belief, "id")
+
+    if is_nil(belief_id) or is_nil(state.agent_id) do
+      []
+    else
+      Lincoln.Beliefs.BeliefRelationship
+      |> where(
+        [r],
+        r.agent_id == ^state.agent_id and
+          (r.source_belief_id == ^belief_id or r.target_belief_id == ^belief_id)
+      )
+      |> preload([:source_belief, :target_belief])
+      |> Lincoln.Repo.all()
+      |> Enum.flat_map(fn rel ->
+        related =
+          cond do
+            to_string(rel.source_belief_id) == to_string(belief_id) -> rel.target_belief
+            to_string(rel.target_belief_id) == to_string(belief_id) -> rel.source_belief
+            true -> nil
+          end
+
+        if related && related.status == "active" do
+          [{related, 0.2}]
+        else
+          []
+        end
+      end)
+      |> Enum.take(3)
+    end
   end
 
   defp finalize(state) do
