@@ -10,7 +10,7 @@ defmodule Lincoln.Substrate.Substrate do
   require Logger
 
   alias Lincoln.{Agents, Beliefs, PubSubBroadcaster}
-  alias Lincoln.Substrate.{Attention, ThoughtSupervisor, Trajectory}
+  alias Lincoln.Substrate.{Attention, Thought, ThoughtSupervisor, Trajectory}
 
   @tick_interval 5_000
 
@@ -230,6 +230,38 @@ defmodule Lincoln.Substrate.Substrate do
   defp spawn_thought(_state, nil, _score), do: :no_belief
 
   defp spawn_thought(state, belief, score) do
+    interrupt_threshold = get_interrupt_threshold(state)
+
+    case ThoughtSupervisor.list_children(state.agent_id) do
+      [] ->
+        # No thought running — spawn freely
+        do_spawn_thought(state, belief, score)
+
+      [{_id, pid, _type, _modules} | _rest] when is_pid(pid) ->
+        # A thought is running — check interrupt_threshold
+        if score >= interrupt_threshold do
+          Logger.debug(
+            "[Substrate #{state.agent_id}] Interrupting thought " <>
+              "(score #{Float.round(score, 2)} >= threshold #{Float.round(interrupt_threshold, 2)})"
+          )
+
+          Thought.interrupt(pid)
+          do_spawn_thought(state, belief, score)
+        else
+          Logger.debug(
+            "[Substrate #{state.agent_id}] Thought running, skipping spawn " <>
+              "(score #{Float.round(score, 2)} < threshold #{Float.round(interrupt_threshold, 2)})"
+          )
+
+          :thought_running
+        end
+
+      _ ->
+        do_spawn_thought(state, belief, score)
+    end
+  end
+
+  defp do_spawn_thought(state, belief, score) do
     thought_opts = %{
       agent_id: state.agent_id,
       belief: belief,
@@ -243,6 +275,21 @@ defmodule Lincoln.Substrate.Substrate do
       {:error, reason} ->
         Logger.debug("[Substrate #{state.agent_id}] Could not spawn thought: #{inspect(reason)}")
         nil
+    end
+  end
+
+  defp get_interrupt_threshold(state) do
+    params = state.agent && state.agent.attention_params
+
+    raw =
+      (params && Map.get(params, "interrupt_threshold")) ||
+        (params && Map.get(params, :interrupt_threshold)) ||
+        0.7
+
+    case raw do
+      f when is_float(f) -> f
+      i when is_integer(i) -> i * 1.0
+      _ -> 0.7
     end
   end
 
