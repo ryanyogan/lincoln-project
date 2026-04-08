@@ -116,6 +116,35 @@ defmodule LincolnWeb.SubstrateThoughtsLive do
      |> assign(:thought_history, history)}
   end
 
+  def handle_info({:thought_interrupted, thought_id, _reason}, socket) do
+    {interrupted, remaining} =
+      Enum.split_with(socket.assigns.active_thoughts, fn t -> t.id == thought_id end)
+
+    history_entry =
+      case interrupted do
+        [t | _] ->
+          %{t | status: :interrupted, result: "Preempted", completed_at: DateTime.utc_now()}
+
+        [] ->
+          %{
+            id: thought_id,
+            status: :interrupted,
+            result: "Preempted",
+            belief_statement: "Unknown",
+            tier: :local,
+            started_at: DateTime.utc_now(),
+            completed_at: DateTime.utc_now()
+          }
+      end
+
+    history = [history_entry | socket.assigns.thought_history] |> Enum.take(@max_history)
+
+    {:noreply,
+     socket
+     |> assign(:active_thoughts, remaining)
+     |> assign(:thought_history, history)}
+  end
+
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # ============================================================================
@@ -305,6 +334,7 @@ defmodule LincolnWeb.SubstrateThoughtsLive do
   defp status_badge_attrs(:awaiting_llm), do: {"bg-warning/20 text-warning", "awaiting LLM"}
   defp status_badge_attrs(:completed), do: {"bg-success/20 text-success", "completed"}
   defp status_badge_attrs(:failed), do: {"bg-error/20 text-error", "failed"}
+  defp status_badge_attrs(:interrupted), do: {"bg-warning/20 text-warning", "interrupted"}
   defp status_badge_attrs(_), do: {"bg-base-content/10 text-base-content/50", "unknown"}
 
   defp format_duration(started_at, completed_at \\ nil) do

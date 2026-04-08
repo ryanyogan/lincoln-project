@@ -79,7 +79,7 @@ Wave 3 (Dashboard + docs):
 
 ## TODOs
 
-- [ ] 1. Add `:interrupt` Handling to Thought GenServer
+- [x] 1. Add `:interrupt` Handling to Thought GenServer
 
   **What to do**:
   Add to `apps/lincoln/lib/lincoln/substrate/thought.ex`:
@@ -119,7 +119,7 @@ Wave 3 (Dashboard + docs):
   **Recommended Agent Profile**: `quick`
   **Commit**: `feat(interrupt): add :interrupt handling to Thought GenServer`
 
-- [ ] 2. Wire Interruption Logic in Substrate Tick
+- [x] 2. Wire Interruption Logic in Substrate Tick
 
   **What to do**:
   Rewrite `spawn_thought/3` in `apps/lincoln/lib/lincoln/substrate/substrate.ex` to implement the interruption policy:

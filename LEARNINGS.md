@@ -66,6 +66,31 @@ The scoring function (attention.ex lines 213-226) combines novelty, tension, sta
 
 ---
 
+## Audit 3.1: Step 2 — Thought Interruption (DONE)
+
+**Status**: ✅ COMPLETE
+
+Interruption is now wired end-to-end:
+
+**In `substrate.ex`** — `spawn_thought/3` checks for running thoughts before spawning:
+1. Calls `ThoughtSupervisor.list_children/1` to get active thoughts
+2. Reads `interrupt_threshold` from `state.agent.attention_params`
+3. If a running thought exists AND new belief's score >= threshold → `Thought.interrupt(pid)` then spawn new
+4. If a running thought exists AND new belief's score < threshold → returns `:thought_running` (thought continues)
+
+**In `substrate_thoughts_live.ex`** — Dashboard now handles `:thought_interrupted` events:
+- `handle_info({:thought_interrupted, thought_id, _reason}, socket)` moves thought to history with "interrupted" status
+- `status_badge_attrs(:interrupted)` returns yellow badge styling
+
+**The `interrupt_threshold` is now a live behavioral parameter**:
+- `focused` (0.8): thoughts almost never interrupted (high bar for preemption)
+- `butterfly` (0.3): almost anything interrupts (low bar, high context-switching)
+- `adhd_like` (0.9): near-impossible to interrupt (hyperfocus mode)
+
+**Known limitation**: `state.agent.attention_params` can be stale if params are changed at runtime. To get fresh params, reload agent in `get_interrupt_threshold/1` (not done yet — acceptable for v1).
+
+---
+
 ## Audit 4: Skeptic and Resonator Status
 
 **Skeptic** — Implemented, not a stub. On each 30s tick:
