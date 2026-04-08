@@ -355,9 +355,10 @@ defmodule LincolnWeb.SubstrateThoughtsLive do
 
   defp normalize_thought(thought) do
     belief_statement =
-      cond do
-        is_map(thought.belief) -> Map.get(thought.belief, :statement, inspect(thought.belief))
-        true -> inspect(thought.belief)
+      if is_map(thought.belief) do
+        Map.get(thought.belief, :statement, inspect(thought.belief))
+      else
+        inspect(thought.belief)
       end
 
     %{

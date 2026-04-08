@@ -11,8 +11,8 @@ defmodule Lincoln.Narratives do
   """
 
   import Ecto.Query
-  alias Lincoln.Repo
   alias Lincoln.Narratives.NarrativeReflection
+  alias Lincoln.Repo
 
   @doc "Create a new narrative reflection for an agent."
   def create_reflection(agent_id, attrs) when is_binary(agent_id) do

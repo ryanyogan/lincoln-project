@@ -10,7 +10,7 @@ defmodule Lincoln.Substrate.Substrate do
   require Logger
 
   alias Lincoln.{Agents, Beliefs, PubSubBroadcaster}
-  alias Lincoln.Substrate.{Attention, Thought, ThoughtSupervisor, Trajectory}
+  alias Lincoln.Substrate.{Attention, InferenceTier, Thought, ThoughtSupervisor, Trajectory}
 
   @tick_interval 5_000
   @narrative_interval 200
@@ -277,7 +277,7 @@ defmodule Lincoln.Substrate.Substrate do
 
     case ThoughtSupervisor.spawn_thought(state.agent_id, thought_opts) do
       {:ok, _pid} ->
-        Lincoln.Substrate.InferenceTier.select_tier(score || 0.0)
+        InferenceTier.select_tier(score || 0.0)
 
       {:error, reason} ->
         Logger.debug("[Substrate #{state.agent_id}] Could not spawn thought: #{inspect(reason)}")

@@ -30,18 +30,8 @@ defmodule Lincoln.Substrate.ConversationBridge do
         Map.get(cognitive_metadata, "user_content") ||
         ""
 
-    # Theory of Mind: observe what the user said (non-blocking)
     if is_binary(user_content) and byte_size(user_content) > 0 do
-      Task.start(fn ->
-        try do
-          UserModels.observe_message(agent_id, to_string(session_id), user_content)
-        rescue
-          e ->
-            Logger.warning(
-              "[ConversationBridge] UserModel observation failed: #{Exception.message(e)}"
-            )
-        end
-      end)
+      observe_user_message(agent_id, session_id, user_content)
     end
 
     event = %{
@@ -59,5 +49,18 @@ defmodule Lincoln.Substrate.ConversationBridge do
         Logger.debug("[ConversationBridge] Substrate not running for agent #{agent_id}, skipping")
         :ok
     end
+  end
+
+  defp observe_user_message(agent_id, session_id, user_content) do
+    Task.start(fn ->
+      try do
+        UserModels.observe_message(agent_id, to_string(session_id), user_content)
+      rescue
+        e ->
+          Logger.warning(
+            "[ConversationBridge] UserModel observation failed: #{Exception.message(e)}"
+          )
+      end
+    end)
   end
 end

@@ -136,9 +136,7 @@ defmodule Lincoln.Substrate.Skeptic do
         candidates = Enum.reject(similar, fn b -> b.id == belief.id end)
 
         Enum.each(candidates, fn candidate ->
-          if contradiction_signals?(belief, candidate) do
-            maybe_create_contradiction(belief, candidate, state)
-          end
+          check_and_flag_contradiction(belief, candidate, state)
         end)
     end
   end
@@ -155,6 +153,12 @@ defmodule Lincoln.Substrate.Skeptic do
       not is_nil(belief_a.last_challenged_at) or not is_nil(belief_b.last_challenged_at)
 
     both_confident and (different_sources or recently_challenged)
+  end
+
+  defp check_and_flag_contradiction(belief_a, candidate, state) do
+    if contradiction_signals?(belief_a, candidate) do
+      maybe_create_contradiction(belief_a, candidate, state)
+    end
   end
 
   defp maybe_create_contradiction(belief_a, belief_b, state) do

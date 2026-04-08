@@ -69,23 +69,9 @@ defmodule Lincoln.Substrate.AttentionParams do
   def validate(params) do
     errors =
       Enum.reduce(@required_params, [], fn param, acc ->
-        case Map.get(params, param) do
-          nil ->
-            [{param, "is required"} | acc]
-
-          val when param == :tick_interval_ms ->
-            if is_integer(val) and val >= 1_000 and val <= 60_000 do
-              acc
-            else
-              [{param, "must be an integer between 1000 and 60000"} | acc]
-            end
-
-          val when param in @float_params ->
-            if is_float(val) and val >= 0.0 and val <= 1.0 do
-              acc
-            else
-              [{param, "must be a float between 0.0 and 1.0"} | acc]
-            end
+        case validate_param_value(param, Map.get(params, param)) do
+          nil -> acc
+          error -> [{param, error} | acc]
         end
       end)
 
@@ -94,6 +80,18 @@ defmodule Lincoln.Substrate.AttentionParams do
     else
       {:error, errors}
     end
+  end
+
+  defp validate_param_value(_param, nil), do: "is required"
+
+  defp validate_param_value(:tick_interval_ms, val) do
+    unless is_integer(val) and val >= 1_000 and val <= 60_000,
+      do: "must be an integer between 1000 and 60000"
+  end
+
+  defp validate_param_value(param, val) when param in @float_params do
+    unless is_float(val) and val >= 0.0 and val <= 1.0,
+      do: "must be a float between 0.0 and 1.0"
   end
 
   @doc "Merge custom params over the default preset."

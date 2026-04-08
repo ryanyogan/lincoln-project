@@ -14,8 +14,8 @@ defmodule Lincoln.Substrate.Thought do
   use GenServer
   require Logger
 
-  alias Lincoln.{Agents, PubSubBroadcaster}
-  alias Lincoln.Substrate.InferenceTier
+  alias Lincoln.{Agents, Narratives, PubSubBroadcaster}
+  alias Lincoln.Substrate.{InferenceTier, ThoughtSupervisor, Trajectory}
 
   defstruct [
     :id,
@@ -135,11 +135,7 @@ defmodule Lincoln.Substrate.Thought do
             "[Thought #{state.id}] Spawning #{length(candidates)} children for exploration"
           )
 
-          Enum.each(candidates, fn {belief, score} ->
-            spawn_child(self(), belief, score)
-          end)
-
-          # Status is set to :awaiting_children by spawn_child via handle_call
+          spawn_exploration_children(candidates)
           {:noreply, state}
       end
     end
@@ -240,7 +236,7 @@ defmodule Lincoln.Substrate.Thought do
       parent_id: state.id
     }
 
-    case Lincoln.Substrate.ThoughtSupervisor.spawn_thought(state.agent_id, child_opts) do
+    case ThoughtSupervisor.spawn_thought(state.agent_id, child_opts) do
       {:ok, _pid} ->
         if map_size(state.pending_children) == 0 do
           Phoenix.PubSub.subscribe(
@@ -330,7 +326,7 @@ defmodule Lincoln.Substrate.Thought do
   defp run_narrative_llm(state) do
     trajectory_summary =
       try do
-        Lincoln.Substrate.Trajectory.summary(state.agent_id, hours: 1)
+        Trajectory.summary(state.agent_id, hours: 1)
       rescue
         _ -> %{total_events: 0, thought_counts: %{completed: 0}}
       end
@@ -366,7 +362,7 @@ defmodule Lincoln.Substrate.Thought do
       {:ok, text} ->
         Task.start(fn ->
           try do
-            Lincoln.Narratives.create_reflection(state.agent_id, %{
+            Narratives.create_reflection(state.agent_id, %{
               content: text,
               tick_number: state.narrative_tick,
               period_start_tick: max(0, state.narrative_tick - 200),
@@ -405,21 +401,32 @@ defmodule Lincoln.Substrate.Thought do
       )
       |> preload([:source_belief, :target_belief])
       |> Lincoln.Repo.all()
-      |> Enum.flat_map(fn rel ->
-        related =
-          cond do
-            to_string(rel.source_belief_id) == to_string(belief_id) -> rel.target_belief
-            to_string(rel.target_belief_id) == to_string(belief_id) -> rel.source_belief
-            true -> nil
-          end
-
-        if related && related.status == "active" do
-          [{related, 0.2}]
-        else
-          []
-        end
-      end)
+      |> Enum.flat_map(&active_related_belief(&1, belief_id))
       |> Enum.take(3)
+    end
+  end
+
+  defp spawn_exploration_children(candidates) do
+    Enum.each(candidates, fn {belief, score} ->
+      spawn_child(self(), belief, score)
+    end)
+  end
+
+  defp active_related_belief(rel, belief_id) do
+    related = related_belief_from(rel, belief_id)
+
+    if related && related.status == "active" do
+      [{related, 0.2}]
+    else
+      []
+    end
+  end
+
+  defp related_belief_from(rel, belief_id) do
+    cond do
+      to_string(rel.source_belief_id) == to_string(belief_id) -> rel.target_belief
+      to_string(rel.target_belief_id) == to_string(belief_id) -> rel.source_belief
+      true -> nil
     end
   end
 

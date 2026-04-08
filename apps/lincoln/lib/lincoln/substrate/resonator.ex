@@ -115,10 +115,14 @@ defmodule Lincoln.Substrate.Resonator do
       beliefs
       |> Enum.group_by(& &1.source_type)
       |> Enum.each(fn {_type, cluster_beliefs} ->
-        if Enum.count(cluster_beliefs) >= @min_cluster_size and cascade_active?(cluster_beliefs) do
-          process_cascade(cluster_beliefs, state)
-        end
+        maybe_process_cascade(cluster_beliefs, state)
       end)
+    end
+  end
+
+  defp maybe_process_cascade(cluster_beliefs, state) do
+    if Enum.count(cluster_beliefs) >= @min_cluster_size and cascade_active?(cluster_beliefs) do
+      process_cascade(cluster_beliefs, state)
     end
   end
 

@@ -115,15 +115,7 @@ defmodule Lincoln.Substrate.Attention do
         scored =
           beliefs
           |> Enum.map(fn belief ->
-            score = score_belief(belief, state, params, now, all_relationships)
-
-            score =
-              if state.current_focus_id == belief.id do
-                min(1.0, score + params.focus_momentum * 0.3)
-              else
-                score
-              end
-
+            score = score_with_focus(belief, state, params, now, all_relationships)
             {belief, score}
           end)
           |> Enum.sort_by(fn {_belief, score} -> score end, :desc)
@@ -209,6 +201,16 @@ defmodule Lincoln.Substrate.Attention do
   # =============================================================================
   # Scoring
   # =============================================================================
+
+  defp score_with_focus(belief, state, params, now, all_relationships) do
+    score = score_belief(belief, state, params, now, all_relationships)
+
+    if state.current_focus_id == belief.id do
+      min(1.0, score + params.focus_momentum * 0.3)
+    else
+      score
+    end
+  end
 
   defp score_belief(belief, state, params, now, belief_rels) do
     novelty = novelty_score(belief, now)
