@@ -54,7 +54,6 @@ defmodule LincolnWeb.Endpoint do
 
   plug(Plug.MethodOverride)
   plug(Plug.Head)
-  plug(Lincoln.MCP.Plug)
   plug(Plug.Session, @session_options)
   plug(LincolnWeb.Router)
 end

@@ -50,6 +50,9 @@ defmodule LincolnWeb.Router do
     get("/welcome", PageController, :home)
   end
 
+  # MCP server — exposes Lincoln's cognitive substrate to Claude Code
+  forward("/mcp", Lincoln.MCP.Server)
+
   # API routes for external agent interaction
   scope "/api", LincolnWeb.API do
     pipe_through(:api)
