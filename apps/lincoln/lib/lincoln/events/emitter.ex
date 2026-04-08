@@ -72,17 +72,13 @@ defmodule Lincoln.Events.Emitter do
     }
   end
 
-  defp determine_severity(type) do
-    case type do
-      :user_correction -> "high"
-      :thought_loop_gave_up -> "medium"
-      :error_occurred -> "high"
-      :research_failed -> "medium"
-      :belief_contradiction -> "medium"
-      :slow_operation -> "low"
-      :thought_loop_slow -> "low"
-      :low_confidence_response -> "low"
-      _ -> "medium"
-    end
-  end
+  defp determine_severity(:user_correction), do: "high"
+  defp determine_severity(:error_occurred), do: "high"
+  defp determine_severity(:thought_loop_gave_up), do: "medium"
+  defp determine_severity(:research_failed), do: "medium"
+  defp determine_severity(:belief_contradiction), do: "medium"
+  defp determine_severity(:slow_operation), do: "low"
+  defp determine_severity(:thought_loop_slow), do: "low"
+  defp determine_severity(:low_confidence_response), do: "low"
+  defp determine_severity(_), do: "medium"
 end

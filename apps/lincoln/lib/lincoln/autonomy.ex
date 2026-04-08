@@ -689,50 +689,53 @@ defmodule Lincoln.Autonomy do
   """
   def get_active_session_summary(agent) do
     case get_active_session(agent) do
-      nil ->
-        nil
-
-      session ->
-        # Get current topic
-        current_topic =
-          Repo.one(
-            from(t in ResearchTopic,
-              where: t.session_id == ^session.id and t.status == "exploring",
-              limit: 1
-            )
-          )
-
-        # Get session stats
-        topic_count =
-          Repo.one(
-            from(t in ResearchTopic,
-              where: t.session_id == ^session.id,
-              select: count(t.id)
-            )
-          ) || 0
-
-        completed_count =
-          Repo.one(
-            from(t in ResearchTopic,
-              where: t.session_id == ^session.id and t.status == "completed",
-              select: count(t.id)
-            )
-          ) || 0
-
-        %{
-          session_id: session.id,
-          status: session.status,
-          # Derive trigger from seed_topics since there's no trigger field
-          trigger: List.first(session.seed_topics) || "autonomous",
-          started_at: session.started_at,
-          current_topic: current_topic && current_topic.topic,
-          topics_total: topic_count,
-          topics_completed: completed_count,
-          beliefs_formed: session.beliefs_formed || 0,
-          memories_created: session.memories_created || 0,
-          code_changes: session.code_changes_made || 0
-        }
+      nil -> nil
+      session -> build_session_summary(session)
     end
+  end
+
+  defp build_session_summary(session) do
+    current_topic =
+      Repo.one(
+        from(t in ResearchTopic,
+          where: t.session_id == ^session.id and t.status == "exploring",
+          limit: 1
+        )
+      )
+
+    topic_count = count_session_topics(session.id, nil)
+    completed_count = count_session_topics(session.id, "completed")
+
+    %{
+      session_id: session.id,
+      status: session.status,
+      trigger: List.first(session.seed_topics) || "autonomous",
+      started_at: session.started_at,
+      current_topic: current_topic && current_topic.topic,
+      topics_total: topic_count,
+      topics_completed: completed_count,
+      beliefs_formed: session.beliefs_formed || 0,
+      memories_created: session.memories_created || 0,
+      code_changes: session.code_changes_made || 0
+    }
+  end
+
+  defp count_session_topics(session_id, nil) do
+    Repo.one(
+      from(t in ResearchTopic,
+        where: t.session_id == ^session_id,
+        select: count(t.id)
+      )
+    ) || 0
+  end
+
+  defp count_session_topics(session_id, status) do
+    Repo.one(
+      from(t in ResearchTopic,
+        where: t.session_id == ^session_id and t.status == ^status,
+        select: count(t.id)
+      )
+    ) || 0
   end
 
   @doc """

@@ -108,17 +108,22 @@ defmodule Lincoln.Cognition.Perception do
   # ============================================================================
 
   defp detect_message_type(content) do
-    cond do
-      greeting?(content) -> :greeting
-      question?(content) -> :question
-      correction?(content) -> :correction
-      observation?(content) -> :observation
-      request?(content) -> :request
-      opinion?(content) -> :opinion
-      emotional?(content) -> :emotional
-      meta?(content) -> :meta
-      true -> :statement
-    end
+    detect_type(content, [
+      {:greeting, &greeting?/1},
+      {:question, &question?/1},
+      {:correction, &correction?/1},
+      {:observation, &observation?/1},
+      {:request, &request?/1},
+      {:opinion, &opinion?/1},
+      {:emotional, &emotional?/1},
+      {:meta, &meta?/1}
+    ])
+  end
+
+  defp detect_type(_content, []), do: :statement
+
+  defp detect_type(content, [{type, check} | rest]) do
+    if check.(content), do: type, else: detect_type(content, rest)
   end
 
   defp greeting?(content) do
@@ -128,17 +133,13 @@ defmodule Lincoln.Cognition.Perception do
     Enum.any?(greetings, &String.starts_with?(content, &1))
   end
 
+  @question_prefixes ~w(what how why when where who)
+  @question_phrases ["can you ", "could you ", "do you "]
+
   defp question?(content) do
     String.ends_with?(content, "?") or
-      String.starts_with?(content, "what ") or
-      String.starts_with?(content, "how ") or
-      String.starts_with?(content, "why ") or
-      String.starts_with?(content, "when ") or
-      String.starts_with?(content, "where ") or
-      String.starts_with?(content, "who ") or
-      String.starts_with?(content, "can you ") or
-      String.starts_with?(content, "could you ") or
-      String.starts_with?(content, "do you ")
+      Enum.any?(@question_prefixes, &String.starts_with?(content, &1 <> " ")) or
+      Enum.any?(@question_phrases, &String.starts_with?(content, &1))
   end
 
   defp correction?(content) do

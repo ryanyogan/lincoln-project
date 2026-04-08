@@ -47,13 +47,8 @@ defmodule Lincoln.Autonomy.SelfImprovement do
     {:ok, opportunity} = ImprovementQueue.mark_in_progress(opportunity)
 
     try do
-      # 1. Analyze the struggle
       analysis = analyze_struggle(opportunity, llm)
-
-      # 2. Read relevant code
       code_context = gather_code_context(analysis.target_files)
-
-      # 3. Plan the improvement
       plan = plan_improvement(agent, opportunity, analysis, code_context, llm)
 
       if plan.should_proceed do
@@ -68,6 +63,50 @@ defmodule Lincoln.Autonomy.SelfImprovement do
         Logger.error("Improvement attempt failed: #{inspect(e)}")
         ImprovementQueue.mark_failed(opportunity, inspect(e))
         {:error, e}
+    end
+  end
+
+  defp evaluate_improvement_plan(opportunity, analysis, target_file, current_code, llm) do
+    prompt = """
+    You are Lincoln, about to modify your own code to improve yourself.
+
+    Pattern that triggered this: #{opportunity.pattern}
+    Root cause analysis: #{analysis.root_cause}
+    Target file: #{target_file}
+
+    Current code:
+    ```elixir
+    #{String.slice(current_code, 0, 4000)}
+    ```
+
+    Should you proceed with a modification?
+    Consider:
+    - Is this change likely to help with the pattern?
+    - Is it safe (won't break core functionality)?
+    - Is it focused (minimal changes)?
+
+    Return JSON:
+    {
+      "should_proceed": true/false,
+      "reason": "Why or why not",
+      "description": "What change you would make",
+      "impact_scope": "minimal|moderate|significant|major"
+    }
+    """
+
+    case llm.extract(prompt, %{type: "object"}, max_tokens: 400) do
+      {:ok, plan} ->
+        %{
+          should_proceed: plan["should_proceed"] == true,
+          reason: plan["reason"],
+          description: plan["description"],
+          impact_scope: String.to_atom(plan["impact_scope"] || "moderate"),
+          target_file: target_file,
+          change_type: analysis.change_type
+        }
+
+      {:error, _} ->
+        %{should_proceed: false, reason: "Failed to generate plan"}
     end
   end
 
@@ -174,49 +213,13 @@ defmodule Lincoln.Autonomy.SelfImprovement do
       target_file = List.first(analysis.target_files)
 
       if target_file && Map.has_key?(code_context, target_file) do
-        current_code = code_context[target_file]
-
-        prompt = """
-        You are Lincoln, about to modify your own code to improve yourself.
-
-        Pattern that triggered this: #{opportunity.pattern}
-        Root cause analysis: #{analysis.root_cause}
-        Target file: #{target_file}
-
-        Current code:
-        ```elixir
-        #{String.slice(current_code, 0, 4000)}
-        ```
-
-        Should you proceed with a modification?
-        Consider:
-        - Is this change likely to help with the pattern?
-        - Is it safe (won't break core functionality)?
-        - Is it focused (minimal changes)?
-
-        Return JSON:
-        {
-          "should_proceed": true/false,
-          "reason": "Why or why not",
-          "description": "What change you would make",
-          "impact_scope": "minimal|moderate|significant|major"
-        }
-        """
-
-        case llm.extract(prompt, %{type: "object"}, max_tokens: 400) do
-          {:ok, plan} ->
-            %{
-              should_proceed: plan["should_proceed"] == true,
-              reason: plan["reason"],
-              description: plan["description"],
-              impact_scope: String.to_atom(plan["impact_scope"] || "moderate"),
-              target_file: target_file,
-              change_type: analysis.change_type
-            }
-
-          {:error, _} ->
-            %{should_proceed: false, reason: "Failed to generate plan"}
-        end
+        evaluate_improvement_plan(
+          opportunity,
+          analysis,
+          target_file,
+          code_context[target_file],
+          llm
+        )
       else
         %{should_proceed: false, reason: "Could not read target file"}
       end

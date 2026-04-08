@@ -14,19 +14,15 @@ defmodule Lincoln.Events.Handlers do
   Handle an event - check for patterns and queue improvements if needed.
   Called asynchronously after event is emitted.
   """
-  def handle(%{type: type} = event) do
-    case type do
-      "thought_loop_gave_up" -> handle_gave_up(event)
-      "thought_loop_slow" -> handle_slow(event)
-      "user_correction" -> handle_user_correction(event)
-      "low_confidence_response" -> handle_low_confidence(event)
-      "research_failed" -> handle_research_failed(event)
-      "belief_contradiction" -> handle_contradiction(event)
-      "error_occurred" -> handle_error(event)
-      "improvement_observed" -> handle_improvement_observed(event)
-      _ -> :ok
-    end
-  end
+  def handle(%{type: "thought_loop_gave_up"} = event), do: handle_gave_up(event)
+  def handle(%{type: "thought_loop_slow"} = event), do: handle_slow(event)
+  def handle(%{type: "user_correction"} = event), do: handle_user_correction(event)
+  def handle(%{type: "low_confidence_response"} = event), do: handle_low_confidence(event)
+  def handle(%{type: "research_failed"} = event), do: handle_research_failed(event)
+  def handle(%{type: "belief_contradiction"} = event), do: handle_contradiction(event)
+  def handle(%{type: "error_occurred"} = event), do: handle_error(event)
+  def handle(%{type: "improvement_observed"} = event), do: handle_improvement_observed(event)
+  def handle(_event), do: :ok
 
   # =============================================================================
   # Event-Specific Handlers

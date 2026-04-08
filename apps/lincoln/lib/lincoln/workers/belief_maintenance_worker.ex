@@ -52,16 +52,7 @@ defmodule Lincoln.Workers.BeliefMaintenanceWorker do
           belief.entrenchment < 5 and belief.confidence > 0.1
       end)
       |> Enum.reduce(0, fn belief, count ->
-        new_confidence = max(0.1, belief.confidence - @decay_rate)
-
-        if new_confidence != belief.confidence do
-          case Beliefs.weaken_belief(belief, "Time-based decay", trigger_type: "decay") do
-            {:ok, _} -> count + 1
-            {:error, _} -> count
-          end
-        else
-          count
-        end
+        count + attempt_decay(belief)
       end)
 
     Logger.info(
@@ -86,5 +77,18 @@ defmodule Lincoln.Workers.BeliefMaintenanceWorker do
     %{}
     |> new()
     |> Oban.insert()
+  end
+
+  defp attempt_decay(belief) do
+    new_confidence = max(0.1, belief.confidence - @decay_rate)
+
+    if new_confidence != belief.confidence do
+      case Beliefs.weaken_belief(belief, "Time-based decay", trigger_type: "decay") do
+        {:ok, _} -> 1
+        {:error, _} -> 0
+      end
+    else
+      0
+    end
   end
 end

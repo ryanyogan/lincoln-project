@@ -508,44 +508,45 @@ defmodule Lincoln.Workers.AutonomousLearningWorker do
     reasoning = suggestion["reasoning"]
 
     if Evolution.can_modify?(target_file) do
-      case Evolution.propose_change(agent, session, target_file, description, reasoning, llm) do
-        {:ok, code_change} ->
-          # Apply the change
-          case Evolution.apply_change(code_change) do
-            {:ok, _} ->
-              # Commit it
-              case Evolution.commit_change(code_change) do
-                {:ok, updated_change} ->
-                  Logger.info(
-                    "[Lincoln] Self-modification complete: #{updated_change.git_commit}"
-                  )
-
-                  Autonomy.log_activity(
-                    agent,
-                    session,
-                    "code_change",
-                    "Applied and committed: #{description}",
-                    details: %{
-                      file: target_file,
-                      commit: updated_change.git_commit
-                    }
-                  )
-
-                  Autonomy.increment_session(session, :code_changes_made)
-
-                error ->
-                  Logger.error("[Lincoln] Failed to commit change: #{inspect(error)}")
-              end
-
-            error ->
-              Logger.error("[Lincoln] Failed to apply change: #{inspect(error)}")
-          end
-
-        error ->
-          Logger.error("[Lincoln] Failed to propose change: #{inspect(error)}")
-      end
+      execute_evolution_attempt(agent, session, target_file, description, reasoning, llm)
     else
       Logger.warning("[Lincoln] Cannot modify protected file: #{target_file}")
+    end
+  end
+
+  defp execute_evolution_attempt(agent, session, target_file, description, reasoning, llm) do
+    case Evolution.propose_change(agent, session, target_file, description, reasoning, llm) do
+      {:ok, code_change} ->
+        apply_and_commit_change(agent, session, code_change, description, target_file)
+
+      error ->
+        Logger.error("[Lincoln] Failed to propose change: #{inspect(error)}")
+    end
+  end
+
+  defp apply_and_commit_change(agent, session, code_change, description, target_file) do
+    case Evolution.apply_change(code_change) do
+      {:ok, _} ->
+        case Evolution.commit_change(code_change) do
+          {:ok, updated_change} ->
+            Logger.info("[Lincoln] Self-modification complete: #{updated_change.git_commit}")
+
+            Autonomy.log_activity(
+              agent,
+              session,
+              "code_change",
+              "Applied and committed: #{description}",
+              details: %{file: target_file, commit: updated_change.git_commit}
+            )
+
+            Autonomy.increment_session(session, :code_changes_made)
+
+          error ->
+            Logger.error("[Lincoln] Failed to commit change: #{inspect(error)}")
+        end
+
+      error ->
+        Logger.error("[Lincoln] Failed to apply change: #{inspect(error)}")
     end
   end
 

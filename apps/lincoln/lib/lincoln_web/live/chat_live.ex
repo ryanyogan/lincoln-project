@@ -409,74 +409,55 @@ defmodule LincolnWeb.ChatLive do
     assign(socket, :cognitive_events, events)
   end
 
-  defp cognitive_event_icon(type) do
-    case type do
-      "thought_loop_gave_up" -> "hero-x-circle"
-      "thought_loop_slow" -> "hero-clock"
-      "low_confidence_response" -> "hero-question-mark-circle"
-      "user_correction" -> "hero-pencil-square"
-      "knowledge_gap_detected" -> "hero-magnifying-glass"
-      "belief_contradiction" -> "hero-exclamation-triangle"
-      "research_failed" -> "hero-x-mark"
-      "belief_formed" -> "hero-light-bulb"
-      "belief_revised" -> "hero-arrow-path"
-      "error_occurred" -> "hero-bug-ant"
-      "slow_operation" -> "hero-clock"
-      "improvement_opportunity" -> "hero-sparkles"
-      "code_change_applied" -> "hero-code-bracket"
-      "improvement_observed" -> "hero-eye"
-      _ -> "hero-bolt"
-    end
-  end
+  defp cognitive_event_icon("thought_loop_gave_up"), do: "hero-x-circle"
+  defp cognitive_event_icon("thought_loop_slow"), do: "hero-clock"
+  defp cognitive_event_icon("low_confidence_response"), do: "hero-question-mark-circle"
+  defp cognitive_event_icon("user_correction"), do: "hero-pencil-square"
+  defp cognitive_event_icon("knowledge_gap_detected"), do: "hero-magnifying-glass"
+  defp cognitive_event_icon("belief_contradiction"), do: "hero-exclamation-triangle"
+  defp cognitive_event_icon("research_failed"), do: "hero-x-mark"
+  defp cognitive_event_icon("belief_formed"), do: "hero-light-bulb"
+  defp cognitive_event_icon("belief_revised"), do: "hero-arrow-path"
+  defp cognitive_event_icon("error_occurred"), do: "hero-bug-ant"
+  defp cognitive_event_icon("slow_operation"), do: "hero-clock"
+  defp cognitive_event_icon("improvement_opportunity"), do: "hero-sparkles"
+  defp cognitive_event_icon("code_change_applied"), do: "hero-code-bracket"
+  defp cognitive_event_icon("improvement_observed"), do: "hero-eye"
+  defp cognitive_event_icon(_), do: "hero-bolt"
 
-  defp cognitive_event_message(type, context) do
-    case type do
-      "thought_loop_gave_up" ->
-        "Gave up after #{context["iterations"] || "?"} iterations"
+  defp cognitive_event_message("thought_loop_gave_up", ctx),
+    do: "Gave up after #{ctx["iterations"] || "?"} iterations"
 
-      "thought_loop_slow" ->
-        "Slow thinking: #{context["duration_ms"] || "?"}ms"
+  defp cognitive_event_message("thought_loop_slow", ctx),
+    do: "Slow thinking: #{ctx["duration_ms"] || "?"}ms"
 
-      "low_confidence_response" ->
-        "Low confidence: #{Float.round((context["confidence"] || 0) * 100, 0)}%"
+  defp cognitive_event_message("low_confidence_response", ctx),
+    do: "Low confidence: #{Float.round((ctx["confidence"] || 0) * 100, 0)}%"
 
-      "user_correction" ->
-        "User corrected response"
+  defp cognitive_event_message("user_correction", _ctx), do: "User corrected response"
 
-      "knowledge_gap_detected" ->
-        "Knowledge gap: #{truncate_text(context["topic"] || "unknown", 30)}"
+  defp cognitive_event_message("knowledge_gap_detected", ctx),
+    do: "Knowledge gap: #{truncate_text(ctx["topic"] || "unknown", 30)}"
 
-      "belief_contradiction" ->
-        "Belief contradiction detected"
+  defp cognitive_event_message("belief_contradiction", _ctx), do: "Belief contradiction detected"
+  defp cognitive_event_message("research_failed", _ctx), do: "Research failed"
+  defp cognitive_event_message("belief_formed", _ctx), do: "New belief formed"
+  defp cognitive_event_message("belief_revised", _ctx), do: "Belief revised"
 
-      "research_failed" ->
-        "Research failed"
+  defp cognitive_event_message("error_occurred", ctx),
+    do: "Error: #{truncate_text(ctx["error"] || "unknown", 30)}"
 
-      "belief_formed" ->
-        "New belief formed"
+  defp cognitive_event_message("slow_operation", ctx),
+    do: "Slow operation: #{ctx["operation"] || "unknown"}"
 
-      "belief_revised" ->
-        "Belief revised"
+  defp cognitive_event_message("improvement_opportunity", _ctx),
+    do: "Improvement opportunity identified"
 
-      "error_occurred" ->
-        "Error: #{truncate_text(context["error"] || "unknown", 30)}"
+  defp cognitive_event_message("code_change_applied", ctx),
+    do: "Code modified: #{Path.basename(ctx["file_path"] || "unknown")}"
 
-      "slow_operation" ->
-        "Slow operation: #{context["operation"] || "unknown"}"
-
-      "improvement_opportunity" ->
-        "Improvement opportunity identified"
-
-      "code_change_applied" ->
-        "Code modified: #{Path.basename(context["file_path"] || "unknown")}"
-
-      "improvement_observed" ->
-        "Improvement outcome observed"
-
-      _ ->
-        type
-    end
-  end
+  defp cognitive_event_message("improvement_observed", _ctx), do: "Improvement outcome observed"
+  defp cognitive_event_message(type, _ctx), do: type
 
   defp cognitive_event_detail(event) do
     case event.type do
@@ -504,19 +485,15 @@ defmodule LincolnWeb.ChatLive do
     assign(socket, :worker_events, events)
   end
 
-  defp activity_icon(type) do
-    case type do
-      "believe" -> "hero-light-bulb"
-      "memorize" -> "hero-archive-box"
-      "reflect" -> "hero-eye"
-      "evolve" -> "hero-arrow-path"
-      "code_change" -> "hero-code-bracket"
-      "topic_complete" -> "hero-check-circle"
-      "topic_start" -> "hero-magnifying-glass"
-      "question" -> "hero-question-mark-circle"
-      _ -> "hero-bolt"
-    end
-  end
+  defp activity_icon("believe"), do: "hero-light-bulb"
+  defp activity_icon("memorize"), do: "hero-archive-box"
+  defp activity_icon("reflect"), do: "hero-eye"
+  defp activity_icon("evolve"), do: "hero-arrow-path"
+  defp activity_icon("code_change"), do: "hero-code-bracket"
+  defp activity_icon("topic_complete"), do: "hero-check-circle"
+  defp activity_icon("topic_start"), do: "hero-magnifying-glass"
+  defp activity_icon("question"), do: "hero-question-mark-circle"
+  defp activity_icon(_), do: "hero-bolt"
 
   defp truncate_text(nil, _len), do: ""
 
@@ -1096,34 +1073,28 @@ defmodule LincolnWeb.ChatLive do
     """
   end
 
-  defp event_style(type) do
-    case type do
-      # Worker event types (atoms)
-      :evolution -> "bg-secondary/10 border-secondary/30"
-      :session -> "bg-primary/10 border-primary/30"
-      :topic -> "bg-info/10 border-info/30"
-      :believe -> "bg-warning/10 border-warning/30"
-      :memorize -> "bg-accent/10 border-accent/30"
-      :reflect -> "bg-success/10 border-success/30"
-      :code_change -> "bg-secondary/10 border-secondary/30"
-      # Cognitive event types (strings)
-      "thought_loop_gave_up" -> "bg-error/10 border-error/30"
-      "thought_loop_slow" -> "bg-warning/10 border-warning/30"
-      "low_confidence_response" -> "bg-warning/10 border-warning/30"
-      "user_correction" -> "bg-info/10 border-info/30"
-      "knowledge_gap_detected" -> "bg-info/10 border-info/30"
-      "belief_contradiction" -> "bg-error/10 border-error/30"
-      "research_failed" -> "bg-error/10 border-error/30"
-      "belief_formed" -> "bg-success/10 border-success/30"
-      "belief_revised" -> "bg-warning/10 border-warning/30"
-      "error_occurred" -> "bg-error/10 border-error/30"
-      "slow_operation" -> "bg-warning/10 border-warning/30"
-      "improvement_opportunity" -> "bg-primary/10 border-primary/30"
-      "code_change_applied" -> "bg-secondary/10 border-secondary/30"
-      "improvement_observed" -> "bg-success/10 border-success/30"
-      _ -> "bg-base-300 border-base-content/10"
-    end
-  end
+  defp event_style(:evolution), do: "bg-secondary/10 border-secondary/30"
+  defp event_style(:session), do: "bg-primary/10 border-primary/30"
+  defp event_style(:topic), do: "bg-info/10 border-info/30"
+  defp event_style(:believe), do: "bg-warning/10 border-warning/30"
+  defp event_style(:memorize), do: "bg-accent/10 border-accent/30"
+  defp event_style(:reflect), do: "bg-success/10 border-success/30"
+  defp event_style(:code_change), do: "bg-secondary/10 border-secondary/30"
+  defp event_style("thought_loop_gave_up"), do: "bg-error/10 border-error/30"
+  defp event_style("thought_loop_slow"), do: "bg-warning/10 border-warning/30"
+  defp event_style("low_confidence_response"), do: "bg-warning/10 border-warning/30"
+  defp event_style("user_correction"), do: "bg-info/10 border-info/30"
+  defp event_style("knowledge_gap_detected"), do: "bg-info/10 border-info/30"
+  defp event_style("belief_contradiction"), do: "bg-error/10 border-error/30"
+  defp event_style("research_failed"), do: "bg-error/10 border-error/30"
+  defp event_style("belief_formed"), do: "bg-success/10 border-success/30"
+  defp event_style("belief_revised"), do: "bg-warning/10 border-warning/30"
+  defp event_style("error_occurred"), do: "bg-error/10 border-error/30"
+  defp event_style("slow_operation"), do: "bg-warning/10 border-warning/30"
+  defp event_style("improvement_opportunity"), do: "bg-primary/10 border-primary/30"
+  defp event_style("code_change_applied"), do: "bg-secondary/10 border-secondary/30"
+  defp event_style("improvement_observed"), do: "bg-success/10 border-success/30"
+  defp event_style(_), do: "bg-base-300 border-base-content/10"
 
   defp severity_badge(severity) do
     case severity do

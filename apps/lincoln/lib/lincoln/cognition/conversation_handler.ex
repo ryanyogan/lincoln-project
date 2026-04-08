@@ -230,37 +230,42 @@ defmodule Lincoln.Cognition.ConversationHandler do
     # First try file-specific patterns
     file_mod =
       Enum.find_value(@code_modify_patterns, fn pattern ->
-        case Regex.run(pattern, String.trim(message)) do
-          [_, first, second] ->
-            # Determine which is file vs description based on .ex extension
-            {file, desc} =
-              cond do
-                String.ends_with?(first, ".ex") -> {first, second}
-                String.ends_with?(second, ".ex") -> {second, first}
-                # Default: assume first is file pattern
-                true -> {first, second}
-              end
-
-            {:modify_code, %{file: String.trim(file), description: String.trim(desc)}}
-
-          _ ->
-            nil
-        end
+        match_code_modify_pattern(pattern, message)
       end)
 
     if file_mod do
       file_mod
     else
-      # Try general modification patterns (no specific file)
-      Enum.find_value(@general_modify_patterns, fn pattern ->
-        case Regex.run(pattern, String.trim(message)) do
-          [_, description] ->
-            {:modify_code, %{file: nil, description: String.trim(description)}}
+      Enum.find_value(@general_modify_patterns, &match_general_pattern(&1, message))
+    end
+  end
 
-          _ ->
-            nil
-        end
-      end)
+  defp match_code_modify_pattern(pattern, message) do
+    case Regex.run(pattern, String.trim(message)) do
+      [_, first, second] ->
+        {file, desc} = order_file_and_description(first, second)
+        {:modify_code, %{file: String.trim(file), description: String.trim(desc)}}
+
+      _ ->
+        nil
+    end
+  end
+
+  defp order_file_and_description(first, second) do
+    cond do
+      String.ends_with?(first, ".ex") -> {first, second}
+      String.ends_with?(second, ".ex") -> {second, first}
+      true -> {first, second}
+    end
+  end
+
+  defp match_general_pattern(pattern, message) do
+    case Regex.run(pattern, String.trim(message)) do
+      [_, description] ->
+        {:modify_code, %{file: nil, description: String.trim(description)}}
+
+      _ ->
+        nil
     end
   end
 
@@ -394,31 +399,20 @@ defmodule Lincoln.Cognition.ConversationHandler do
   end
 
   # Helper: Suggest which file to modify based on description
+  @modification_targets [
+    {["belief", "confidence", "metacognition"], "lib/lincoln/learning/belief_formation.ex"},
+    {["thought", "deliberat", "think"], "lib/lincoln/cognition/thought_loop.ex"},
+    {["memory", "remember"], "lib/lincoln/memory.ex"},
+    {["learn", "session", "autonomy"], "lib/lincoln/autonomy.ex"},
+    {["evolv", "modify", "self-improve"], "lib/lincoln/autonomy/evolution.ex"},
+    {["chat", "conversation"], "lib/lincoln/cognition/conversation_handler.ex"}
+  ]
+
   defp suggest_modification_target(description, _llm) do
-    # Simple heuristic for now - map keywords to likely files
     target =
-      cond do
-        String.contains?(description, ["belief", "confidence", "metacognition"]) ->
-          "lib/lincoln/learning/belief_formation.ex"
-
-        String.contains?(description, ["thought", "deliberat", "think"]) ->
-          "lib/lincoln/cognition/thought_loop.ex"
-
-        String.contains?(description, ["memory", "remember"]) ->
-          "lib/lincoln/memory.ex"
-
-        String.contains?(description, ["learn", "session", "autonomy"]) ->
-          "lib/lincoln/autonomy.ex"
-
-        String.contains?(description, ["evolv", "modify", "self-improve"]) ->
-          "lib/lincoln/autonomy/evolution.ex"
-
-        String.contains?(description, ["chat", "conversation"]) ->
-          "lib/lincoln/cognition/conversation_handler.ex"
-
-        true ->
-          nil
-      end
+      Enum.find_value(@modification_targets, fn {keywords, path} ->
+        if String.contains?(description, keywords), do: path
+      end)
 
     if target do
       case Evolution.read_file(target) do
@@ -458,58 +452,62 @@ defmodule Lincoln.Cognition.ConversationHandler do
   end
 
   # Helper: Find and read a code file
+  @search_paths [
+    "lib/lincoln/learning/",
+    "lib/lincoln/cognition/",
+    "lib/lincoln/autonomy/",
+    "lib/lincoln/",
+    "lib/lincoln_web/live/",
+    "lib/lincoln_web/"
+  ]
+
+  @basename_search_paths [
+    "lib/lincoln/learning/",
+    "lib/lincoln/cognition/",
+    "lib/lincoln/"
+  ]
+
   defp find_and_read_code(file_pattern) do
-    # Normalize the pattern
     file_pattern = String.trim(file_pattern)
 
-    # Define searchable paths (Lincoln's codebase)
-    search_paths = [
-      "lib/lincoln/learning/",
-      "lib/lincoln/cognition/",
-      "lib/lincoln/autonomy/",
-      "lib/lincoln/",
-      "lib/lincoln_web/live/",
-      "lib/lincoln_web/"
-    ]
-
-    # Try to find the file
     found =
-      Enum.find_value(search_paths, fn base_path ->
-        possible_path = Path.join(base_path, file_pattern)
-
-        case Evolution.read_file(possible_path) do
-          {:ok, content} -> {possible_path, content}
-          _ -> nil
-        end
-      end)
-
-    # Also try direct path if pattern includes path
-    found =
-      found ||
-        case Evolution.read_file(file_pattern) do
-          {:ok, content} -> {file_pattern, content}
-          _ -> nil
-        end
-
-    # Also try just the filename in common locations
-    found =
-      found ||
-        Enum.find_value(
-          ["lib/lincoln/learning/", "lib/lincoln/cognition/", "lib/lincoln/"],
-          fn dir ->
-            path = Path.join(dir, Path.basename(file_pattern))
-
-            case Evolution.read_file(path) do
-              {:ok, content} -> {path, content}
-              _ -> nil
-            end
-          end
-        )
+      search_in_paths(file_pattern, @search_paths) ||
+        try_direct_path(file_pattern) ||
+        search_by_basename(file_pattern, @basename_search_paths)
 
     case found do
       {path, content} -> {:ok, path, content}
       nil -> {:error, :not_found}
     end
+  end
+
+  defp search_in_paths(file_pattern, paths) do
+    Enum.find_value(paths, fn base_path ->
+      path = Path.join(base_path, file_pattern)
+
+      case Evolution.read_file(path) do
+        {:ok, content} -> {path, content}
+        _ -> nil
+      end
+    end)
+  end
+
+  defp try_direct_path(file_pattern) do
+    case Evolution.read_file(file_pattern) do
+      {:ok, content} -> {file_pattern, content}
+      _ -> nil
+    end
+  end
+
+  defp search_by_basename(file_pattern, paths) do
+    Enum.find_value(paths, fn dir ->
+      path = Path.join(dir, Path.basename(file_pattern))
+
+      case Evolution.read_file(path) do
+        {:ok, content} -> {path, content}
+        _ -> nil
+      end
+    end)
   end
 
   # Helper: Queue a research topic, creating a session if needed
@@ -521,19 +519,22 @@ defmodule Lincoln.Cognition.ConversationHandler do
         {:error, :session_creation_failed}
 
       session ->
-        case Autonomy.create_topic(agent, session, %{
-               topic: topic,
-               source: "user_request",
-               priority: 9
-             }) do
-          {:ok, _topic} ->
-            # Start the session if it's new (not running)
-            if session.status != "running", do: Autonomy.start_session(session)
-            {:ok, :queued}
+        add_topic_to_session(agent, session, topic)
+    end
+  end
 
-          {:error, reason} ->
-            {:error, reason}
-        end
+  defp add_topic_to_session(agent, session, topic) do
+    case Autonomy.create_topic(agent, session, %{
+           topic: topic,
+           source: "user_request",
+           priority: 9
+         }) do
+      {:ok, _topic} ->
+        if session.status != "running", do: Autonomy.start_session(session)
+        {:ok, :queued}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -691,32 +692,35 @@ defmodule Lincoln.Cognition.ConversationHandler do
         # Immediately process the improvement (don't wait for next worker cycle)
         # This runs in a separate task so we don't block the conversation
         Task.start(fn ->
-          Logger.info("Starting immediate self-improvement for opportunity #{opportunity.id}")
-          llm = Application.get_env(:lincoln, :llm_adapter, Lincoln.Adapters.LLM.Anthropic)
-
-          case SelfImprovement.attempt(agent, opportunity, llm) do
-            {:ok, code_change} ->
-              Logger.info(
-                "Self-improvement completed: #{code_change.file_path} (commit: #{code_change.git_commit})"
-              )
-
-              # Broadcast the result
-              Phoenix.PubSub.broadcast(
-                Lincoln.PubSub,
-                "agent:#{agent.id}:autonomy",
-                {:improvement_applied, code_change}
-              )
-
-            :skipped ->
-              Logger.info("Self-improvement skipped - decided not to proceed")
-
-            {:error, reason} ->
-              Logger.error("Self-improvement failed: #{inspect(reason)}")
-          end
+          run_immediate_improvement(agent, opportunity)
         end)
 
       {:error, reason} ->
         Logger.error("Failed to queue improvement: #{inspect(reason)}")
+    end
+  end
+
+  defp run_immediate_improvement(agent, opportunity) do
+    Logger.info("Starting immediate self-improvement for opportunity #{opportunity.id}")
+    llm = Application.get_env(:lincoln, :llm_adapter, Lincoln.Adapters.LLM.Anthropic)
+
+    case SelfImprovement.attempt(agent, opportunity, llm) do
+      {:ok, code_change} ->
+        Logger.info(
+          "Self-improvement completed: #{code_change.file_path} (commit: #{code_change.git_commit})"
+        )
+
+        Phoenix.PubSub.broadcast(
+          Lincoln.PubSub,
+          "agent:#{agent.id}:autonomy",
+          {:improvement_applied, code_change}
+        )
+
+      :skipped ->
+        Logger.info("Self-improvement skipped - decided not to proceed")
+
+      {:error, reason} ->
+        Logger.error("Self-improvement failed: #{inspect(reason)}")
     end
   end
 
@@ -841,35 +845,7 @@ defmodule Lincoln.Cognition.ConversationHandler do
       state.contradictions
       |> Enum.reduce({0, []}, fn %{belief: belief, contradiction_type: type}, {count, notes} ->
         if type != :none do
-          # Determine correction strength from perception
-          strength = state.perception.correction_strength || :moderate
-
-          evidence = %{
-            statement: state.user_message,
-            source_type: :testimony,
-            strength: strength
-          }
-
-          decision = BeliefRevision.should_revise?(belief, evidence)
-
-          case decision do
-            {:revise, reason} ->
-              # Execute the revision
-              case BeliefRevision.execute_revision(belief, evidence, decision) do
-                {:ok, _new_belief} ->
-                  {count + 1,
-                   ["Revised belief: #{truncate(belief.statement, 30)} - #{reason}" | notes]}
-
-                _ ->
-                  {count, notes}
-              end
-
-            {:investigate, reason} ->
-              {count, ["Investigating: #{truncate(belief.statement, 30)} - #{reason}" | notes]}
-
-            {:hold, reason} ->
-              {count, ["Held belief: #{truncate(belief.statement, 30)} - #{reason}" | notes]}
-          end
+          process_contradiction(belief, state, count, notes)
         else
           {count, notes}
         end
@@ -888,6 +864,37 @@ defmodule Lincoln.Cognition.ConversationHandler do
       |> update_metadata(:thinking_summary, thinking_summary)
 
     {:ok, state}
+  end
+
+  defp process_contradiction(belief, state, count, notes) do
+    strength = state.perception.correction_strength || :moderate
+
+    evidence = %{
+      statement: state.user_message,
+      source_type: :testimony,
+      strength: strength
+    }
+
+    decision = BeliefRevision.should_revise?(belief, evidence)
+    apply_revision_decision(belief, evidence, decision, count, notes)
+  end
+
+  defp apply_revision_decision(belief, evidence, {:revise, reason} = decision, count, notes) do
+    case BeliefRevision.execute_revision(belief, evidence, decision) do
+      {:ok, _new_belief} ->
+        {count + 1, ["Revised belief: #{truncate(belief.statement, 30)} - #{reason}" | notes]}
+
+      _ ->
+        {count, notes}
+    end
+  end
+
+  defp apply_revision_decision(belief, _evidence, {:investigate, reason}, count, notes) do
+    {count, ["Investigating: #{truncate(belief.statement, 30)} - #{reason}" | notes]}
+  end
+
+  defp apply_revision_decision(belief, _evidence, {:hold, reason}, count, notes) do
+    {count, ["Held belief: #{truncate(belief.statement, 30)} - #{reason}" | notes]}
   end
 
   # Step 3.5: DELIBERATE - Run thought loop for iterative refinement.
@@ -1072,12 +1079,7 @@ defmodule Lincoln.Cognition.ConversationHandler do
     changes =
       if code_changes != [] do
         formatted =
-          Enum.map_join(code_changes, "\n", fn c ->
-            date =
-              if c.committed_at, do: Calendar.strftime(c.committed_at, "%b %d"), else: "recent"
-
-            "- #{date}: #{c.description}"
-          end)
+          Enum.map_join(code_changes, "\n", &format_code_change/1)
 
         """
 
@@ -1129,75 +1131,98 @@ defmodule Lincoln.Cognition.ConversationHandler do
   end
 
   defp format_command_context(state) do
+    meta = state.cognitive_metadata
+
+    format_action_context(meta) ||
+      format_view_context(meta, state.context) ||
+      format_modify_context(meta, state.context) ||
+      ""
+  end
+
+  defp format_action_context(meta) do
     cond do
-      state.cognitive_metadata[:research_queued] ->
-        """
-        ## Action Taken
-        You have queued "#{state.cognitive_metadata[:research_queued]}" for autonomous research.
-        Your learning system will explore this topic and form beliefs from what it discovers.
-        """
-
-      state.cognitive_metadata[:evolution_triggered] ->
-        """
-        ## Action Taken
-        You have initiated a self-reflection process to identify potential code improvements.
-        You're examining your own implementation for ways to enhance your capabilities.
-        """
-
-      state.cognitive_metadata[:viewing_code] ->
-        code_view = state.context[:code_view]
-        preview = truncate_code(code_view.content, 100)
-
-        """
-        ## Code View Request
-        The user asked to see your source code. You are viewing: `#{code_view.path}`
-
-        ### Code Preview (first ~100 lines)
-        ```elixir
-        #{preview}
-        ```
-
-        ### Full Code
-        The complete file is #{count_lines(code_view.content)} lines.
-        You can discuss this code with the user, explain how it works, or suggest modifications.
-        This is YOUR code that YOU wrote or that implements YOUR capabilities.
-
-        <full_code path="#{code_view.path}">
-        #{code_view.content}
-        </full_code>
-        """
-
-      state.cognitive_metadata[:code_view_error] ->
-        """
-        ## Code View Request Failed
-        #{state.cognitive_metadata[:code_view_error]}
-        You can suggest alternative files or explain what files are available in your codebase.
-        Your main modules are in: lib/lincoln/learning/, lib/lincoln/cognition/, lib/lincoln/autonomy/
-        """
-
-      state.cognitive_metadata[:viewing_commits] ->
-        changes = state.context[:commit_history] || []
-        format_commit_history(changes)
-
-      state.cognitive_metadata[:modification_requested] ->
-        mod_request = state.context[:modification_request]
-        format_modification_request(mod_request)
-
-      state.cognitive_metadata[:modification_error] ->
-        """
-        ## Modification Request Failed
-        #{state.cognitive_metadata[:modification_error]}
-
-        You can try specifying a file explicitly, like:
-        - "modify belief_formation.ex to add better logging"
-        - "change thought_loop.ex to improve confidence scoring"
-
-        Your modifiable files are in: lib/lincoln/learning/, lib/lincoln/cognition/, lib/lincoln/autonomy/
-        """
-
-      true ->
-        ""
+      meta[:research_queued] -> format_research_context(meta[:research_queued])
+      meta[:evolution_triggered] -> format_evolution_context()
+      true -> nil
     end
+  end
+
+  defp format_view_context(meta, context) do
+    cond do
+      meta[:viewing_code] -> format_code_view_context(context[:code_view])
+      meta[:code_view_error] -> format_code_view_error(meta[:code_view_error])
+      meta[:viewing_commits] -> format_commit_history(context[:commit_history] || [])
+      true -> nil
+    end
+  end
+
+  defp format_modify_context(meta, context) do
+    cond do
+      meta[:modification_requested] -> format_modification_request(context[:modification_request])
+      meta[:modification_error] -> format_modification_error(meta[:modification_error])
+      true -> nil
+    end
+  end
+
+  defp format_research_context(topic) do
+    """
+    ## Action Taken
+    You have queued "#{topic}" for autonomous research.
+    Your learning system will explore this topic and form beliefs from what it discovers.
+    """
+  end
+
+  defp format_evolution_context do
+    """
+    ## Action Taken
+    You have initiated a self-reflection process to identify potential code improvements.
+    You're examining your own implementation for ways to enhance your capabilities.
+    """
+  end
+
+  defp format_code_view_context(code_view) do
+    preview = truncate_code(code_view.content, 100)
+
+    """
+    ## Code View Request
+    The user asked to see your source code. You are viewing: `#{code_view.path}`
+
+    ### Code Preview (first ~100 lines)
+    ```elixir
+    #{preview}
+    ```
+
+    ### Full Code
+    The complete file is #{count_lines(code_view.content)} lines.
+    You can discuss this code with the user, explain how it works, or suggest modifications.
+    This is YOUR code that YOU wrote or that implements YOUR capabilities.
+
+    <full_code path="#{code_view.path}">
+    #{code_view.content}
+    </full_code>
+    """
+  end
+
+  defp format_code_view_error(error) do
+    """
+    ## Code View Request Failed
+    #{error}
+    You can suggest alternative files or explain what files are available in your codebase.
+    Your main modules are in: lib/lincoln/learning/, lib/lincoln/cognition/, lib/lincoln/autonomy/
+    """
+  end
+
+  defp format_modification_error(error) do
+    """
+    ## Modification Request Failed
+    #{error}
+
+    You can try specifying a file explicitly, like:
+    - "modify belief_formation.ex to add better logging"
+    - "change thought_loop.ex to improve confidence scoring"
+
+    Your modifiable files are in: lib/lincoln/learning/, lib/lincoln/cognition/, lib/lincoln/autonomy/
+    """
   end
 
   # Helper: Format modification request context for system prompt
@@ -1268,6 +1293,11 @@ defmodule Lincoln.Cognition.ConversationHandler do
   end
 
   # Helper: Format commit history for context
+  defp format_code_change(c) do
+    date = if c.committed_at, do: Calendar.strftime(c.committed_at, "%b %d"), else: "recent"
+    "- #{date}: #{c.description}"
+  end
+
   defp format_commit_history([]) do
     """
     ## Your Self-Modifications

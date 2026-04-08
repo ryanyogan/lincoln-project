@@ -27,47 +27,53 @@ defmodule Lincoln.Beliefs do
   - `:order_by` - custom ordering (e.g. `[asc: :updated_at]`), defaults to `[desc: :confidence]`
   """
   def list_beliefs(%Agent{id: agent_id}, opts \\ []) do
-    query =
-      Belief
-      |> where([b], b.agent_id == ^agent_id)
+    Belief
+    |> where([b], b.agent_id == ^agent_id)
+    |> apply_status_filter(opts)
+    |> apply_confidence_filters(opts)
+    |> apply_pagination(opts)
+    |> apply_ordering(opts)
+    |> Repo.all()
+  end
 
-    query =
-      case Keyword.get(opts, :status) do
-        nil -> where(query, [b], b.status == "active")
-        status -> where(query, [b], b.status == ^status)
-      end
+  defp apply_status_filter(query, opts) do
+    case Keyword.get(opts, :status) do
+      nil -> where(query, [b], b.status == "active")
+      status -> where(query, [b], b.status == ^status)
+    end
+  end
 
+  defp apply_confidence_filters(query, opts) do
     query =
       case Keyword.get(opts, :min_confidence) do
         nil -> query
         min -> where(query, [b], b.confidence >= ^min)
       end
 
-    query =
-      case Keyword.get(opts, :max_confidence) do
-        nil -> query
-        max -> where(query, [b], b.confidence <= ^max)
-      end
+    case Keyword.get(opts, :max_confidence) do
+      nil -> query
+      max -> where(query, [b], b.confidence <= ^max)
+    end
+  end
 
+  defp apply_pagination(query, opts) do
     query =
       case Keyword.get(opts, :offset) do
         nil -> query
-        offset -> offset(query, ^offset)
+        offset_val -> offset(query, ^offset_val)
       end
 
-    query =
-      case Keyword.get(opts, :limit) do
-        nil -> query
-        limit -> limit(query, ^limit)
-      end
+    case Keyword.get(opts, :limit) do
+      nil -> query
+      limit_val -> limit(query, ^limit_val)
+    end
+  end
 
-    query =
-      case Keyword.get(opts, :order_by) do
-        nil -> order_by(query, [b], desc: b.confidence)
-        ordering -> order_by(query, ^ordering)
-      end
-
-    Repo.all(query)
+  defp apply_ordering(query, opts) do
+    case Keyword.get(opts, :order_by) do
+      nil -> order_by(query, [b], desc: b.confidence)
+      ordering -> order_by(query, ^ordering)
+    end
   end
 
   @doc """

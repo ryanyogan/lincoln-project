@@ -29,6 +29,7 @@ defmodule LincolnWeb.CoreComponents do
   use Phoenix.Component
   use Gettext, backend: LincolnWeb.Gettext
 
+  alias Phoenix.HTML.Form, as: HTMLForm
   alias Phoenix.LiveView.JS
 
   @doc """
@@ -204,7 +205,7 @@ defmodule LincolnWeb.CoreComponents do
   def input(%{type: "checkbox"} = assigns) do
     assigns =
       assign_new(assigns, :checked, fn ->
-        Phoenix.HTML.Form.normalize_value("checkbox", assigns[:value])
+        HTMLForm.normalize_value("checkbox", assigns[:value])
       end)
 
     ~H"""

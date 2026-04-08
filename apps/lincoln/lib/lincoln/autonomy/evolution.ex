@@ -265,24 +265,15 @@ defmodule Lincoln.Autonomy.Evolution do
 
       case llm.complete(prompt, max_tokens: 4000) do
         {:ok, new_content} ->
-          # Clean up the response (remove markdown code blocks if present)
-          new_content = clean_code_response(new_content)
-
-          # Generate diff
-          diff = generate_diff(original_content, new_content)
-
-          # Record the change
-          change_type = if original_content, do: "modify", else: "create"
-
-          Autonomy.record_code_change(agent, session, %{
-            file_path: file_path,
-            change_type: change_type,
-            description: description,
-            reasoning: reasoning,
-            original_content: original_content,
-            new_content: new_content,
-            diff: diff
-          })
+          record_proposed_change(
+            agent,
+            session,
+            file_path,
+            description,
+            reasoning,
+            original_content,
+            new_content
+          )
 
         error ->
           error
@@ -315,34 +306,9 @@ defmodule Lincoln.Autonomy.Evolution do
   Commits a code change to git.
   """
   def commit_change(code_change) do
-    # Stage the file
     case System.cmd("git", ["add", code_change.file_path], cd: @project_root) do
       {_, 0} ->
-        # Commit with a descriptive message
-        message = """
-        [Lincoln Self-Modification] #{code_change.description}
-
-        Reasoning: #{code_change.reasoning}
-
-        This change was made autonomously by Lincoln during a learning session.
-        Change type: #{code_change.change_type}
-        """
-
-        case System.cmd("git", ["commit", "-m", String.trim(message)], cd: @project_root) do
-          {output, 0} ->
-            # Extract commit hash
-            case Regex.run(~r/\[[\w-]+ ([a-f0-9]+)\]/, output) do
-              [_, hash] ->
-                Autonomy.commit_code_change(code_change, hash)
-
-              _ ->
-                # Commit succeeded but couldn't parse hash
-                Autonomy.commit_code_change(code_change, "unknown")
-            end
-
-          {error, _} ->
-            {:error, {:commit_failed, error}}
-        end
+        execute_git_commit(code_change)
 
       {error, _} ->
         {:error, {:stage_failed, error}}
@@ -382,6 +348,57 @@ defmodule Lincoln.Autonomy.Evolution do
   # ============================================================================
   # Utilities
   # ============================================================================
+
+  defp record_proposed_change(
+         agent,
+         session,
+         file_path,
+         description,
+         reasoning,
+         original_content,
+         new_content
+       ) do
+    new_content = clean_code_response(new_content)
+    diff = generate_diff(original_content, new_content)
+    change_type = if original_content, do: "modify", else: "create"
+
+    Autonomy.record_code_change(agent, session, %{
+      file_path: file_path,
+      change_type: change_type,
+      description: description,
+      reasoning: reasoning,
+      original_content: original_content,
+      new_content: new_content,
+      diff: diff
+    })
+  end
+
+  defp execute_git_commit(code_change) do
+    message = """
+    [Lincoln Self-Modification] #{code_change.description}
+
+    Reasoning: #{code_change.reasoning}
+
+    This change was made autonomously by Lincoln during a learning session.
+    Change type: #{code_change.change_type}
+    """
+
+    case System.cmd("git", ["commit", "-m", String.trim(message)], cd: @project_root) do
+      {output, 0} ->
+        hash = extract_commit_hash(output)
+        Autonomy.commit_code_change(code_change, hash)
+
+      {error, _} ->
+        {:error, {:commit_failed, error}}
+    end
+  end
+
+  defp extract_commit_hash(output) do
+    case Regex.run(~r/\[[\w-]+ ([a-f0-9]+)\]/, output) do
+      [_, hash] -> hash
+      _ -> "unknown"
+    end
+  end
 
   defp clean_code_response(content) do
     content

@@ -899,17 +899,14 @@ defmodule Lincoln.Learning.BeliefFormation do
   defp assign_knowledge_quality_rating(formation) do
     confidence = formation.adjusted_confidence || 0.5
     uncertainty = formation.uncertainty_score || 0.5
-
-    rating =
-      cond do
-        confidence >= 0.8 and uncertainty < 0.3 -> :excellent
-        confidence >= 0.6 and uncertainty < 0.5 -> :good
-        confidence >= 0.4 and uncertainty < 0.7 -> :fair
-        true -> :poor
-      end
-
+    rating = quality_rating(confidence, uncertainty)
     Map.put(formation, :knowledge_quality_rating, rating)
   end
+
+  defp quality_rating(conf, unc) when conf >= 0.8 and unc < 0.3, do: :excellent
+  defp quality_rating(conf, unc) when conf >= 0.6 and unc < 0.5, do: :good
+  defp quality_rating(conf, unc) when conf >= 0.4 and unc < 0.7, do: :fair
+  defp quality_rating(_conf, _unc), do: :poor
 
   defp store_belief_confidence(topic, formation) do
     :ets.insert(@belief_confidence_registry, {topic, formation})
@@ -981,27 +978,30 @@ defmodule Lincoln.Learning.BeliefFormation do
   def confidence_trend_analysis(topic) do
     case :ets.lookup(@belief_confidence_registry, topic) do
       [{^topic, formation}] ->
-        trajectory = formation.confidence_trajectory || []
-
-        if length(trajectory) < 2 do
-          {:ok, %{trend: :insufficient_data, data_points: length(trajectory)}}
-        else
-          confidences = Enum.map(trajectory, fn {_time, conf} -> conf end)
-          first = List.last(confidences)
-          last = hd(confidences)
-
-          trend =
-            cond do
-              last - first > 0.1 -> :increasing
-              first - last > 0.1 -> :decreasing
-              true -> :stable
-            end
-
-          {:ok, %{trend: trend, change: last - first, data_points: length(trajectory)}}
-        end
+        analyze_trajectory(formation.confidence_trajectory || [])
 
       [] ->
         {:error, :topic_not_found}
     end
+  end
+
+  defp analyze_trajectory(trajectory) when length(trajectory) < 2 do
+    {:ok, %{trend: :insufficient_data, data_points: length(trajectory)}}
+  end
+
+  defp analyze_trajectory(trajectory) do
+    confidences = Enum.map(trajectory, fn {_time, conf} -> conf end)
+    first = List.last(confidences)
+    last = hd(confidences)
+    change = last - first
+
+    trend =
+      cond do
+        change > 0.1 -> :increasing
+        change < -0.1 -> :decreasing
+        true -> :stable
+      end
+
+    {:ok, %{trend: trend, change: change, data_points: length(trajectory)}}
   end
 end

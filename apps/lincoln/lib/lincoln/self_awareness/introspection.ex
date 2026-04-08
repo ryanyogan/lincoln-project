@@ -281,18 +281,19 @@ defmodule Lincoln.SelfAwareness.Introspection do
 
   defp find_private_functions(module) do
     case source_location(module) do
-      nil ->
+      nil -> []
+      source -> extract_private_functions_from_source(source)
+    end
+  end
+
+  defp extract_private_functions_from_source(source) do
+    case SelfAwareness.read(source) do
+      {:ok, content} ->
+        Regex.scan(~r/defp\s+(\w+)/, content)
+        |> Enum.map(fn [_, name] -> {String.to_atom(name), :unknown} end)
+
+      _ ->
         []
-
-      source ->
-        case SelfAwareness.read(source) do
-          {:ok, content} ->
-            Regex.scan(~r/defp\s+(\w+)/, content)
-            |> Enum.map(fn [_, name] -> {String.to_atom(name), :unknown} end)
-
-          _ ->
-            []
-        end
     end
   end
 

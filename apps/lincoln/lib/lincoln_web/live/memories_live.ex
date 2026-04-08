@@ -95,30 +95,7 @@ defmodule LincolnWeb.MemoriesLive do
 
     offset = (new_page - 1) * per_page
 
-    memories =
-      case filter do
-        "observation" ->
-          Memory.list_memories(agent, memory_type: "observation", limit: per_page, offset: offset)
-
-        "reflection" ->
-          Memory.list_memories(agent, memory_type: "reflection", limit: per_page, offset: offset)
-
-        "conversation" ->
-          Memory.list_memories(agent,
-            memory_type: "conversation",
-            limit: per_page,
-            offset: offset
-          )
-
-        "plan" ->
-          Memory.list_memories(agent, memory_type: "plan", limit: per_page, offset: offset)
-
-        "important" ->
-          Memory.list_memories(agent, min_importance: 7, limit: per_page, offset: offset)
-
-        _ ->
-          Memory.list_recent_memories(agent, 168, limit: per_page, offset: offset)
-      end
+    memories = fetch_filtered_memories(agent, filter, per_page, offset)
 
     {memories, at, limit} =
       if new_page >= cur_page do
@@ -136,6 +113,19 @@ defmodule LincolnWeb.MemoriesLive do
         |> assign(:end_of_list?, false)
         |> assign(:page, new_page)
         |> stream(:memories, memories, at: at, limit: limit, reset: reset)
+    end
+  end
+
+  defp fetch_filtered_memories(agent, filter, per_page, offset) do
+    case filter do
+      type when type in ~w(observation reflection conversation plan) ->
+        Memory.list_memories(agent, memory_type: type, limit: per_page, offset: offset)
+
+      "important" ->
+        Memory.list_memories(agent, min_importance: 7, limit: per_page, offset: offset)
+
+      _ ->
+        Memory.list_recent_memories(agent, 168, limit: per_page, offset: offset)
     end
   end
 
