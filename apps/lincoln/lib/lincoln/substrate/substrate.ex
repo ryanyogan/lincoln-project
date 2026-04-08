@@ -10,7 +10,7 @@ defmodule Lincoln.Substrate.Substrate do
   require Logger
 
   alias Lincoln.{Agents, Beliefs, PubSubBroadcaster}
-  alias Lincoln.Substrate.{Attention, Driver, Trajectory}
+  alias Lincoln.Substrate.{Attention, ThoughtSupervisor, Trajectory}
 
   @tick_interval 5_000
 
@@ -83,6 +83,7 @@ defmodule Lincoln.Substrate.Substrate do
     beliefs = Beliefs.list_beliefs(agent, limit: 10, status: "active")
     current_focus = List.first(beliefs)
 
+    Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.thought_topic(state.agent_id))
     schedule_tick(state.tick_interval)
 
     {:noreply, %{state | agent: agent, current_focus: current_focus}}
@@ -103,7 +104,7 @@ defmodule Lincoln.Substrate.Substrate do
   def handle_info(:tick, state) do
     state_after_events = drain_pending_events(state)
     {chosen_belief, attention_score} = consult_attention(state_after_events)
-    tier = dispatch_to_driver(state_after_events, chosen_belief, attention_score)
+    tier = spawn_thought(state_after_events, chosen_belief, attention_score)
 
     new_state = %{
       state_after_events
@@ -126,6 +127,31 @@ defmodule Lincoln.Substrate.Substrate do
 
   @impl true
   def handle_info({:execution_complete, _action}, state), do: {:noreply, state}
+
+  @impl true
+  def handle_info({:thought_completed, thought_id, result}, state) do
+    Logger.debug(
+      "[Substrate #{state.agent_id}] Thought #{thought_id} completed: #{String.slice(to_string(result), 0, 80)}"
+    )
+
+    activation_map =
+      if state.current_focus do
+        Map.put(state.activation_map, state.current_focus.id, DateTime.utc_now())
+      else
+        state.activation_map
+      end
+
+    {:noreply, %{state | activation_map: activation_map}}
+  end
+
+  @impl true
+  def handle_info({:thought_failed, thought_id, reason}, state) do
+    Logger.warning(
+      "[Substrate #{state.agent_id}] Thought #{thought_id} failed: #{inspect(reason)}"
+    )
+
+    {:noreply, state}
+  end
 
   @impl true
   def handle_info(_msg, state), do: {:noreply, state}
@@ -172,15 +198,21 @@ defmodule Lincoln.Substrate.Substrate do
     end
   end
 
-  defp dispatch_to_driver(_state, nil, _score), do: nil
+  defp spawn_thought(_state, nil, _score), do: :no_belief
 
-  defp dispatch_to_driver(state, belief, score) do
-    case lookup_process(state.agent_id, :driver) do
-      {:ok, pid} ->
-        Driver.execute(pid, {belief, score || 0.0})
+  defp spawn_thought(state, belief, score) do
+    thought_opts = %{
+      agent_id: state.agent_id,
+      belief: belief,
+      attention_score: score || 0.0
+    }
+
+    case ThoughtSupervisor.spawn_thought(state.agent_id, thought_opts) do
+      {:ok, _pid} ->
         Lincoln.Substrate.InferenceTier.select_tier(score || 0.0)
 
-      {:error, :not_running} ->
+      {:error, reason} ->
+        Logger.debug("[Substrate #{state.agent_id}] Could not spawn thought: #{inspect(reason)}")
         nil
     end
   end
