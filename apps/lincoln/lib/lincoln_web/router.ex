@@ -43,6 +43,7 @@ defmodule LincolnWeb.Router do
     live("/substrate", SubstrateLive, :index)
     live("/substrate/compare", SubstrateCompareLive, :index)
     live("/substrate/thoughts", SubstrateThoughtsLive, :index)
+    live("/narrative", NarrativeLive, :index)
 
     # Keep the old page controller for reference
     get("/welcome", PageController, :home)
