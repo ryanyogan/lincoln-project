@@ -217,6 +217,15 @@
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
       "updated_at": "2026-04-07T20:27:22.061Z"
+    },
+    "final-wave:f3": {
+      "task_key": "final-wave:f3",
+      "task_label": "F3",
+      "task_title": "**Real Manual QA** — `unspecified-high` (+ `playwright` skill for LiveView)",
+      "session_id": "ses_29595d472ffeW9xCi3iQZZ0b7w",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-04-08T00:08:46.757Z"
     }
   }
 }

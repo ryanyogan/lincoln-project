@@ -50,6 +50,9 @@ defmodule Lincoln.Substrate.Thought do
   @doc "Returns the current state of this Thought process."
   def get_state(pid), do: GenServer.call(pid, :get_state)
 
+  @doc "Interrupt this thought — it will terminate gracefully after broadcasting the event."
+  def interrupt(pid), do: GenServer.cast(pid, :interrupt)
+
   # ============================================================================
   # GenServer callbacks
   # ============================================================================
@@ -140,11 +143,28 @@ defmodule Lincoln.Substrate.Thought do
   def handle_info(_msg, state), do: {:noreply, state}
 
   @impl true
+  def handle_cast(:interrupt, state) do
+    Logger.debug("[Thought #{state.id}] Interrupted — preempted by higher-priority belief")
+
+    PubSubBroadcaster.broadcast_thought_event(
+      state.agent_id,
+      {:thought_interrupted, state.id, :preempted}
+    )
+
+    {:stop, :interrupted, state}
+  end
+
+  @impl true
   def handle_call(:get_state, _from, state) do
     {:reply, state, state}
   end
 
   @impl true
+  def terminate(:interrupted, state) do
+    Logger.info("[Thought #{state.id}] Terminated: interrupted (preempted)")
+    :ok
+  end
+
   def terminate(reason, state) do
     Logger.debug("[Thought #{state.id}] Terminating: #{inspect(reason)}")
     :ok

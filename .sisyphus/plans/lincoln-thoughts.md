@@ -101,7 +101,7 @@ Wave 4 (Cleanup — after Wave 3):
 
 ## TODOs
 
-- [ ] 1. ThoughtSupervisor — Per-Agent DynamicSupervisor
+- [x] 1. ThoughtSupervisor — Per-Agent DynamicSupervisor
 
   **What to do**:
   - Create `lib/lincoln/substrate/thought_supervisor.ex`
@@ -128,7 +128,7 @@ Wave 4 (Cleanup — after Wave 3):
 
   **Commit**: `feat(thoughts): add ThoughtSupervisor DynamicSupervisor per agent`
 
-- [ ] 2. PubSub Topics for Thought Lifecycle
+- [x] 2. PubSub Topics for Thought Lifecycle
 
   **What to do**:
   - Add to `lib/lincoln/pub_sub.ex`:
@@ -144,7 +144,7 @@ Wave 4 (Cleanup — after Wave 3):
 
   **Commit**: `feat(thoughts): add PubSub topics for thought lifecycle events`
 
-- [ ] 3. Thought GenServer
+- [x] 3. Thought GenServer
 
   **What to do**:
   - Create `lib/lincoln/substrate/thought.ex` — the core module
@@ -224,7 +224,7 @@ Wave 4 (Cleanup — after Wave 3):
 
   **Commit**: `feat(thoughts): add Thought GenServer with lifecycle and tiered execution`
 
-- [ ] 4. Wire Substrate to Spawn Thoughts
+- [x] 4. Wire Substrate to Spawn Thoughts
 
   **What to do**:
   - Replace `dispatch_to_driver/3` in `substrate.ex` with `spawn_thought/3`
@@ -254,7 +254,7 @@ Wave 4 (Cleanup — after Wave 3):
 
   **Commit**: `feat(thoughts): wire Substrate to spawn Thoughts instead of calling Driver`
 
-- [ ] 5. Public API — List and Inspect Thoughts
+- [x] 5. Public API — List and Inspect Thoughts
 
   **What to do**:
   - Create `lib/lincoln/substrate/thoughts.ex` — public API module
@@ -276,7 +276,7 @@ Wave 4 (Cleanup — after Wave 3):
 
   **Commit**: `feat(thoughts): add public API for listing and inspecting thoughts`
 
-- [ ] 6. Thought Lifecycle in Trajectory
+- [x] 6. Thought Lifecycle in Trajectory
 
   **What to do**:
   - When Substrate receives `:thought_completed` or `:thought_failed`, record to trajectory:
@@ -295,7 +295,7 @@ Wave 4 (Cleanup — after Wave 3):
 
   **Commit**: `feat(thoughts): record thought lifecycle events in trajectory`
 
-- [ ] 7. `/substrate/thoughts` LiveView
+- [x] 7. `/substrate/thoughts` LiveView
 
   **What to do**:
   - Create `lib/lincoln_web/live/substrate_thoughts_live.ex` at route `/substrate/thoughts`
@@ -318,7 +318,7 @@ Wave 4 (Cleanup — after Wave 3):
 
   **Commit**: `feat(thoughts): add /substrate/thoughts LiveView dashboard`
 
-- [ ] 8. Update LEARNINGS.md and README
+- [x] 8. Update LEARNINGS.md and README
 
   **What to do**:
   - Update LEARNINGS.md: mark "Thoughts as processes" as DONE, update Driver audit
@@ -336,10 +336,10 @@ Wave 4 (Cleanup — after Wave 3):
 
 > After all 8 tasks, verify the full flow works end-to-end.
 
-- [ ] F1. Start agent substrate, verify thoughts spawn on each tick
-- [ ] F2. Watch `/substrate/thoughts` dashboard — thoughts appear and complete
-- [ ] F3. Run divergence demo — verify thoughts recorded in trajectory
-- [ ] F4. `mix compile --warnings-as-errors` + `mix credo --strict` + `mix test`
+- [x] F1. Start agent substrate, verify thoughts spawn on each tick
+- [x] F2. Watch `/substrate/thoughts` dashboard — thoughts appear and complete
+- [x] F3. Run divergence demo — verify thoughts recorded in trajectory
+- [x] F4. `mix compile --warnings-as-errors` + `mix credo --strict` + `mix test`
 
 ---
 
