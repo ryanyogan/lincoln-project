@@ -13,7 +13,7 @@ defmodule LincolnWeb.ChatLive do
   """
   use LincolnWeb, :live_view
 
-  alias Lincoln.{Agents, Autonomy, Conversation}
+  alias Lincoln.{Agents, Autonomy, Conversation, UserModels}
   alias Lincoln.Cognition.ConversationHandler
   alias Lincoln.Substrate.ConversationBridge
 
@@ -52,6 +52,7 @@ defmodule LincolnWeb.ChatLive do
       |> assign(:cognitive_events, [])
       |> assign(:event_filter, "all")
       |> assign(:active_session, active_session)
+      |> assign(:user_model, nil)
       |> stream(:messages, [])
 
     if connected?(socket) do
@@ -66,10 +67,12 @@ defmodule LincolnWeb.ChatLive do
   @impl true
   def handle_params(%{"id" => id}, _uri, socket) do
     conversation = Conversation.get_conversation_with_messages(id)
+    user_model = UserModels.get_model(socket.assigns.agent.id, conversation.id)
 
     socket =
       socket
       |> assign(:conversation, conversation)
+      |> assign(:user_model, user_model)
       |> assign(:page_title, conversation.title || "Chat")
       |> stream(:messages, conversation.messages, reset: true)
 
@@ -125,16 +128,19 @@ defmodule LincolnWeb.ChatLive do
     {:noreply,
      socket
      |> assign(:conversation, nil)
+     |> assign(:user_model, nil)
      |> assign(:page_title, "Chat")
      |> stream(:messages, [], reset: true)}
   end
 
   def handle_event("load_conversation", %{"id" => id}, socket) do
     conversation = Conversation.get_conversation_with_messages(id)
+    user_model = UserModels.get_model(socket.assigns.agent.id, conversation.id)
 
     {:noreply,
      socket
      |> assign(:conversation, conversation)
+     |> assign(:user_model, user_model)
      |> assign(:page_title, conversation.title || "Chat")
      |> assign(:show_sidebar, false)
      |> stream(:messages, conversation.messages, reset: true)}
@@ -176,7 +182,12 @@ defmodule LincolnWeb.ChatLive do
 
     case result do
       {:ok, cognitive_result} ->
-        ConversationBridge.notify(agent.id, content, cognitive_result.cognitive_metadata)
+        enriched_metadata =
+          cognitive_result.cognitive_metadata
+          |> Map.put(:conversation_id, conversation.id)
+          |> Map.put(:user_content, content)
+
+        ConversationBridge.notify(agent.id, content, enriched_metadata)
 
         # Add Lincoln's response with cognitive metadata
         {:ok, assistant_msg} =
@@ -194,8 +205,8 @@ defmodule LincolnWeb.ChatLive do
             }
           )
 
-        # Reload conversations list to show updated title
         conversations = Conversation.list_conversations(agent.id, limit: 20)
+        user_model = UserModels.get_model(agent.id, conversation.id)
 
         socket =
           socket
@@ -203,6 +214,7 @@ defmodule LincolnWeb.ChatLive do
           |> assign(:processing, false)
           |> assign(:thinking_step, nil)
           |> assign(:conversations, conversations)
+          |> assign(:user_model, user_model)
 
         {:noreply, socket}
 
@@ -553,6 +565,7 @@ defmodule LincolnWeb.ChatLive do
           conversations={@conversations}
           current={@conversation}
           show={@show_sidebar}
+          user_model={@user_model}
         />
         
     <!-- Main Chat Area -->
@@ -626,6 +639,7 @@ defmodule LincolnWeb.ChatLive do
   attr(:conversations, :list, required: true)
   attr(:current, :map, default: nil)
   attr(:show, :boolean, default: false)
+  attr(:user_model, :map, default: nil)
 
   defp conversation_sidebar(assigns) do
     ~H"""
@@ -666,6 +680,34 @@ defmodule LincolnWeb.ChatLive do
           <% end %>
         </ul>
       </div>
+
+      <%= if @user_model do %>
+        <div class="px-3 pb-3 shrink-0">
+          <div class="border border-base-content/10 rounded-lg p-3 text-xs bg-base-100/50">
+            <div class="font-mono text-[10px] tracking-widest text-base-content/30 uppercase mb-2">
+              Theory of Mind
+            </div>
+            <div class="space-y-1.5">
+              <div class="flex items-center gap-3">
+                <span class="text-base-content/40">msgs</span>
+                <span class="text-base-content/70 tabular-nums">{@user_model.message_count}</span>
+                <span class="text-base-content/40">q's</span>
+                <span class="text-base-content/70 tabular-nums">{@user_model.question_count}</span>
+              </div>
+              <div>
+                <span class="text-base-content/40">style</span>
+                <span class="text-base-content/60 ml-1">{@user_model.vocabulary_style || "unknown"}</span>
+              </div>
+              <%= if @user_model.topics != [] do %>
+                <div>
+                  <span class="text-base-content/40">topics</span>
+                  <span class="text-base-content/50 ml-1">{Enum.join(Enum.take(@user_model.topics, 5), ", ")}</span>
+                </div>
+              <% end %>
+            </div>
+          </div>
+        </div>
+      <% end %>
 
       <div class="p-4 border-t border-base-300 text-xs text-base-content/40 shrink-0">
         <div class="flex items-center gap-2">

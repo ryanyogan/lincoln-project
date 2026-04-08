@@ -9,6 +9,7 @@ defmodule Lincoln.Substrate.ConversationBridge do
   require Logger
 
   alias Lincoln.Substrate
+  alias Lincoln.UserModels
 
   @doc """
   Notify the substrate of a processed conversation message.
@@ -19,6 +20,30 @@ defmodule Lincoln.Substrate.ConversationBridge do
     :memories_retrieved, :beliefs_consulted, :contradictions_detected, etc.
   """
   def notify(agent_id, message, cognitive_metadata \\ %{}) do
+    session_id =
+      Map.get(cognitive_metadata, :conversation_id) ||
+        Map.get(cognitive_metadata, "conversation_id") ||
+        "default"
+
+    user_content =
+      Map.get(cognitive_metadata, :user_content) ||
+        Map.get(cognitive_metadata, "user_content") ||
+        ""
+
+    # Theory of Mind: observe what the user said (non-blocking)
+    if is_binary(user_content) and byte_size(user_content) > 0 do
+      Task.start(fn ->
+        try do
+          UserModels.observe_message(agent_id, to_string(session_id), user_content)
+        rescue
+          e ->
+            Logger.warning(
+              "[ConversationBridge] UserModel observation failed: #{Exception.message(e)}"
+            )
+        end
+      end)
+    end
+
     event = %{
       type: :conversation,
       content: message,

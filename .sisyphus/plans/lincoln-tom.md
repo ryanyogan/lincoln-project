@@ -28,7 +28,7 @@ For v1: JSONB-backed model with topic tracking + message stats. No ML extraction
 
 ## TODOs
 
-- [ ] 1. Migration + Schema + Context
+- [x] 1. Migration + Schema + Context
 
   **Migration** — run `mix ecto.gen.migration create_user_models` then:
   ```elixir
