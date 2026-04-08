@@ -135,8 +135,8 @@ defmodule Lincoln.Substrate.Thought do
             "[Thought #{state.id}] Spawning #{length(candidates)} children for exploration"
           )
 
-          spawn_exploration_children(candidates)
-          {:noreply, state}
+          new_state = spawn_exploration_children(candidates, state)
+          {:noreply, new_state}
       end
     end
   end
@@ -226,31 +226,9 @@ defmodule Lincoln.Substrate.Thought do
 
   @impl true
   def handle_call({:spawn_child, belief, score}, _from, state) do
-    child_id = Ecto.UUID.generate()
-
-    child_opts = %{
-      id: child_id,
-      agent_id: state.agent_id,
-      belief: belief,
-      attention_score: score,
-      parent_id: state.id
-    }
-
-    case ThoughtSupervisor.spawn_thought(state.agent_id, child_opts) do
-      {:ok, _pid} ->
-        if map_size(state.pending_children) == 0 do
-          Phoenix.PubSub.subscribe(
-            Lincoln.PubSub,
-            PubSubBroadcaster.thought_topic(state.agent_id)
-          )
-        end
-
-        pending = Map.put(state.pending_children, child_id, nil)
-        new_state = %{state | pending_children: pending, status: :awaiting_children}
-        {:reply, {:ok, child_id}, new_state}
-
-      {:error, reason} ->
-        {:reply, {:error, reason}, state}
+    case do_spawn_child(belief, score, state) do
+      {:ok, child_id, new_state} -> {:reply, {:ok, child_id}, new_state}
+      {:error, reason} -> {:reply, {:error, reason}, state}
     end
   end
 
@@ -406,10 +384,42 @@ defmodule Lincoln.Substrate.Thought do
     end
   end
 
-  defp spawn_exploration_children(candidates) do
-    Enum.each(candidates, fn {belief, score} ->
-      spawn_child(self(), belief, score)
+  defp spawn_exploration_children(candidates, state) do
+    Enum.reduce(candidates, state, fn {belief, score}, acc ->
+      case do_spawn_child(belief, score, acc) do
+        {:ok, _child_id, new_acc} -> new_acc
+        {:error, _reason} -> acc
+      end
     end)
+  end
+
+  defp do_spawn_child(belief, score, state) do
+    child_id = Ecto.UUID.generate()
+
+    child_opts = %{
+      id: child_id,
+      agent_id: state.agent_id,
+      belief: belief,
+      attention_score: score,
+      parent_id: state.id
+    }
+
+    case ThoughtSupervisor.spawn_thought(state.agent_id, child_opts) do
+      {:ok, _pid} ->
+        if map_size(state.pending_children) == 0 do
+          Phoenix.PubSub.subscribe(
+            Lincoln.PubSub,
+            PubSubBroadcaster.thought_topic(state.agent_id)
+          )
+        end
+
+        pending = Map.put(state.pending_children, child_id, nil)
+        new_state = %{state | pending_children: pending, status: :awaiting_children}
+        {:ok, child_id, new_state}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   defp active_related_belief(rel, belief_id) do
