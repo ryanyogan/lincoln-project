@@ -89,6 +89,10 @@ config :lincoln, :llm,
   model: "claude-sonnet-4-20250514",
   max_tokens: 4096
 
+config :lincoln, :openai,
+  model: "gpt-4o",
+  max_tokens: 4096
+
 config :lincoln, :ollama,
   service_url: "http://localhost:11434",
   model: "qwen2.5:7b"

@@ -36,21 +36,38 @@ end
 
 config :lincoln, LincolnWeb.Endpoint, http: [port: env!("PORT", :integer, 4000)]
 
-# LLM Configuration - load API key from environment
-# In prod, this is required; in dev/test it's optional (can be mocked)
+# LLM Configuration - load API keys from environment
+# In prod, at least one provider key is required; in dev/test they're optional (can be mocked)
 anthropic_api_key = env!("ANTHROPIC_API_KEY", :string, nil)
+openai_api_key = env!("OPENAI_API_KEY", :string, nil)
 
 if config_env() == :prod do
-  unless anthropic_api_key do
+  unless anthropic_api_key || openai_api_key do
     raise """
-    environment variable ANTHROPIC_API_KEY is missing.
-    Get your API key from https://console.anthropic.com/
+    At least one LLM API key is required.
+    Set ANTHROPIC_API_KEY or OPENAI_API_KEY (or both).
     """
   end
 end
 
 if anthropic_api_key do
   config :lincoln, :llm, api_key: anthropic_api_key
+end
+
+if openai_api_key do
+  config :lincoln, :openai, api_key: openai_api_key
+end
+
+# Select the frontier LLM adapter based on LLM_PROVIDER env var
+# Defaults to :anthropic. Set LLM_PROVIDER=openai to use OpenAI.
+llm_provider = env!("LLM_PROVIDER", :string, "anthropic")
+
+case llm_provider do
+  "openai" ->
+    config :lincoln, :llm_adapter, Lincoln.Adapters.LLM.OpenAI
+
+  _ ->
+    config :lincoln, :llm_adapter, Lincoln.Adapters.LLM.Anthropic
 end
 
 # Python ML Service URL
