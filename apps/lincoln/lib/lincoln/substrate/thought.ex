@@ -433,7 +433,15 @@ defmodule Lincoln.Substrate.Thought do
     statement = get_statement(belief)
 
     messages = [
-      %{role: "system", content: "You are reflecting on a belief. Be concise (2-3 sentences)."},
+      %{
+        role: "system",
+        content:
+          "You are a cognitive agent reflecting on one of your beliefs. " <>
+            "Don't just confirm it — analyze it critically. " <>
+            "State one specific implication, connection to other ideas, or limitation. " <>
+            "If it suggests something new, state it clearly as a new claim. " <>
+            "Be concise (2-3 sentences)."
+      },
       %{role: "user", content: "Reflect on this belief: #{statement}"}
     ]
 

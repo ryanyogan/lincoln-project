@@ -34,10 +34,11 @@ defmodule Lincoln.Cognition do
   # Reflection Evaluation
   # ============================================================================
 
-  @challenge_signals ~w(however but contradicts conflicts disagrees incorrect wrong
-                        inaccurate misleading oversimplifies ignores fails questionable)
+  @challenge_signals ~w(however contradicts conflicts disagrees incorrect wrong
+                        inaccurate misleading oversimplifies ignores questionable)
   @extend_signals ~w(furthermore additionally moreover implies suggests means
-                     therefore consequently specifically extends builds)
+                     therefore consequently specifically extends builds
+                     implication connection limitation raises enables)
 
   @doc """
   Evaluates whether a thought reflection reinforces, challenges, or extends a belief.
