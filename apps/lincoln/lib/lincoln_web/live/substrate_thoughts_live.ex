@@ -23,12 +23,15 @@ defmodule LincolnWeb.SubstrateThoughtsLive do
       |> Thoughts.list()
       |> Enum.map(&normalize_thought/1)
 
+    # Load recent thought history from trajectory so the page isn't empty on load
+    thought_history = load_recent_thought_history(agent.id)
+
     socket =
       socket
       |> assign(:page_title, "Thought Tree")
       |> assign(:agent, agent)
       |> assign(:active_thoughts, active_thoughts)
-      |> assign(:thought_history, [])
+      |> assign(:thought_history, thought_history)
       |> assign(:substrate_running, substrate_running?(agent.id))
 
     if connected?(socket) do
@@ -371,6 +374,37 @@ defmodule LincolnWeb.SubstrateThoughtsLive do
       result: thought.result,
       parent_id: thought.parent_id
     }
+  end
+
+  defp load_recent_thought_history(agent_id) do
+    import Ecto.Query
+    alias Lincoln.Repo
+    alias Lincoln.Substrate.SubstrateEvent
+
+    SubstrateEvent
+    |> where(
+      [e],
+      e.agent_id == ^agent_id and e.event_type in ["thought_completed", "thought_failed"]
+    )
+    |> order_by([e], desc: e.inserted_at)
+    |> limit(@max_history)
+    |> Repo.all()
+    |> Enum.map(fn event ->
+      data = event.event_data
+
+      %{
+        id: data["thought_id"] || event.id,
+        belief_statement: data["belief_statement"] || data["result_summary"] || "Unknown",
+        tier: String.to_existing_atom(event.inference_tier || "local"),
+        status: if(event.event_type == "thought_completed", do: :completed, else: :failed),
+        result: data["result_summary"],
+        started_at: event.inserted_at,
+        completed_at: event.inserted_at,
+        parent_id: nil
+      }
+    end)
+  rescue
+    _ -> []
   end
 
   defp substrate_running?(agent_id) do
