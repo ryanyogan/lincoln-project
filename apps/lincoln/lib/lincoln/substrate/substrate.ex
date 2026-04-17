@@ -102,15 +102,12 @@ defmodule Lincoln.Substrate.Substrate do
 
     new_state = %{state | agent: agent, current_focus: current_focus}
 
-    # Use {:continue, :first_tick} instead of timeout 0 to guarantee the first tick fires
-    # GenServer timeout can be cancelled by any message in the mailbox (e.g. from PubSub)
-    {:noreply, new_state, {:continue, :first_tick}}
-  end
+    # Schedule the first tick immediately
+    # We use Process.send_after instead of GenServer timeout because
+    # timeout is cancelled by any message in the mailbox (PubSub, etc.)
+    schedule_tick(0)
 
-  @impl true
-  def handle_continue(:first_tick, state) do
-    Logger.info("[Substrate #{state.agent_id}] First tick")
-    handle_info(:timeout, state)
+    {:noreply, new_state}
   end
 
   @impl true
@@ -121,16 +118,13 @@ defmodule Lincoln.Substrate.Substrate do
   @impl true
   def handle_cast({:event, event}, state) do
     pending = (state.pending_events ++ [event]) |> Enum.take(100)
-    # Zero timeout — process the event on the very next iteration
-    {:noreply, %{state | pending_events: pending}, 0}
+    # Schedule immediate tick to process the event
+    schedule_tick(0)
+    {:noreply, %{state | pending_events: pending}}
   end
 
   @impl true
-  def handle_info(:timeout, state) do
-    if state.tick_count == 0 do
-      Logger.info("[Substrate #{state.agent_id}] First tick firing")
-    end
-
+  def handle_info(:tick, state) do
     new_state =
       if state.pending_events != [] or not has_running_thought?(state) do
         handle_active_tick(state)
@@ -139,7 +133,8 @@ defmodule Lincoln.Substrate.Substrate do
       end
 
     run_periodic_tasks(new_state)
-    {:noreply, new_state, next_timeout(new_state)}
+    schedule_tick(next_timeout(new_state))
+    {:noreply, new_state}
   end
 
   @impl true
@@ -166,7 +161,9 @@ defmodule Lincoln.Substrate.Substrate do
       label: "thought trajectory"
     )
 
-    {:noreply, %{state | activation_map: activation_map}, 0}
+    # Thought completed — schedule immediate tick to spawn next thought
+    schedule_tick(0)
+    {:noreply, %{state | activation_map: activation_map}}
   end
 
   @impl true
@@ -186,7 +183,8 @@ defmodule Lincoln.Substrate.Substrate do
       label: "thought failure trajectory"
     )
 
-    {:noreply, state, 0}
+    schedule_tick(0)
+    {:noreply, state}
   end
 
   # Skeptic detected a contradiction — queue it as an event for processing
@@ -199,7 +197,8 @@ defmodule Lincoln.Substrate.Substrate do
     }
 
     pending = (state.pending_events ++ [event]) |> Enum.take(100)
-    {:noreply, %{state | pending_events: pending}, 0}
+    schedule_tick(0)
+    {:noreply, %{state | pending_events: pending}}
   end
 
   # Resonator detected a cascade — queue it as an event for processing
@@ -211,11 +210,12 @@ defmodule Lincoln.Substrate.Substrate do
     }
 
     pending = (state.pending_events ++ [event]) |> Enum.take(100)
-    {:noreply, %{state | pending_events: pending}, 0}
+    schedule_tick(0)
+    {:noreply, %{state | pending_events: pending}}
   end
 
   @impl true
-  def handle_info(_msg, state), do: {:noreply, state, next_timeout(state)}
+  def handle_info(_msg, state), do: {:noreply, state}
 
   @impl true
   def terminate(reason, state) do
@@ -541,11 +541,15 @@ defmodule Lincoln.Substrate.Substrate do
   end
 
   defp spawn_narrative_thought(state) do
+    Logger.info(
+      "[Substrate #{state.agent_id}] Spawning narrative thought at tick #{state.tick_count}"
+    )
+
     narrative_belief = %{
       id: nil,
       statement: "Reflect on what I have been thinking about and learning recently",
       confidence: 1.0,
-      source_type: "introspection"
+      source_type: "inference"
     }
 
     thought_opts = %{
@@ -571,6 +575,10 @@ defmodule Lincoln.Substrate.Substrate do
     run_background_task(fn -> Lincoln.SelfModel.update_from_trajectory(agent_id) end,
       label: "self model update"
     )
+  end
+
+  defp schedule_tick(delay_ms) do
+    Process.send_after(self(), :tick, delay_ms)
   end
 
   defp next_timeout(state) do
