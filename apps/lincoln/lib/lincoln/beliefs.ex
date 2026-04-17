@@ -117,11 +117,38 @@ defmodule Lincoln.Beliefs do
     case result do
       {:ok, belief} ->
         PubSubBroadcaster.broadcast_belief_created(agent_id, belief)
+        # Auto-embed in background so Skeptic/Resonator can find this belief
+        embed_belief_async(belief)
         {:ok, belief}
 
       error ->
         error
     end
+  end
+
+  defp embed_belief_async(belief) do
+    Task.start(fn ->
+      try do
+        embeddings =
+          Application.get_env(
+            :lincoln,
+            :embeddings_adapter,
+            Lincoln.Adapters.Embeddings.PythonService
+          )
+
+        case embeddings.embed(belief.statement, []) do
+          {:ok, embedding} ->
+            belief
+            |> Belief.changeset(%{embedding: embedding})
+            |> Repo.update()
+
+          _ ->
+            :ok
+        end
+      rescue
+        _ -> :ok
+      end
+    end)
   end
 
   @doc """
