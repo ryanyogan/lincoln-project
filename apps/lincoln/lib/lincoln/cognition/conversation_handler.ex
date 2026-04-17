@@ -1007,11 +1007,22 @@ defmodule Lincoln.Cognition.ConversationHandler do
 
   defp build_system_prompt(state) do
     memories_context = format_memories(state.context.memories)
-    beliefs_context = format_beliefs(state.context.beliefs)
     contradiction_context = format_contradictions(state)
     command_context = format_command_context(state)
     identity_context = build_identity_context(state.agent)
     deliberation_context = format_deliberation_context(state)
+    substrate_context = build_substrate_context(state.agent)
+
+    # If substrate is running with full beliefs, skip the vector-similar subset
+    beliefs_section =
+      case substrate_context do
+        "" ->
+          beliefs_context = format_beliefs(state.context.beliefs)
+          if beliefs_context != "", do: "## Your Current Beliefs\n#{beliefs_context}\n", else: ""
+
+        _ ->
+          ""
+      end
 
     """
     You are Lincoln, a learning agent with persistent memory and beliefs.
@@ -1024,8 +1035,9 @@ defmodule Lincoln.Cognition.ConversationHandler do
     - Surprise your creator by demonstrating genuine understanding
 
     #{identity_context}
+    #{substrate_context}
+    #{beliefs_section}
     #{if memories_context != "", do: "## Relevant Memories\n#{memories_context}\n", else: ""}
-    #{if beliefs_context != "", do: "## Your Current Beliefs\n#{beliefs_context}\n", else: ""}
     #{contradiction_context}
     #{command_context}
     #{deliberation_context}
@@ -1044,6 +1056,9 @@ defmodule Lincoln.Cognition.ConversationHandler do
     - If you disagree with the user based on strong beliefs, explain politely why
     - If you're updating your understanding, acknowledge it
     - You're curious and enjoy learning new things
+    - When asked about your own state, beliefs, or thoughts, reference the actual data
+      from your Cognitive Substrate section — cite specific confidence scores and entrenchment
+    - If you don't hold a belief about something, say so honestly rather than inventing one
     - If a research topic was queued, acknowledge it enthusiastically
     - If evolution was triggered, explain that you're reflecting on self-improvement
     - Reference your self-modifications when relevant - you wrote your own code!
@@ -1105,6 +1120,53 @@ defmodule Lincoln.Cognition.ConversationHandler do
       end
 
     identity <> self_mod <> changes <> session_info
+  end
+
+  defp build_substrate_context(agent) do
+    alias Lincoln.Substrate.ConversationBridge
+
+    case ConversationBridge.get_substrate_context(agent.id) do
+      %{running: true} = ctx ->
+        focus_text = ctx.current_focus || "none"
+
+        score_text =
+          if ctx.current_score,
+            do: :erlang.float_to_binary(ctx.current_score, decimals: 2),
+            else: "n/a"
+
+        trajectory_text =
+          if ctx.trajectory do
+            tc = ctx.trajectory.thought_counts
+
+            "Thoughts completed: #{tc.completed}, failed: #{tc.failed}. " <>
+              "Tier distribution: #{inspect(ctx.trajectory.tier_distribution)}"
+          else
+            "No trajectory data yet"
+          end
+
+        """
+        ## Your Cognitive Substrate (Live State)
+        You are running on tick #{ctx.tick_count}. Your current focus is: "#{focus_text}" (attention score: #{score_text}).
+        You hold #{ctx.belief_count} active beliefs.
+
+        ### All Your Beliefs (entrenchment, confidence, source)
+        #{ctx.beliefs}
+
+        ### Recent Focus History (what you've been thinking about)
+        #{ctx.focus_history}
+
+        ### Trajectory (last hour)
+        #{trajectory_text}
+
+        IMPORTANT: When asked about your beliefs, state, or what you're thinking,
+        answer from the data above. These are your ACTUAL beliefs and state from the
+        database. Do not invent beliefs you don't hold. Quote specific confidence
+        scores and entrenchment levels.
+        """
+
+      _ ->
+        ""
+    end
   end
 
   defp format_deliberation_context(state) do

@@ -16,7 +16,7 @@ defmodule Lincoln.Substrate.ConversationBridge do
 
   require Logger
 
-  alias Lincoln.Substrate
+  alias Lincoln.{Beliefs, Substrate}
   alias Lincoln.Substrate.Trajectory
   alias Lincoln.UserModels
 
@@ -71,35 +71,52 @@ defmodule Lincoln.Substrate.ConversationBridge do
   def get_substrate_context(agent_id) do
     case Substrate.get_agent_state(agent_id) do
       {:ok, state} ->
-        recent_ticks =
-          try do
-            Trajectory.get_recent_ticks(agent_id, limit: 3)
-          rescue
-            e ->
-              Logger.debug(
-                "[ConversationBridge] Trajectory query failed: #{Exception.message(e)}"
-              )
-
-              []
-          end
-
-        recent_focuses =
-          recent_ticks
-          |> Enum.map(fn event ->
-            event.event_data["current_focus_statement"]
-          end)
-          |> Enum.reject(&is_nil/1)
+        agent = state.agent
+        beliefs = safe_query(fn -> Beliefs.list_beliefs(agent, status: "active") end, [])
+        trajectory = safe_query(fn -> Trajectory.summary(agent_id, hours: 1) end, nil)
+        focus_history = safe_query(fn -> Trajectory.focus_history(agent_id, limit: 10) end, [])
 
         %{
-          current_focus: state.current_focus && Map.get(state.current_focus, :statement),
+          running: true,
           tick_count: state.tick_count,
           idle_streak: Map.get(state, :idle_streak, 0),
-          recent_focuses: recent_focuses
+          current_focus: state.current_focus && Map.get(state.current_focus, :statement),
+          current_score: state.last_attention_score,
+          beliefs: format_beliefs_for_prompt(beliefs),
+          belief_count: length(beliefs),
+          trajectory: trajectory,
+          focus_history: format_focus_history(focus_history)
         }
 
       {:error, _} ->
-        %{}
+        %{running: false}
     end
+  end
+
+  defp safe_query(fun, default) do
+    fun.()
+  rescue
+    e ->
+      Logger.debug("[ConversationBridge] Query failed: #{Exception.message(e)}")
+      default
+  end
+
+  defp format_beliefs_for_prompt(beliefs) do
+    beliefs
+    |> Enum.sort_by(& &1.confidence, :desc)
+    |> Enum.map_join("\n", fn b ->
+      conf = round(b.confidence * 100)
+      "- [e=#{b.entrenchment} c=#{conf}% src=#{b.source_type}] #{b.statement}"
+    end)
+  end
+
+  defp format_focus_history(history) do
+    history
+    |> Enum.map_join("\n", fn change ->
+      statement = String.slice(change.statement || "?", 0, 60)
+      score = if change.score, do: Float.round(change.score, 2), else: "?"
+      "- tick #{change.tick}: #{statement} (score #{score})"
+    end)
   end
 
   defp extract_belief_ids(metadata) when is_map(metadata) do
