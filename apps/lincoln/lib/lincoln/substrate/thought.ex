@@ -73,7 +73,17 @@ defmodule Lincoln.Substrate.Thought do
   @impl true
   def init(%{agent_id: agent_id, belief: belief, attention_score: score} = opts) do
     id = Map.get(opts, :id) || Ecto.UUID.generate()
-    tier = Map.get(opts, :force_tier) || InferenceTier.select_tier(score)
+
+    agent =
+      try do
+        Agents.get_agent!(agent_id)
+      rescue
+        _ -> nil
+      end
+
+    tier =
+      Map.get(opts, :force_tier) ||
+        InferenceTier.select_tier(score, belief: belief, agent: agent)
 
     state = %__MODULE__{
       id: id,
@@ -387,50 +397,106 @@ defmodule Lincoln.Substrate.Thought do
   end
 
   defp execute_local(state) do
-    belief_statement = get_statement(state.belief)
-    confidence = get_confidence(state.belief)
-    entrenchment = get_entrenchment(state.belief)
+    belief_id = state.belief && Map.get(state.belief, :id)
 
-    observations = build_local_observations(confidence, entrenchment)
-
-    summary = "Contemplating: #{belief_statement} — #{observations}"
-    %{state | status: :completed, result: summary, completed_at: DateTime.utc_now()}
-  end
-
-  defp build_local_observations(confidence, entrenchment) do
-    observations = []
-
-    mismatch = abs(confidence - entrenchment / 10.0)
-
-    observations =
-      if mismatch > 0.3,
-        do: ["confidence/entrenchment gap of #{Float.round(mismatch, 2)}" | observations],
-        else: observations
-
-    observations =
-      cond do
-        confidence > 0.95 -> ["very high confidence, worth scrutiny" | observations]
-        confidence < 0.2 -> ["low confidence, needs evidence" | observations]
-        true -> observations
+    result =
+      if belief_id && is_binary(belief_id) && not CognitiveImpulse.impulse?(belief_id) do
+        reason_from_beliefs(state)
+      else
+        "Local contemplation: #{get_statement(state.belief)}"
       end
 
-    observations =
-      if confidence > 0.7 and entrenchment < 3,
-        do: ["newly confident but not entrenched" | observations],
-        else: observations
+    %{state | status: :completed, result: result, completed_at: DateTime.utc_now()}
+  end
 
-    case observations do
-      [] -> "stable at confidence #{Float.round(confidence, 2)}"
-      obs -> Enum.join(obs, "; ")
+  defp reason_from_beliefs(state) do
+    agent = Agents.get_agent!(state.agent_id)
+    belief = Lincoln.Beliefs.get_belief!(state.belief.id)
+    relationships = Lincoln.Beliefs.find_relationships(agent, belief.id)
+
+    supports = Enum.filter(relationships, &(&1.relationship_type == "supports"))
+    contradictions = Enum.filter(relationships, &(&1.relationship_type == "contradicts"))
+
+    observations =
+      analyze_contradictions(belief, contradictions) ++
+        analyze_support(supports) ++
+        analyze_confidence(belief)
+
+    format_local_reasoning(belief, observations)
+  rescue
+    _ -> "Local contemplation: #{get_statement(state.belief)}"
+  end
+
+  defp analyze_contradictions(belief, [_ | _] = contradictions) do
+    count = length(contradictions)
+
+    if belief.confidence > 0.3 do
+      Lincoln.Beliefs.weaken_belief(belief, "#{count} contradiction(s) by local reasoning")
+    end
+
+    ["contradicted by #{count} belief(s) — confidence reduced"]
+  end
+
+  defp analyze_contradictions(_, _), do: []
+
+  defp analyze_support(supports) when length(supports) >= 3 do
+    ["well-supported by #{length(supports)} related beliefs"]
+  end
+
+  defp analyze_support([]), do: ["isolated — no supporting beliefs"]
+  defp analyze_support(_), do: []
+
+  defp analyze_confidence(%{confidence: c, entrenchment: e, revision_count: r}) do
+    cond do
+      c > 0.8 and e < 3 -> ["confident but untested"]
+      c < 0.4 -> ["low confidence — needs evidence"]
+      e >= 8 and r < 3 -> ["entrenched but rarely examined"]
+      true -> []
     end
   end
 
-  defp get_entrenchment(belief) when is_map(belief) do
-    Map.get(belief, :entrenchment) || Map.get(belief, "entrenchment") || 5
+  defp format_local_reasoning(belief, []) do
+    "Stable: #{String.slice(belief.statement, 0, 60)} (c=#{Float.round(belief.confidence, 2)}, e=#{belief.entrenchment})"
+  end
+
+  defp format_local_reasoning(belief, observations) do
+    "Local reasoning: #{Enum.join(observations, "; ")} [#{String.slice(belief.statement, 0, 40)}]"
   end
 
   defp run_llm(belief, tier) do
     statement = get_statement(belief)
+    belief_id = belief && Map.get(belief, :id)
+
+    # Include related beliefs for context if available
+    related_context =
+      if belief_id && is_binary(belief_id) do
+        try do
+          agent = Agents.get_agent!(belief.agent_id)
+          relationships = Lincoln.Beliefs.find_relationships(agent, belief_id)
+
+          if relationships != [] do
+            related =
+              Enum.map_join(relationships, "\n", fn rel ->
+                other_id =
+                  if to_string(rel.source_belief_id) == to_string(belief_id),
+                    do: rel.target_belief_id,
+                    else: rel.source_belief_id
+
+                other = Lincoln.Beliefs.get_belief!(other_id)
+
+                "- [#{rel.relationship_type}] #{other.statement} (c=#{Float.round(other.confidence, 2)})"
+              end)
+
+            "\n\nRelated beliefs in my network:\n#{related}"
+          else
+            ""
+          end
+        rescue
+          _ -> ""
+        end
+      else
+        ""
+      end
 
     messages = [
       %{
@@ -442,7 +508,7 @@ defmodule Lincoln.Substrate.Thought do
             "If it suggests something new, state it clearly as a new claim. " <>
             "Be concise (2-3 sentences)."
       },
-      %{role: "user", content: "Reflect on this belief: #{statement}"}
+      %{role: "user", content: "Reflect on this belief: #{statement}#{related_context}"}
     ]
 
     InferenceTier.execute_at_tier(tier, messages, [])
@@ -715,9 +781,5 @@ defmodule Lincoln.Substrate.Thought do
 
   defp get_statement(belief) when is_map(belief) do
     Map.get(belief, :statement) || Map.get(belief, "statement") || inspect(belief)
-  end
-
-  defp get_confidence(belief) when is_map(belief) do
-    Map.get(belief, :confidence) || Map.get(belief, "confidence") || 0.5
   end
 end

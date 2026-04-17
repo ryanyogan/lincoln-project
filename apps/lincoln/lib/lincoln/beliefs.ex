@@ -157,6 +157,66 @@ defmodule Lincoln.Beliefs do
   end
 
   @doc """
+  Consolidate similar beliefs — keep the strongest, retract duplicates.
+  Uses embedding similarity to find near-duplicates (>0.85 cosine similarity).
+  """
+  def consolidate_similar(%Agent{} = agent) do
+    beliefs = list_beliefs(agent, status: "active")
+    beliefs_with_embeddings = Enum.filter(beliefs, &(&1.embedding != nil))
+
+    if length(beliefs_with_embeddings) < 2 do
+      0
+    else
+      do_consolidate(agent, beliefs_with_embeddings)
+    end
+  end
+
+  defp do_consolidate(_agent, beliefs) do
+    find_similar_pairs(beliefs)
+    |> Enum.reduce({MapSet.new(), 0}, &merge_pair/2)
+    |> elem(1)
+  end
+
+  defp find_similar_pairs(beliefs) do
+    for a <- beliefs, b <- beliefs, a.id < b.id do
+      sim = embedding_similarity(a.embedding, b.embedding)
+      if sim >= 0.85, do: {a, b, sim}, else: nil
+    end
+    |> Enum.reject(&is_nil/1)
+    |> Enum.sort_by(fn {_, _, sim} -> -sim end)
+  end
+
+  defp merge_pair({a, b, _sim}, {retracted, count}) do
+    if MapSet.member?(retracted, a.id) or MapSet.member?(retracted, b.id) do
+      {retracted, count}
+    else
+      {winner, loser} = if a.entrenchment >= b.entrenchment, do: {a, b}, else: {b, a}
+
+      strengthen_belief(winner, "Consolidated from: #{String.slice(loser.statement, 0, 50)}")
+      retract_belief(loser, "Consolidated into stronger belief")
+
+      {MapSet.put(retracted, loser.id), count + 1}
+    end
+  end
+
+  defp embedding_similarity(%Pgvector{} = a, %Pgvector{} = b) do
+    list_a = Pgvector.to_list(a)
+    list_b = Pgvector.to_list(b)
+
+    if length(list_a) == length(list_b) and list_a != [] do
+      dot = Enum.zip(list_a, list_b) |> Enum.reduce(0.0, fn {x, y}, acc -> acc + x * y end)
+      mag_a = :math.sqrt(Enum.reduce(list_a, 0.0, fn x, acc -> acc + x * x end))
+      mag_b = :math.sqrt(Enum.reduce(list_b, 0.0, fn x, acc -> acc + x * x end))
+
+      if mag_a == 0.0 or mag_b == 0.0, do: 0.0, else: dot / (mag_a * mag_b)
+    else
+      0.0
+    end
+  end
+
+  defp embedding_similarity(_, _), do: 0.0
+
+  @doc """
   Strengthens a belief when supporting evidence is found.
   """
   def strengthen_belief(%Belief{} = belief, evidence, opts \\ []) do

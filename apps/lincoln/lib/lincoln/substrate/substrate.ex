@@ -27,6 +27,7 @@ defmodule Lincoln.Substrate.Substrate do
   @narrative_interval 50
   @self_model_interval 50
   @belief_maintenance_interval 1000
+  @consolidation_interval 20
   @skeptic_interval 6
   @resonator_interval 12
 
@@ -248,6 +249,12 @@ defmodule Lincoln.Substrate.Substrate do
       if rem(tick, @resonator_interval) == 0 do
         run_background_task(fn -> Resonator.detect_cascades(state.agent) end,
           label: "resonator"
+        )
+      end
+
+      if rem(tick, @consolidation_interval) == 0 do
+        run_background_task(fn -> Beliefs.consolidate_similar(state.agent) end,
+          label: "belief consolidation"
         )
       end
 

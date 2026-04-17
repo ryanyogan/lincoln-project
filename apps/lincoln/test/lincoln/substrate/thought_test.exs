@@ -34,7 +34,7 @@ defmodule Lincoln.Substrate.ThoughtTest do
 
       assert_receive {:thought_spawned, _id, "Test belief", :local, _parent}, 1_000
       assert_receive {:thought_completed, _id, summary}, 2_000
-      assert summary =~ "Contemplating"
+      assert summary =~ "Local"
     end
 
     test "completed state is observable via PubSub events", %{agent: agent, belief: belief} do
@@ -49,7 +49,7 @@ defmodule Lincoln.Substrate.ThoughtTest do
       assert_receive {:thought_spawned, id, "Test belief", :local, _parent}, 1_000
       assert_receive {:thought_completed, ^id, result}, 2_000
       assert is_binary(id)
-      assert result =~ "Contemplating"
+      assert result =~ "Local"
     end
   end
 

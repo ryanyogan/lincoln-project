@@ -1,25 +1,32 @@
 defmodule Lincoln.Substrate.InferenceTier do
   @moduledoc """
-  Selects the appropriate inference tier based on attention score and budget.
+  Selects the appropriate inference tier based on attention score, budget,
+  and belief coverage.
 
   Three tiers:
-  - :local (Level 0) — pure computation, no model call
+  - :local (Level 0) — reason from belief graph, no model call
   - :ollama (Level 1) — local model via Ollama, cheap
-  - :claude (Level 2) — frontier model, expensive, high-attention only
+  - :claude (Level 2) — frontier model, expensive, only for genuine gaps
+
+  Over time, as the belief graph grows, more thoughts should resolve
+  locally. The LLM is called only when beliefs are insufficient.
   """
+
+  alias Lincoln.Beliefs
 
   # Thresholds (configurable via opts)
   @ollama_threshold 0.3
   @claude_threshold 0.7
 
   @doc """
-  Select inference tier based on attention score.
+  Select inference tier based on attention score and belief coverage.
 
   Options:
   - :budget — budget tier atom (:full, :moderate, :conservative, :minimal)
-              When :minimal, forces :local regardless of score
-  - :ollama_threshold — override default 0.3 threshold
-  - :claude_threshold — override default 0.7 threshold
+  - :belief — the belief being thought about (for coverage check)
+  - :agent — the agent (for belief graph queries)
+  - :ollama_threshold — override default 0.3
+  - :claude_threshold — override default 0.7
 
   Returns one of: :local, :ollama, :claude
   """
@@ -27,18 +34,21 @@ defmodule Lincoln.Substrate.InferenceTier do
       when (is_float(attention_score) or is_integer(attention_score)) and is_list(opts) do
     budget = Keyword.get(opts, :budget, :full)
 
-    # Budget override — when minimal, always local
-    if budget == :minimal do
-      :local
-    else
-      ollama_threshold = Keyword.get(opts, :ollama_threshold, @ollama_threshold)
-      claude_threshold = Keyword.get(opts, :claude_threshold, @claude_threshold)
+    cond do
+      budget == :minimal ->
+        :local
 
-      cond do
-        attention_score >= claude_threshold -> :claude
-        attention_score >= ollama_threshold -> :ollama
-        true -> :local
-      end
+      belief_well_covered?(opts) ->
+        :local
+
+      attention_score >= Keyword.get(opts, :claude_threshold, @claude_threshold) ->
+        :claude
+
+      attention_score >= Keyword.get(opts, :ollama_threshold, @ollama_threshold) ->
+        :ollama
+
+      true ->
+        :local
     end
   end
 
@@ -64,7 +74,6 @@ defmodule Lincoln.Substrate.InferenceTier do
         {:ok, response}
 
       {:error, :ollama_unavailable} ->
-        # Fall back to claude
         execute_at_tier(:claude, messages, opts)
 
       {:error, reason} ->
@@ -75,5 +84,29 @@ defmodule Lincoln.Substrate.InferenceTier do
   def execute_at_tier(:claude, messages, opts) do
     llm = Application.get_env(:lincoln, :llm_adapter, Lincoln.Adapters.LLM.Anthropic)
     llm.chat(messages, opts)
+  end
+
+  # A belief is "well covered" if the graph already has enough information
+  # about it that an LLM call would add diminishing returns.
+  defp belief_well_covered?(opts) do
+    agent = Keyword.get(opts, :agent)
+    belief = Keyword.get(opts, :belief)
+
+    if agent && belief && is_binary(belief.id) do
+      relationships = Beliefs.find_relationships(agent, belief.id)
+      support_count = Enum.count(relationships, &(&1.relationship_type == "supports"))
+
+      # Well-covered if:
+      # - 3+ support relationships (well-connected in graph)
+      # - High confidence + moderate entrenchment (already settled)
+      # - Revised many times (already well-examined)
+      support_count >= 3 or
+        (belief.confidence >= 0.8 and belief.entrenchment >= 5) or
+        belief.revision_count >= 5
+    else
+      false
+    end
+  rescue
+    _ -> false
   end
 end
