@@ -162,39 +162,48 @@ defmodule Mix.Tasks.Lincoln.Demo.Divergence do
 
   defp print_trajectory(agent, label) do
     summary = Trajectory.summary(agent.id, hours: 1)
-    recent_ticks = Trajectory.get_recent_ticks(agent.id, limit: 5)
+    focus_changes = Trajectory.focus_history(agent.id, limit: 200)
 
     Mix.shell().info("--- #{label} (#{agent.name}) ---")
-    Mix.shell().info("  Total substrate events: #{summary.total_events}")
-    Mix.shell().info("  Tier distribution: #{inspect(summary.tier_distribution)}")
+    Mix.shell().info("  Events: #{summary.total_events}")
 
-    recent_ticks
-    |> Enum.map(&Trajectory.scoring_detail/1)
-    |> Enum.reject(&is_nil/1)
-    |> Enum.each(&print_tick_detail/1)
-  end
-
-  defp print_tick_detail(detail) do
-    top = List.first(detail["top_candidates"] || [])
-    if top, do: print_candidate(top)
-  end
-
-  defp print_candidate(candidate) do
-    components = candidate["components"] || %{}
+    Mix.shell().info("  Tiers: #{format_tier_dist(summary.tier_distribution)}")
 
     Mix.shell().info(
-      "  Focus: #{candidate["statement"] || "?"} " <>
-        "(score #{format_float(components["final_score"])})"
+      "  Thoughts: #{summary.thought_counts.completed} completed, #{summary.thought_counts.failed} failed"
     )
 
-    Mix.shell().info(
-      "    N=#{format_float(components["novelty"])} " <>
-        "T=#{format_float(components["tension"])} " <>
-        "S=#{format_float(components["staleness"])} " <>
-        "D=#{format_float(components["depth"])} " <>
-        "focus=#{format_float(components["focus_boost"])}"
-    )
+    Mix.shell().info("  Focus switches: #{length(focus_changes)}")
+    Mix.shell().info("  Focus history:")
+
+    focus_changes
+    |> Enum.take(15)
+    |> Enum.each(fn change ->
+      statement = truncate(change.statement || "?", 55)
+      score = format_float(change.score)
+      tier = change.tier || "?"
+
+      Mix.shell().info(
+        "    tick #{String.pad_leading(to_string(change.tick), 3)} | #{tier} | #{score} | #{statement}"
+      )
+    end)
+
+    if length(focus_changes) > 15 do
+      Mix.shell().info("    ... and #{length(focus_changes) - 15} more switches")
+    end
   end
+
+  defp format_tier_dist(dist) do
+    dist
+    |> Enum.sort_by(fn {_k, v} -> -v end)
+    |> Enum.map_join(", ", fn {tier, count} -> "#{tier}=#{count}" end)
+  end
+
+  defp truncate(text, max) when byte_size(text) > max do
+    String.slice(text, 0, max) <> "..."
+  end
+
+  defp truncate(text, _max), do: text
 
   defp format_float(nil), do: "—"
   defp format_float(f) when is_float(f), do: :erlang.float_to_binary(f, decimals: 2)

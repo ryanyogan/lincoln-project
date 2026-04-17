@@ -91,6 +91,42 @@ defmodule Lincoln.Substrate.Trajectory do
     |> Repo.all()
   end
 
+  @doc "Get focus history — unique beliefs the agent focused on, in order."
+  def focus_history(agent_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 50)
+
+    SubstrateEvent
+    |> where([e], e.agent_id == ^agent_id and e.event_type in ["tick", "idle_tick"])
+    |> order_by([e], asc: e.inserted_at)
+    |> limit(^limit)
+    |> Repo.all()
+    |> Enum.reduce([], fn event, acc ->
+      focus_id = get_in(event.event_data, ["current_focus_id"])
+      focus_statement = get_in(event.event_data, ["current_focus_statement"])
+      tier = event.inference_tier
+      score = event.attention_score
+      tick = event.tick_number
+
+      case acc do
+        [%{focus_id: ^focus_id} | _] ->
+          acc
+
+        _ ->
+          [
+            %{
+              focus_id: focus_id,
+              statement: focus_statement,
+              tier: tier,
+              score: score,
+              tick: tick
+            }
+            | acc
+          ]
+      end
+    end)
+    |> Enum.reverse()
+  end
+
   @doc "Extract scoring detail from a trajectory event, nil-safe for old events."
   def scoring_detail(%SubstrateEvent{event_data: %{"scoring" => detail}}) when is_map(detail),
     do: detail
