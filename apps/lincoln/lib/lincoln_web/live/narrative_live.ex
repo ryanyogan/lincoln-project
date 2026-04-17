@@ -13,6 +13,7 @@ defmodule LincolnWeb.NarrativeLive do
   use LincolnWeb, :live_view
 
   alias Lincoln.{Agents, Narratives}
+  alias Lincoln.PubSubBroadcaster
 
   @impl true
   def mount(_params, _session, socket) do
@@ -26,6 +27,11 @@ defmodule LincolnWeb.NarrativeLive do
         _ -> false
       end
 
+    # Subscribe to substrate topic to detect new narratives
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.substrate_topic(agent.id))
+    end
+
     {:ok,
      socket
      |> assign(:page_title, "Lincoln's Autobiography")
@@ -34,6 +40,21 @@ defmodule LincolnWeb.NarrativeLive do
      |> assign(:reflection_count, reflection_count)
      |> assign(:substrate_running, substrate_running)}
   end
+
+  # Refresh data when substrate ticks (narrative may have been created)
+  @impl true
+  def handle_info({:tick, _count, _focus, _detail}, socket) do
+    reflections = Narratives.list_reflections(socket.assigns.agent.id, limit: 50)
+    reflection_count = Narratives.count_reflections(socket.assigns.agent.id)
+
+    {:noreply,
+     socket
+     |> assign(:reflections, reflections)
+     |> assign(:reflection_count, reflection_count)
+     |> assign(:substrate_running, true)}
+  end
+
+  def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
