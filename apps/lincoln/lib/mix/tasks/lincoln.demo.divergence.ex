@@ -32,11 +32,11 @@ defmodule Mix.Tasks.Lincoln.Demo.Divergence do
   ]
 
   @seed_beliefs [
-    {"The BEAM VM is optimized for concurrent, distributed systems", "observation", 0.9},
-    {"Elixir uses the actor model for concurrency", "training", 0.85},
-    {"Continuity of process is fundamental to cognition", "inference", 0.7},
-    {"Attention has parameters that create cognitive style", "inference", 0.75},
-    {"Memory and cognition are views of the same substrate", "inference", 0.65}
+    {"The BEAM VM is optimized for concurrent, distributed systems", "observation", 0.9, 8},
+    {"Elixir uses the actor model for concurrency", "training", 0.85, 7},
+    {"Continuity of process is fundamental to cognition", "inference", 0.7, 3},
+    {"Attention has parameters that create cognitive style", "inference", 0.5, 2},
+    {"Memory and cognition are views of the same substrate", "inference", 0.4, 1}
   ]
 
   @impl Mix.Task
@@ -117,12 +117,12 @@ defmodule Mix.Tasks.Lincoln.Demo.Divergence do
     existing = Beliefs.list_beliefs(agent, limit: 1)
 
     if existing == [] do
-      Enum.each(@seed_beliefs, fn {statement, source_type, confidence} ->
+      Enum.each(@seed_beliefs, fn {statement, source_type, confidence, entrenchment} ->
         Beliefs.create_belief(agent, %{
           statement: statement,
           source_type: source_type,
           confidence: confidence,
-          entrenchment: 3
+          entrenchment: entrenchment
         })
       end)
 

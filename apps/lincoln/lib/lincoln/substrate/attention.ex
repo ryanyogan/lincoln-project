@@ -209,8 +209,14 @@ defmodule Lincoln.Substrate.Attention do
 
         scoring_detail = build_scoring_detail(scored, params)
 
-        # No activation_map update, no PubSub broadcast — this is a read-only score
-        {:reply, {:ok, best_belief, best_score, scoring_detail}, state}
+        # Update activation_map so staleness decays for the focused belief
+        new_activation_map =
+          state.activation_map
+          |> Map.put(best_belief.id, now)
+          |> bound_map(500)
+
+        {:reply, {:ok, best_belief, best_score, scoring_detail},
+         %{state | activation_map: new_activation_map, last_scored_at: now}}
     end
   end
 
@@ -221,7 +227,7 @@ defmodule Lincoln.Substrate.Attention do
     params = state.attention_params
     belief_rels = Beliefs.find_relationships(state.agent, belief_id)
 
-    novelty = novelty_score(belief, now)
+    novelty = novelty_score(belief, state, now)
     tension = tension_score(belief, now)
     staleness = staleness_score(belief, state, now)
     depth = depth_score(belief)
@@ -287,7 +293,7 @@ defmodule Lincoln.Substrate.Attention do
   end
 
   defp score_belief_detailed(belief, state, params, now, belief_rels) do
-    novelty = novelty_score(belief, now)
+    novelty = novelty_score(belief, state, now)
     tension = tension_score(belief, now)
     staleness = staleness_score(belief, state, now)
     depth = depth_score(belief)
@@ -338,12 +344,13 @@ defmodule Lincoln.Substrate.Attention do
     end
   end
 
-  defp novelty_score(belief, now) do
-    revision_component = (1 - min(belief.revision_count, 10) / 10.0) * 0.5
-    source_component = Map.get(@source_novelty, belief.source_type, 0.5) * 0.3
-    recency_component = recency_novelty(belief.inserted_at, now) * 0.2
+  defp novelty_score(belief, state, now) do
+    revision_component = (1 - min(belief.revision_count, 10) / 10.0) * 0.4
+    source_component = Map.get(@source_novelty, belief.source_type, 0.5) * 0.2
+    recency_component = recency_novelty(belief.inserted_at, now) * 0.15
+    fatigue_component = activation_fatigue(belief.id, state, now) * 0.25
 
-    revision_component + source_component + recency_component
+    revision_component + source_component + recency_component + fatigue_component
   end
 
   defp recency_novelty(nil, _now), do: 0.5
@@ -357,6 +364,23 @@ defmodule Lincoln.Substrate.Attention do
       age_seconds <= one_day -> 1.0
       age_seconds >= seven_days -> 0.0
       true -> 1.0 - (age_seconds - one_day) / (seven_days - one_day)
+    end
+  end
+
+  defp activation_fatigue(belief_id, state, now) do
+    case Map.get(state.activation_map, belief_id) do
+      nil ->
+        1.0
+
+      last_activated ->
+        age_seconds = DateTime.diff(now, last_activated, :second)
+        recovery_window = 600
+
+        if age_seconds >= recovery_window do
+          1.0
+        else
+          age_seconds / recovery_window
+        end
     end
   end
 
@@ -392,12 +416,12 @@ defmodule Lincoln.Substrate.Attention do
 
       last_activated ->
         age_seconds = DateTime.diff(now, last_activated, :second)
-        one_hour = 3_600
+        staleness_window = 300
 
-        if age_seconds >= one_hour do
+        if age_seconds >= staleness_window do
           1.0
         else
-          age_seconds / one_hour
+          age_seconds / staleness_window
         end
     end
   end

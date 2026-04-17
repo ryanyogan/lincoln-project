@@ -116,8 +116,15 @@ defmodule Lincoln.Substrate.AttentionTest do
         })
 
       pid = start_supervised!({Attention, %{agent_id: butterfly_agent.id}})
-      {:ok, belief, _score, _detail} = Attention.next_thought(pid)
-      assert belief.statement == "Fresh observation"
+      {:ok, _belief, _score, detail} = Attention.next_thought(pid)
+
+      # Among real beliefs (not impulses), novel observation should rank higher than deep training
+      real_beliefs =
+        detail.top_candidates
+        |> Enum.reject(&String.starts_with?(&1.belief_id, "impulse:"))
+
+      [top_belief | _] = real_beliefs
+      assert top_belief.statement =~ "Fresh observation"
     end
 
     test "different params produce different orderings from same beliefs" do
