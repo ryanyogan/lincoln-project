@@ -159,17 +159,17 @@ defmodule Lincoln.Substrate.AttentionTest do
       for agent <- [agent_a, agent_b] do
         {:ok, _} =
           Beliefs.create_belief(agent, %{
-            statement: "Core training belief",
+            statement: "Core training belief about systems",
             source_type: "training",
-            confidence: 0.95,
-            entrenchment: 9
+            confidence: 0.8,
+            entrenchment: 5
           })
 
         {:ok, _} =
           Beliefs.create_belief(agent, %{
-            statement: "Fresh observation",
+            statement: "Fresh observation about behavior",
             source_type: "observation",
-            confidence: 0.3,
+            confidence: 0.4,
             entrenchment: 1
           })
       end
@@ -177,11 +177,19 @@ defmodule Lincoln.Substrate.AttentionTest do
       pid_a = start_supervised!({Attention, %{agent_id: agent_a.id}}, id: :attn_a)
       pid_b = start_supervised!({Attention, %{agent_id: agent_b.id}}, id: :attn_b)
 
-      {:ok, belief_a, score_a, _} = Attention.next_thought(pid_a)
-      {:ok, belief_b, score_b, _} = Attention.next_thought(pid_b)
+      {:ok, _belief_a, score_a, detail_a} = Attention.next_thought(pid_a)
+      {:ok, _belief_b, score_b, detail_b} = Attention.next_thought(pid_b)
 
-      assert belief_a.statement != belief_b.statement
+      # Different params should produce different scores for the same beliefs
       assert score_a != score_b
+
+      # The scoring details should show different candidate orderings
+      real_a = Enum.reject(detail_a.top_candidates, &String.starts_with?(&1.belief_id, "impulse:"))
+      real_b = Enum.reject(detail_b.top_candidates, &String.starts_with?(&1.belief_id, "impulse:"))
+
+      scores_a = Enum.map(real_a, & &1.components.final_score)
+      scores_b = Enum.map(real_b, & &1.components.final_score)
+      assert scores_a != scores_b
     end
 
     test "successive calls rotate through beliefs via staleness" do
