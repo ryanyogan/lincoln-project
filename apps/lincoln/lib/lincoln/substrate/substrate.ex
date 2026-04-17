@@ -100,8 +100,17 @@ defmodule Lincoln.Substrate.Substrate do
     Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.skeptic_topic(state.agent_id))
     Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.resonator_topic(state.agent_id))
 
-    # Zero timeout triggers the first tick immediately
-    {:noreply, %{state | agent: agent, current_focus: current_focus}, 0}
+    new_state = %{state | agent: agent, current_focus: current_focus}
+
+    # Use {:continue, :first_tick} instead of timeout 0 to guarantee the first tick fires
+    # GenServer timeout can be cancelled by any message in the mailbox (e.g. from PubSub)
+    {:noreply, new_state, {:continue, :first_tick}}
+  end
+
+  @impl true
+  def handle_continue(:first_tick, state) do
+    Logger.info("[Substrate #{state.agent_id}] First tick")
+    handle_info(:timeout, state)
   end
 
   @impl true
@@ -118,6 +127,10 @@ defmodule Lincoln.Substrate.Substrate do
 
   @impl true
   def handle_info(:timeout, state) do
+    if state.tick_count == 0 do
+      Logger.info("[Substrate #{state.agent_id}] First tick firing")
+    end
+
     new_state =
       if state.pending_events != [] or not has_running_thought?(state) do
         handle_active_tick(state)

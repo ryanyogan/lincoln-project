@@ -184,8 +184,11 @@ defmodule Lincoln.Substrate.AttentionTest do
       assert score_a != score_b
 
       # The scoring details should show different candidate orderings
-      real_a = Enum.reject(detail_a.top_candidates, &String.starts_with?(&1.belief_id, "impulse:"))
-      real_b = Enum.reject(detail_b.top_candidates, &String.starts_with?(&1.belief_id, "impulse:"))
+      real_a =
+        Enum.reject(detail_a.top_candidates, &String.starts_with?(&1.belief_id, "impulse:"))
+
+      real_b =
+        Enum.reject(detail_b.top_candidates, &String.starts_with?(&1.belief_id, "impulse:"))
 
       scores_a = Enum.map(real_a, & &1.components.final_score)
       scores_b = Enum.map(real_b, & &1.components.final_score)
