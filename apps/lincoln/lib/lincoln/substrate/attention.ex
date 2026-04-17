@@ -149,6 +149,7 @@ defmodule Lincoln.Substrate.Attention do
             case CognitiveImpulse.impulse_type(best_belief.id) do
               :curiosity -> %{state.impulse_state | last_curiosity_at: now}
               :reflection -> %{state.impulse_state | last_reflection_at: now}
+              :learning -> %{state.impulse_state | last_learning_at: now}
               _ -> state.impulse_state
             end
           else

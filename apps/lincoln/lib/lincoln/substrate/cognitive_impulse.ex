@@ -9,14 +9,16 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
   Impulse types:
   - `:curiosity` — explore something new (high when belief set is stale)
   - `:reflection` — synthesize recent learning (high when many new beliefs)
+  - `:learning` — research a queued topic (high when topics are pending)
 
   Each impulse has a cooldown to prevent runaway execution.
   """
 
-  alias Lincoln.Beliefs
+  alias Lincoln.{Autonomy, Beliefs}
 
   @curiosity_cooldown_seconds 1800
   @reflection_cooldown_seconds 7200
+  @learning_cooldown_seconds 300
 
   @doc """
   Returns a list of impulse candidates with computed scores.
@@ -27,7 +29,8 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
   def candidates(agent, impulse_state, now) do
     [
       curiosity_impulse(agent, impulse_state, now),
-      reflection_impulse(agent, impulse_state, now)
+      reflection_impulse(agent, impulse_state, now),
+      learning_impulse(agent, impulse_state, now)
     ]
     |> Enum.reject(&is_nil/1)
   end
@@ -43,7 +46,8 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
   def initial_state do
     %{
       last_curiosity_at: nil,
-      last_reflection_at: nil
+      last_reflection_at: nil,
+      last_learning_at: nil
     }
   end
 
@@ -91,6 +95,32 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
     end
   end
 
+  defp learning_impulse(agent, impulse_state, now) do
+    if on_cooldown?(impulse_state.last_learning_at, now, @learning_cooldown_seconds) do
+      nil
+    else
+      score = learning_score(agent)
+
+      if score > 0.0 do
+        %{
+          id: "impulse:learning",
+          statement: "I should research a queued topic and learn something new",
+          confidence: score,
+          entrenchment: 1,
+          source_type: "introspection",
+          revision_count: 0,
+          inserted_at: now,
+          updated_at: now,
+          last_challenged_at: nil,
+          last_reinforced_at: nil,
+          status: "active"
+        }
+      else
+        nil
+      end
+    end
+  end
+
   defp on_cooldown?(nil, _now, _seconds), do: false
 
   defp on_cooldown?(last_at, now, seconds) do
@@ -115,6 +145,24 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
       staleness_ratio = stale_count / length(beliefs)
 
       min(1.0, staleness_ratio * 0.6 + 0.1)
+    end
+  end
+
+  defp learning_score(agent) do
+    # Score high when research topics are queued in an active session
+    case Autonomy.get_active_session(agent) do
+      nil ->
+        0.0
+
+      session ->
+        pending = Autonomy.count_pending_topics(session)
+
+        if pending > 0 do
+          # More topics = higher urgency, capped at 0.8
+          min(0.8, 0.3 + pending * 0.1)
+        else
+          0.0
+        end
     end
   end
 

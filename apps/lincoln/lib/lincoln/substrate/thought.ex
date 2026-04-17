@@ -287,6 +287,18 @@ defmodule Lincoln.Substrate.Thought do
     end
   end
 
+  defp run_impulse(agent, :learning) do
+    alias Lincoln.Substrate.LearningThought
+
+    case LearningThought.execute(agent) do
+      {:ok, summary} ->
+        {:ok, "Learning impulse: #{summary}"}
+
+      {:error, reason} ->
+        {:ok, "Learning impulse failed: #{inspect(reason)}"}
+    end
+  end
+
   defp run_impulse(_agent, type) do
     {:ok, "Unknown impulse type: #{type}"}
   end
