@@ -22,6 +22,8 @@ defmodule Lincoln.Substrate.Attention do
   alias Lincoln.{Agents, Beliefs, PubSubBroadcaster}
   alias Lincoln.Substrate.{AttentionParams, CognitiveImpulse}
 
+  @max_focus_history 20
+
   defstruct [
     :agent_id,
     :agent,
@@ -29,7 +31,8 @@ defmodule Lincoln.Substrate.Attention do
     :current_focus_id,
     :last_scored_at,
     activation_map: %{},
-    impulse_state: CognitiveImpulse.initial_state()
+    impulse_state: CognitiveImpulse.initial_state(),
+    recent_focus_ids: []
   ]
 
   @source_novelty %{
@@ -165,12 +168,16 @@ defmodule Lincoln.Substrate.Attention do
             |> bound_map(500)
           end
 
+        # Track recent focus for monotony detection
+        recent = [best_belief.id | state.recent_focus_ids] |> Enum.take(@max_focus_history)
+
         new_state = %{
           state
           | current_focus_id: best_belief.id,
             last_scored_at: now,
             activation_map: new_activation_map,
-            impulse_state: impulse_state
+            impulse_state: impulse_state,
+            recent_focus_ids: recent
         }
 
         PubSubBroadcaster.broadcast_attention_update(
@@ -283,13 +290,19 @@ defmodule Lincoln.Substrate.Attention do
     {base_score, components} =
       score_belief_detailed(belief, state, params, now, all_relationships)
 
-    if state.current_focus_id == belief.id do
-      focus_boost = params.focus_momentum * 0.3
-      final_score = min(1.0, base_score + focus_boost)
-      {final_score, Map.merge(components, %{focus_boost: focus_boost, final_score: final_score})}
-    else
-      {base_score, Map.merge(components, %{focus_boost: 0.0, final_score: base_score})}
-    end
+    # Focus momentum boost
+    focus_boost =
+      if state.current_focus_id == belief.id,
+        do: params.focus_momentum * 0.3,
+        else: 0.0
+
+    # Monotony penalty — prevent perseveration on the same belief
+    monotony = monotony_penalty(belief.id, state.recent_focus_ids)
+
+    final_score = min(1.0, max(0.0, base_score + focus_boost - monotony))
+
+    extra = %{focus_boost: focus_boost, monotony_penalty: monotony, final_score: final_score}
+    {final_score, Map.merge(components, extra)}
   end
 
   defp score_belief_detailed(belief, state, params, now, belief_rels) do
@@ -429,14 +442,43 @@ defmodule Lincoln.Substrate.Attention do
   defp depth_score(belief) do
     raw = belief.confidence * 0.5 + belief.entrenchment / 20.0 * 0.5
 
-    # Penalize fully settled beliefs — nothing left to learn from them
-    settled = belief.confidence * (belief.entrenchment / 10.0)
-    settled_penalty = settled * settled * 0.6
+    # Settled beliefs are boring — like how you don't think about gravity
+    # c=1.0 + e>=5 → heavy penalty. The belief is known. Move on.
+    settled_penalty =
+      if belief.confidence >= 0.9 and belief.entrenchment >= 5 do
+        0.6
+      else
+        settled = belief.confidence * (belief.entrenchment / 10.0)
+        settled * settled * 0.4
+      end
 
-    # Penalize over-revised beliefs — diminishing returns on repeated revision
-    revision_penalty = min(belief.revision_count / 20.0, 0.5) * 0.3
+    # Over-revised beliefs have diminishing returns
+    revision_penalty = min(belief.revision_count / 15.0, 0.5) * 0.2
 
     max(0.0, raw - settled_penalty - revision_penalty)
+  end
+
+  # Monotony penalty: how many of the last N thoughts were about this belief?
+  # After 5 consecutive same-belief thoughts, penalty starts.
+  # After 10, it's significant. After 15+, it's overwhelming.
+  defp monotony_penalty(_belief_id, []), do: 0.0
+
+  defp monotony_penalty(belief_id, recent_focus_ids) do
+    consecutive = count_consecutive(belief_id, recent_focus_ids)
+
+    cond do
+      consecutive >= 15 -> 0.8
+      consecutive >= 10 -> 0.5
+      consecutive >= 5 -> 0.3
+      consecutive >= 3 -> 0.1
+      true -> 0.0
+    end
+  end
+
+  defp count_consecutive(target, list) do
+    Enum.reduce_while(list, 0, fn id, count ->
+      if id == target, do: {:cont, count + 1}, else: {:halt, count}
+    end)
   end
 
   defp contradiction_bonus(_belief_id, [], _params), do: 0.0
