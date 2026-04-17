@@ -18,7 +18,7 @@ defmodule Lincoln.Adapters.LLM.OpenAI do
 
     body = %{
       model: config.model,
-      max_tokens: config.max_tokens,
+      max_completion_tokens: config.max_tokens,
       messages: format_messages(messages, opts)
     }
 

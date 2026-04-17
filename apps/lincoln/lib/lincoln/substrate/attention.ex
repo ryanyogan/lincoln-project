@@ -313,11 +313,19 @@ defmodule Lincoln.Substrate.Attention do
   end
 
   defp compute_combined_score(novelty, tension, staleness, depth, params) do
+    # Weighted average — weights sum to 1.0, so the score naturally stays in [0, 1]
+    # This prevents saturation where all beliefs clamp to 1.0
+    nw = params.novelty_weight
+    dw = (1 - nw) * params.depth_preference
+    tw = (1 - params.focus_momentum) * 0.5
+    sw = params.boredom_decay
+
+    total_weight = nw + dw + tw + sw
+    total_weight = if total_weight == 0, do: 1.0, else: total_weight
+
     score =
-      params.novelty_weight * novelty +
-        (1 - params.novelty_weight) * depth * params.depth_preference +
-        tension * (1 - params.focus_momentum) +
-        staleness * params.boredom_decay
+      (nw * novelty + dw * depth + tw * tension + sw * staleness) /
+        total_weight
 
     min(1.0, max(0.0, score))
   end

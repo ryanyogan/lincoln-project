@@ -90,7 +90,7 @@ config :lincoln, :llm,
   max_tokens: 4096
 
 config :lincoln, :openai,
-  model: "gpt-4o",
+  model: "gpt-5.4",
   max_tokens: 4096
 
 config :lincoln, :ollama,

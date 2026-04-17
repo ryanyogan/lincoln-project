@@ -75,13 +75,24 @@ defmodule LincolnWeb.SubstrateLive do
      |> assign(:recent_events, recent)}
   end
 
-  def handle_info({:idle_tick, _tick_count, _idle_streak, _belief}, socket) do
+  def handle_info({:idle_tick, tick_count, idle_streak, belief}, socket) do
     substrate_state = refresh_substrate_state(socket)
+
+    event_entry = %{
+      time: DateTime.utc_now(),
+      type: :idle_tick,
+      tick_count: tick_count,
+      idle_streak: idle_streak,
+      focus: belief && Map.get(belief, :statement)
+    }
+
+    recent = [event_entry | socket.assigns.recent_events] |> Enum.take(20)
 
     {:noreply,
      socket
      |> assign(:substrate_state, substrate_state)
-     |> assign(:substrate_running, substrate_state != nil)}
+     |> assign(:substrate_running, substrate_state != nil)
+     |> assign(:recent_events, recent)}
   end
 
   def handle_info({:next_thought, belief, score}, socket) do
@@ -108,7 +119,11 @@ defmodule LincolnWeb.SubstrateLive do
   end
 
   # Catch-all for other PubSub messages
-  def handle_info(_msg, socket), do: {:noreply, socket}
+  def handle_info(msg, socket) do
+    require Logger
+    Logger.debug("[SubstrateLive] Unhandled message: #{inspect(elem(msg, 0), limit: 1)}")
+    {:noreply, socket}
+  end
 
   # ============================================================================
   # Events
@@ -128,6 +143,64 @@ defmodule LincolnWeb.SubstrateLive do
 
     {:noreply,
      assign(socket, :attention_params_form, to_form(form_params, as: :attention_params))}
+  end
+
+  def handle_event("start_substrate", _params, socket) do
+    agent = socket.assigns.agent
+
+    case Substrate.start_agent(agent.id) do
+      {:ok, _pid} ->
+        # Subscribe to PubSub for live updates
+        Phoenix.PubSub.subscribe(
+          Lincoln.PubSub,
+          Lincoln.PubSubBroadcaster.substrate_topic(agent.id)
+        )
+
+        Phoenix.PubSub.subscribe(
+          Lincoln.PubSub,
+          Lincoln.PubSubBroadcaster.attention_topic(agent.id)
+        )
+
+        Phoenix.PubSub.subscribe(
+          Lincoln.PubSub,
+          Lincoln.PubSubBroadcaster.skeptic_topic(agent.id)
+        )
+
+        Phoenix.PubSub.subscribe(
+          Lincoln.PubSub,
+          Lincoln.PubSubBroadcaster.resonator_topic(agent.id)
+        )
+
+        substrate_state = refresh_substrate_state(socket)
+
+        {:noreply,
+         socket
+         |> assign(:substrate_state, substrate_state)
+         |> assign(:substrate_running, true)
+         |> put_flash(:info, "Substrate started")}
+
+      {:error, :already_started} ->
+        {:noreply, put_flash(socket, :info, "Substrate already running")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to start: #{inspect(reason)}")}
+    end
+  end
+
+  def handle_event("stop_substrate", _params, socket) do
+    agent = socket.assigns.agent
+
+    case Substrate.stop_agent(agent.id) do
+      :ok ->
+        {:noreply,
+         socket
+         |> assign(:substrate_state, nil)
+         |> assign(:substrate_running, false)
+         |> put_flash(:info, "Substrate stopped")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to stop: #{inspect(reason)}")}
+    end
   end
 
   def handle_event("apply_params", %{"attention_params" => raw_params}, socket) do
@@ -207,9 +280,17 @@ defmodule LincolnWeb.SubstrateLive do
                     <h2 class="card-title text-sm font-terminal uppercase gap-2">
                       <.icon name="hero-cpu-chip" class="size-4 text-primary" /> Substrate State
                     </h2>
-                    <span class="text-xs font-terminal text-base-content/40">
-                      Since {format_time(@substrate_state.started_at)}
-                    </span>
+                    <div class="flex items-center gap-3">
+                      <span class="text-xs font-terminal text-base-content/40">
+                        Since {format_time(@substrate_state.started_at)}
+                      </span>
+                      <button
+                        phx-click="stop_substrate"
+                        class="btn btn-xs bg-error/20 border-error/50 hover:bg-error/30 text-error font-terminal uppercase"
+                      >
+                        <.icon name="hero-stop" class="size-3" /> Stop
+                      </button>
+                    </div>
                   </div>
 
                   <div class="p-4">
@@ -249,7 +330,9 @@ defmodule LincolnWeb.SubstrateLive do
                         </div>
                         <div class="stat-title font-terminal uppercase text-xs">Mode</div>
                         <div class="stat-value text-secondary font-terminal text-lg">
-                          {if (@substrate_state[:idle_streak] || 0) > 0, do: "idle", else: "active"}
+                          {if Map.get(@substrate_state, :idle_streak, 0) > 0,
+                            do: "idle",
+                            else: "active"}
                         </div>
                         <div class="stat-desc font-terminal">Event-driven</div>
                       </div>
@@ -605,9 +688,15 @@ defmodule LincolnWeb.SubstrateLive do
                   <.icon name="hero-cpu-chip" class="size-16 text-base-content/20" />
                 </div>
                 <p class="text-base-content/50 text-lg font-terminal">No active substrate</p>
-                <p class="text-base-content/30 text-sm mt-2 font-terminal">
-                  Start an agent to begin cognitive processing
+                <p class="text-base-content/30 text-sm mt-2 font-terminal mb-6">
+                  Start the cognitive substrate to begin processing
                 </p>
+                <button
+                  phx-click="start_substrate"
+                  class="btn bg-primary/20 border-primary/50 hover:bg-primary/30 text-primary font-terminal uppercase"
+                >
+                  <.icon name="hero-play" class="size-4" /> Start Substrate
+                </button>
               </div>
             </div>
           </div>
@@ -678,8 +767,8 @@ defmodule LincolnWeb.SubstrateLive do
     <%= case @type do %>
       <% :tick -> %>
         <.icon name="hero-arrow-path" class="size-3.5 text-primary/70" />
-      <% :driver_action -> %>
-        <.icon name="hero-play" class="size-3.5 text-info/70" />
+      <% :idle_tick -> %>
+        <.icon name="hero-ellipsis-horizontal" class="size-3.5 text-base-content/30" />
       <% _ -> %>
         <.icon name="hero-signal" class="size-3.5 text-base-content/40" />
     <% end %>
@@ -699,13 +788,17 @@ defmodule LincolnWeb.SubstrateLive do
             <span class="text-base-content/60 line-clamp-1">{truncate(@event.focus, 40)}</span>
           <% end %>
         </p>
-      <% :driver_action -> %>
+      <% :idle_tick -> %>
         <p class="text-xs font-terminal">
-          <span class="text-info">Action</span>
-          <span class="text-base-content/60">{inspect(@event.action)}</span>
+          <span class="text-base-content/40">Idle {@event.tick_count}</span>
+          <span class="text-base-content/30"> (streak   {@event.idle_streak})</span>
+          <%= if @event.focus do %>
+            <span class="text-base-content/50"> — </span>
+            <span class="text-base-content/40 line-clamp-1">{truncate(@event.focus, 40)}</span>
+          <% end %>
         </p>
       <% _ -> %>
-        <p class="text-xs font-terminal text-base-content/50">Unknown event</p>
+        <p class="text-xs font-terminal text-base-content/50">Event</p>
     <% end %>
     """
   end
@@ -739,7 +832,7 @@ defmodule LincolnWeb.SubstrateLive do
   # ============================================================================
 
   defp event_style(:tick), do: "bg-base-300/50 border-primary/10 hover:border-primary/30"
-  defp event_style(:driver_action), do: "bg-base-300/50 border-info/10 hover:border-info/30"
+  defp event_style(:idle_tick), do: "bg-base-300/30 border-base-content/5"
   defp event_style(_), do: "bg-base-300/50 border-base-content/5"
 
   defp format_time(%DateTime{} = dt) do

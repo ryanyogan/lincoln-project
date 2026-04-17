@@ -342,7 +342,7 @@ defmodule LincolnWeb.SubstrateCompareLive do
                 <div class="stat">
                   <div class="stat-title font-terminal uppercase text-xs">Mode</div>
                   <div class="stat-value font-terminal text-base-content/70 text-lg">
-                    {if (@state[:idle_streak] || 0) > 0, do: "idle", else: "active"}
+                    {if Map.get(@state, :idle_streak, 0) > 0, do: "idle", else: "active"}
                   </div>
                   <div class="stat-desc font-terminal">Event-driven</div>
                 </div>

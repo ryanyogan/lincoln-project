@@ -269,8 +269,14 @@ defmodule Lincoln.Substrate.Thought do
 
   defp run_impulse(agent, :curiosity) do
     case Cognition.generate_curiosity(agent) do
-      {:ok, questions} ->
+      {:ok, %{questions: questions}} ->
         {:ok, "Curiosity impulse: generated #{length(questions)} questions"}
+
+      {:ok, questions} when is_list(questions) ->
+        {:ok, "Curiosity impulse: generated #{length(questions)} questions"}
+
+      {:ok, result} ->
+        {:ok, "Curiosity impulse: #{inspect(result)}"}
 
       {:error, reason} ->
         {:ok, "Curiosity impulse: #{inspect(reason)}"}
@@ -279,8 +285,14 @@ defmodule Lincoln.Substrate.Thought do
 
   defp run_impulse(agent, :reflection) do
     case Cognition.reflect(agent) do
-      {:ok, insights} ->
+      {:ok, %{insights: insights}} ->
         {:ok, "Reflection impulse: #{length(insights)} insights"}
+
+      {:ok, insights} when is_list(insights) ->
+        {:ok, "Reflection impulse: #{length(insights)} insights"}
+
+      {:ok, result} ->
+        {:ok, "Reflection impulse: #{inspect(result)}"}
 
       {:error, reason} ->
         {:ok, "Reflection impulse: #{inspect(reason)}"}
