@@ -144,7 +144,11 @@ defmodule Lincoln.Substrate.Attention do
 
         {best_belief, best_score, _best_components} = hd(scored)
 
-        scoring_detail = build_scoring_detail(scored, params)
+        # Select thought type based on cognitive style and belief state
+        thought_type = select_thought_type(params, best_belief)
+
+        scoring_detail =
+          build_scoring_detail(scored, params) |> Map.put(:thought_type, thought_type)
 
         impulse_state = update_impulse_cooldown(state.impulse_state, best_belief.id, now)
         new_activation_map = update_activation_map(state.activation_map, best_belief.id, now)
@@ -289,6 +293,24 @@ defmodule Lincoln.Substrate.Attention do
       |> Map.put(belief_id, now)
       |> bound_map(500)
     end
+  end
+
+  # =============================================================================
+  # Thought Type Selection
+  # =============================================================================
+
+  defp select_thought_type(params, belief) do
+    base_type = AttentionParams.select_thought_type(params)
+
+    # Adjust based on belief state
+    cond do
+      belief.confidence >= 0.9 and :rand.uniform() < 0.4 -> :critique
+      belief.entrenchment <= 2 and :rand.uniform() < 0.3 -> :question
+      belief.revision_count == 0 and :rand.uniform() < 0.3 -> :connect
+      true -> base_type
+    end
+  rescue
+    _ -> :elaborate
   end
 
   # =============================================================================

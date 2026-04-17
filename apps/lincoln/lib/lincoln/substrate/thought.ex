@@ -23,6 +23,7 @@ defmodule Lincoln.Substrate.Thought do
     :belief,
     :attention_score,
     :tier,
+    :thought_type,
     :status,
     :result,
     :started_at,
@@ -99,7 +100,8 @@ defmodule Lincoln.Substrate.Thought do
       pending_children: %{},
       child_results: [],
       is_narrative: Map.get(opts, :is_narrative, false),
-      narrative_tick: Map.get(opts, :narrative_tick, 0)
+      narrative_tick: Map.get(opts, :narrative_tick, 0),
+      thought_type: Map.get(opts, :thought_type, :elaborate)
     }
 
     belief_statement = get_statement(belief)
@@ -147,12 +149,12 @@ defmodule Lincoln.Substrate.Thought do
   defp execute_belief(state) do
     # Don't spawn grandchildren — only top-level thoughts explore
     if state.parent_id do
-      _task = Task.async(fn -> run_llm(state.belief, state.tier) end)
+      _task = Task.async(fn -> run_llm(state.belief, state.tier, state.thought_type) end)
       {:noreply, %{state | status: :awaiting_llm}}
     else
       case find_exploration_candidates(state) do
         [] ->
-          _task = Task.async(fn -> run_llm(state.belief, state.tier) end)
+          _task = Task.async(fn -> run_llm(state.belief, state.tier, state.thought_type) end)
           {:noreply, %{state | status: :awaiting_llm}}
 
         candidates ->
@@ -475,55 +477,82 @@ defmodule Lincoln.Substrate.Thought do
     "Local reasoning: #{Enum.join(observations, "; ")} [#{String.slice(belief.statement, 0, 40)}]"
   end
 
-  defp run_llm(belief, tier) do
+  defp run_llm(belief, tier, thought_type) do
     statement = get_statement(belief)
-    belief_id = belief && Map.get(belief, :id)
-
-    # Include related beliefs for context if available
-    related_context =
-      if belief_id && is_binary(belief_id) do
-        try do
-          agent = Agents.get_agent!(belief.agent_id)
-          relationships = Lincoln.Beliefs.find_relationships(agent, belief_id)
-
-          if relationships != [] do
-            related =
-              Enum.map_join(relationships, "\n", fn rel ->
-                other_id =
-                  if to_string(rel.source_belief_id) == to_string(belief_id),
-                    do: rel.target_belief_id,
-                    else: rel.source_belief_id
-
-                other = Lincoln.Beliefs.get_belief!(other_id)
-
-                "- [#{rel.relationship_type}] #{other.statement} (c=#{Float.round(other.confidence, 2)})"
-              end)
-
-            "\n\nRelated beliefs in my network:\n#{related}"
-          else
-            ""
-          end
-        rescue
-          _ -> ""
-        end
-      else
-        ""
-      end
+    related_context = build_related_context(belief)
+    system_prompt = thought_type_system_prompt(thought_type)
 
     messages = [
-      %{
-        role: "system",
-        content:
-          "You are a cognitive agent reflecting on one of your beliefs. " <>
-            "Don't just confirm it — analyze it critically. " <>
-            "State one specific implication, connection to other ideas, or limitation. " <>
-            "If it suggests something new, state it clearly as a new claim. " <>
-            "Be concise (2-3 sentences)."
-      },
-      %{role: "user", content: "Reflect on this belief: #{statement}#{related_context}"}
+      %{role: "system", content: system_prompt},
+      %{role: "user", content: "Belief: #{statement}#{related_context}"}
     ]
 
     InferenceTier.execute_at_tier(tier, messages, [])
+  end
+
+  defp thought_type_system_prompt(:elaborate) do
+    "You are a cognitive agent elaborating on a belief. " <>
+      "Go deeper — add specific detail, nuances, or implications not yet stated. " <>
+      "If it suggests something new, state it as a new claim. Be concise (2-3 sentences)."
+  end
+
+  defp thought_type_system_prompt(:critique) do
+    "You are a cognitive agent critically examining a belief. " <>
+      "Find weaknesses, counterarguments, edge cases, or conditions where it fails. " <>
+      "Be honest about limitations. State your critique as a specific claim. Be concise (2-3 sentences)."
+  end
+
+  defp thought_type_system_prompt(:connect) do
+    "You are a cognitive agent finding connections between ideas. " <>
+      "Link this belief to other domains, analogies, or surprising parallels. " <>
+      "State the connection as a new claim. Be concise (2-3 sentences)."
+  end
+
+  defp thought_type_system_prompt(:abstract) do
+    "You are a cognitive agent abstracting from specifics to principles. " <>
+      "What higher-level principle does this belief point to? " <>
+      "State the abstraction as a new, more general claim. Be concise (2-3 sentences)."
+  end
+
+  defp thought_type_system_prompt(:question) do
+    "You are a cognitive agent generating questions from a belief. " <>
+      "What important questions does this belief raise that aren't yet answered? " <>
+      "State 1-2 specific, investigable questions. Be concise."
+  end
+
+  defp thought_type_system_prompt(_), do: thought_type_system_prompt(:elaborate)
+
+  defp build_related_context(belief) do
+    belief_id = belief && Map.get(belief, :id)
+
+    if belief_id && is_binary(belief_id) do
+      try do
+        agent = Agents.get_agent!(belief.agent_id)
+        relationships = Lincoln.Beliefs.find_relationships(agent, belief_id)
+
+        if relationships != [] do
+          related =
+            Enum.map_join(relationships, "\n", fn rel ->
+              other_id =
+                if to_string(rel.source_belief_id) == to_string(belief_id),
+                  do: rel.target_belief_id,
+                  else: rel.source_belief_id
+
+              other = Lincoln.Beliefs.get_belief!(other_id)
+
+              "- [#{rel.relationship_type}] #{other.statement} (c=#{Float.round(other.confidence, 2)})"
+            end)
+
+          "\n\nRelated beliefs in my network:\n#{related}"
+        else
+          ""
+        end
+      rescue
+        _ -> ""
+      end
+    else
+      ""
+    end
   end
 
   defp run_llm_with_children(belief, tier, child_results) do
@@ -780,7 +809,8 @@ defmodule Lincoln.Substrate.Thought do
         if recent_inferences < 5 do
           Cognition.form_belief(agent, insight, "inference",
             evidence: "Extended from: #{get_statement(belief)}",
-            confidence: 0.6
+            confidence: 0.6,
+            parent_belief_ids: [belief.id]
           )
         end
 

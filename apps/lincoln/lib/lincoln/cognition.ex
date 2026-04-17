@@ -416,14 +416,35 @@ defmodule Lincoln.Cognition do
   end
 
   defp create_new_belief(agent, content, source_type, embedding, opts) do
-    Beliefs.create_belief(agent, %{
-      statement: content,
-      source_type: source_type,
-      source_evidence: Keyword.get(opts, :evidence),
-      embedding: embedding,
-      confidence: Keyword.get(opts, :confidence, 0.6),
-      entrenchment: Keyword.get(opts, :entrenchment, 1)
-    })
+    case Beliefs.create_belief(agent, %{
+           statement: content,
+           source_type: source_type,
+           source_evidence: Keyword.get(opts, :evidence),
+           embedding: embedding,
+           confidence: Keyword.get(opts, :confidence, 0.6),
+           entrenchment: Keyword.get(opts, :entrenchment, 1)
+         }) do
+      {:ok, new_belief} ->
+        # Create derived_from relationships for provenance tracking
+        parent_ids = Keyword.get(opts, :parent_belief_ids, [])
+
+        Enum.each(parent_ids, fn parent_id ->
+          Beliefs.create_relationship(%{
+            agent_id: agent.id,
+            source_belief_id: parent_id,
+            target_belief_id: new_belief.id,
+            relationship_type: "derived_from",
+            confidence: 0.8,
+            detected_by: "inference",
+            evidence: "Derived during #{source_type} reasoning"
+          })
+        end)
+
+        {:ok, new_belief}
+
+      error ->
+        error
+    end
   end
 
   # ============================================================================

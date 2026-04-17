@@ -318,8 +318,31 @@ defmodule Lincoln.Beliefs do
         |> Belief.retract_changeset()
         |> Repo.update()
 
+      # Truth maintenance: weaken beliefs derived from this one
+      cascade_retraction(belief)
+
       updated
     end)
+  end
+
+  defp cascade_retraction(belief) do
+    derived =
+      BeliefRelationship
+      |> where(
+        [r],
+        r.source_belief_id == ^belief.id and r.relationship_type == "derived_from"
+      )
+      |> Repo.all()
+
+    Enum.each(derived, fn rel ->
+      child = Repo.get(Belief, rel.target_belief_id)
+
+      if child && child.status == "active" do
+        weaken_belief(child, "Parent belief retracted: #{String.slice(belief.statement, 0, 40)}")
+      end
+    end)
+  rescue
+    _ -> :ok
   end
 
   @doc """

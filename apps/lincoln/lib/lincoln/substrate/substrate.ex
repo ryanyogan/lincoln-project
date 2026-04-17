@@ -15,6 +15,7 @@ defmodule Lincoln.Substrate.Substrate do
   alias Lincoln.Substrate.{
     Attention,
     BeliefMaintenance,
+    DiversityMonitor,
     InferenceTier,
     Resonator,
     Skeptic,
@@ -28,6 +29,7 @@ defmodule Lincoln.Substrate.Substrate do
   @self_model_interval 50
   @belief_maintenance_interval 1000
   @consolidation_interval 20
+  @diversity_monitor_interval 25
   @skeptic_interval 6
   @resonator_interval 12
 
@@ -232,39 +234,40 @@ defmodule Lincoln.Substrate.Substrate do
     ThoughtSupervisor.list_children(state.agent_id) != []
   end
 
+  defp run_periodic_tasks(%{tick_count: 0}), do: :noop
+
   defp run_periodic_tasks(state) do
     tick = state.tick_count
-    if tick == 0, do: :noop
 
-    if tick > 0 do
-      if rem(tick, @narrative_interval) == 0, do: spawn_narrative_thought(state)
-      if rem(tick, @self_model_interval) == 0, do: update_self_model(state.agent_id)
+    maybe_run(tick, @narrative_interval, fn -> spawn_narrative_thought(state) end)
+    maybe_run(tick, @self_model_interval, fn -> update_self_model(state.agent_id) end)
 
-      if rem(tick, @skeptic_interval) == 0 do
-        run_background_task(fn -> Skeptic.detect_contradictions(state.agent) end,
-          label: "skeptic"
-        )
-      end
+    maybe_run(tick, @skeptic_interval, fn ->
+      run_bg(fn -> Skeptic.detect_contradictions(state.agent) end, "skeptic")
+    end)
 
-      if rem(tick, @resonator_interval) == 0 do
-        run_background_task(fn -> Resonator.detect_cascades(state.agent) end,
-          label: "resonator"
-        )
-      end
+    maybe_run(tick, @resonator_interval, fn ->
+      run_bg(fn -> Resonator.detect_cascades(state.agent) end, "resonator")
+    end)
 
-      if rem(tick, @consolidation_interval) == 0 do
-        run_background_task(fn -> Beliefs.consolidate_similar(state.agent) end,
-          label: "belief consolidation"
-        )
-      end
+    maybe_run(tick, @consolidation_interval, fn ->
+      run_bg(fn -> Beliefs.consolidate_similar(state.agent) end, "consolidation")
+    end)
 
-      if rem(tick, @belief_maintenance_interval) == 0 do
-        run_background_task(fn -> BeliefMaintenance.decay_unreinforced(state.agent_id) end,
-          label: "belief maintenance"
-        )
-      end
-    end
+    maybe_run(tick, @diversity_monitor_interval, fn ->
+      run_bg(fn -> DiversityMonitor.check_and_adjust(state.agent) end, "diversity")
+    end)
+
+    maybe_run(tick, @belief_maintenance_interval, fn ->
+      run_bg(fn -> BeliefMaintenance.decay_unreinforced(state.agent_id) end, "maintenance")
+    end)
   end
+
+  defp maybe_run(tick, interval, fun) do
+    if rem(tick, interval) == 0, do: fun.()
+  end
+
+  defp run_bg(fun, label), do: run_background_task(fun, label: label)
 
   defp run_background_task(fun, opts) do
     label = Keyword.get(opts, :label, "background task")
@@ -281,7 +284,8 @@ defmodule Lincoln.Substrate.Substrate do
   defp handle_active_tick(state) do
     state_after_events = drain_pending_events(state)
     {chosen_belief, attention_score, scoring_detail} = consult_attention(state_after_events)
-    tier = spawn_thought(state_after_events, chosen_belief, attention_score)
+    thought_type = scoring_detail && scoring_detail[:thought_type]
+    tier = spawn_thought(state_after_events, chosen_belief, attention_score, thought_type)
 
     new_state = %{
       state_after_events
@@ -446,45 +450,38 @@ defmodule Lincoln.Substrate.Substrate do
     )
   end
 
-  defp spawn_thought(_state, nil, _score), do: :no_belief
+  defp spawn_thought(_state, nil, _score, _thought_type), do: :no_belief
 
-  defp spawn_thought(state, belief, score) do
+  defp spawn_thought(state, belief, score, thought_type) do
     interrupt_threshold = get_interrupt_threshold(state)
 
     case ThoughtSupervisor.list_children(state.agent_id) do
       [] ->
-        # No thought running — spawn freely
-        do_spawn_thought(state, belief, score)
+        do_spawn_thought(state, belief, score, thought_type)
 
       [{_id, pid, _type, _modules} | _rest] when is_pid(pid) ->
-        # A thought is running — check interrupt_threshold
         if score >= interrupt_threshold do
           Logger.debug(
-            "[Substrate #{state.agent_id}] Interrupting thought " <>
-              "(score #{Float.round(score, 2)} >= threshold #{Float.round(interrupt_threshold, 2)})"
+            "[Substrate #{state.agent_id}] Interrupting thought (score #{Float.round(score, 2)})"
           )
 
           Thought.interrupt(pid)
-          do_spawn_thought(state, belief, score)
+          do_spawn_thought(state, belief, score, thought_type)
         else
-          Logger.debug(
-            "[Substrate #{state.agent_id}] Thought running, skipping spawn " <>
-              "(score #{Float.round(score, 2)} < threshold #{Float.round(interrupt_threshold, 2)})"
-          )
-
           :thought_running
         end
 
       _ ->
-        do_spawn_thought(state, belief, score)
+        do_spawn_thought(state, belief, score, thought_type)
     end
   end
 
-  defp do_spawn_thought(state, belief, score) do
+  defp do_spawn_thought(state, belief, score, thought_type) do
     thought_opts = %{
       agent_id: state.agent_id,
       belief: belief,
-      attention_score: score || 0.0
+      attention_score: score || 0.0,
+      thought_type: thought_type || :elaborate
     }
 
     case ThoughtSupervisor.spawn_thought(state.agent_id, thought_opts) do

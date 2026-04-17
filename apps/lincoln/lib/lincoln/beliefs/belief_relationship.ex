@@ -17,7 +17,7 @@ defmodule Lincoln.Beliefs.BeliefRelationship do
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
-  @relationship_types ~w(contradicts supports refines depends_on related)
+  @relationship_types ~w(contradicts supports refines depends_on related derived_from)
   @detected_by_types ~w(skeptic resonator manual inference)
 
   schema "belief_relationships" do
