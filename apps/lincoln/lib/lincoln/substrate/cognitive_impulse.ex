@@ -149,19 +149,19 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
   end
 
   defp learning_score(agent) do
-    # Score high when research topics are queued in an active session
     case Autonomy.get_active_session(agent) do
       nil ->
-        0.0
+        # No session — can self-initiate if agent has enough beliefs
+        belief_count = length(Beliefs.list_beliefs(agent, status: "active", limit: 4))
+        if belief_count >= 3, do: 0.25, else: 0.0
 
       session ->
         pending = Autonomy.count_pending_topics(session)
 
         if pending > 0 do
-          # More topics = higher urgency, capped at 0.8
           min(0.8, 0.3 + pending * 0.1)
         else
-          0.0
+          0.1
         end
     end
   end

@@ -31,6 +31,45 @@ defmodule Lincoln.Cognition do
   end
 
   # ============================================================================
+  # Reflection Evaluation
+  # ============================================================================
+
+  @challenge_signals ~w(however but contradicts conflicts disagrees incorrect wrong
+                        inaccurate misleading oversimplifies ignores fails questionable)
+  @extend_signals ~w(furthermore additionally moreover implies suggests means
+                     therefore consequently specifically extends builds)
+
+  @doc """
+  Evaluates whether a thought reflection reinforces, challenges, or extends a belief.
+  Uses heuristic text analysis — no LLM call needed.
+  """
+  def evaluate_reflection(reflection_text) when is_binary(reflection_text) do
+    text = String.downcase(reflection_text)
+
+    challenge_count = Enum.count(@challenge_signals, &String.contains?(text, &1))
+    extend_count = Enum.count(@extend_signals, &String.contains?(text, &1))
+
+    cond do
+      challenge_count >= 2 -> :challenge
+      extend_count >= 2 -> {:extend, extract_insight(reflection_text)}
+      challenge_count == 1 and extend_count == 0 -> :challenge
+      true -> :reinforce
+    end
+  end
+
+  def evaluate_reflection(_), do: :reinforce
+
+  defp extract_insight(text) do
+    # Take the last sentence as the insight — LLM reflections typically conclude with the key point
+    text
+    |> String.split(~r/[.!?]\s+/)
+    |> Enum.reject(&(String.trim(&1) == ""))
+    |> List.last()
+    |> Kernel.||(text)
+    |> String.trim()
+  end
+
+  # ============================================================================
   # Reflection
   # ============================================================================
 

@@ -22,7 +22,11 @@ defmodule Lincoln.Substrate.LearningThought do
   def execute(agent) do
     case Autonomy.get_active_session(agent) do
       nil ->
-        {:ok, "No active learning session — nothing to learn"}
+        # Self-initiate a session if the agent has enough beliefs to be curious
+        case maybe_create_session(agent) do
+          {:ok, session} -> execute_cycle(agent, session)
+          :skip -> {:ok, "Not enough beliefs to self-initiate learning"}
+        end
 
       session ->
         execute_cycle(agent, session)
@@ -38,6 +42,29 @@ defmodule Lincoln.Substrate.LearningThought do
 
       topic ->
         research_and_learn(agent, session, topic, llm)
+    end
+  end
+
+  defp maybe_create_session(agent) do
+    beliefs = Lincoln.Beliefs.list_beliefs(agent, status: "active", limit: 3)
+
+    if length(beliefs) >= 3 do
+      create_and_start_session(agent)
+    else
+      :skip
+    end
+  end
+
+  defp create_and_start_session(agent) do
+    case Autonomy.create_session(agent, %{config: %{source: "substrate_impulse"}}) do
+      {:ok, session} ->
+        case Autonomy.start_session(session) do
+          {:ok, started} -> {:ok, started}
+          _ -> {:ok, session}
+        end
+
+      _ ->
+        :skip
     end
   end
 

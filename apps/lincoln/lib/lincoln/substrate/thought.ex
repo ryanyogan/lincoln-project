@@ -311,6 +311,77 @@ defmodule Lincoln.Substrate.Thought do
     end
   end
 
+  defp run_impulse(agent, :resolve_contradiction) do
+    alias Lincoln.Cognition.BeliefRevision
+
+    # Find the most recent unresolved contradiction
+    case Lincoln.Beliefs.find_contradictions(agent) do
+      [] ->
+        {:ok, "No contradictions to resolve"}
+
+      [relationship | _] ->
+        belief_a = Lincoln.Beliefs.get_belief!(relationship.source_belief_id)
+        belief_b = Lincoln.Beliefs.get_belief!(relationship.target_belief_id)
+
+        evidence_a = %{
+          statement: belief_b.statement,
+          source_type: belief_b.source_type,
+          strength: :moderate
+        }
+
+        case BeliefRevision.should_revise?(belief_a, evidence_a) do
+          {:revise, reason} ->
+            BeliefRevision.execute_revision(belief_a, evidence_a, {:revise, reason})
+            {:ok, "Resolved contradiction: revised '#{String.slice(belief_a.statement, 0, 50)}'"}
+
+          {:investigate, _reason} ->
+            Lincoln.Beliefs.weaken_belief(belief_a, "Under investigation due to contradiction")
+            {:ok, "Investigating contradiction on '#{String.slice(belief_a.statement, 0, 50)}'"}
+
+          {:hold, reason} ->
+            {:ok, "Held belief despite contradiction: #{reason}"}
+        end
+    end
+  end
+
+  defp run_impulse(agent, :synthesize_cascade) do
+    # Find beliefs with support relationships and synthesize them
+    case Lincoln.Beliefs.list_beliefs(agent, status: "active", limit: 10) do
+      [] ->
+        {:ok, "No beliefs to synthesize"}
+
+      beliefs ->
+        # Find beliefs that are part of support clusters
+        supported =
+          Enum.filter(beliefs, fn b ->
+            rels = Lincoln.Beliefs.find_relationships(agent, b.id)
+            Enum.any?(rels, &(&1.relationship_type == "supports"))
+          end)
+
+        case supported do
+          [] ->
+            {:ok, "No support clusters found"}
+
+          cluster when length(cluster) >= 2 ->
+            statements = Enum.map_join(cluster, "; ", & &1.statement)
+            avg_confidence = Enum.sum(Enum.map(cluster, & &1.confidence)) / length(cluster)
+
+            synthesis = "Synthesis: #{statements}"
+
+            Cognition.form_belief(agent, synthesis, "inference",
+              evidence: "Synthesized from #{length(cluster)} supporting beliefs",
+              confidence: min(1.0, avg_confidence + 0.1),
+              entrenchment: 3
+            )
+
+            {:ok, "Synthesized #{length(cluster)} beliefs into new inference"}
+
+          _ ->
+            {:ok, "Cluster too small to synthesize"}
+        end
+    end
+  end
+
   defp run_impulse(_agent, type) do
     {:ok, "Unknown impulse type: #{type}"}
   end
@@ -547,26 +618,68 @@ defmodule Lincoln.Substrate.Thought do
     )
 
     if state.result && state.result != "Skipped (budget constraint)" do
-      store_reflection(state.agent_id, state.belief, state.result)
+      process_thought_result(state.agent_id, state.belief, state.result, state.tier)
     end
 
     Logger.debug("[Thought #{state.id}] Completed: #{state.tier}")
   end
 
-  defp store_reflection(agent_id, belief, text) do
+  defp process_thought_result(agent_id, belief, result, tier) do
     Task.start(fn ->
       try do
         agent = Agents.get_agent!(agent_id)
+        belief_id = belief && Map.get(belief, :id)
 
+        # Store the reflection as a memory regardless
         Lincoln.Memory.create_memory(agent, %{
-          content: "Reflection on '#{get_statement(belief)}': #{text}",
+          content: "Reflection on '#{get_statement(belief)}': #{result}",
           memory_type: "reflection",
           importance: 5
         })
+
+        # Feed back into beliefs based on tier
+        if belief_id && is_binary(belief_id) && not CognitiveImpulse.impulse?(belief_id) do
+          feed_back_to_beliefs(agent, belief, result, tier)
+        end
       rescue
-        e -> Logger.warning("[Thought] Memory store failed: #{Exception.message(e)}")
+        e -> Logger.warning("[Thought] Result processing failed: #{Exception.message(e)}")
       end
     end)
+  end
+
+  defp feed_back_to_beliefs(_agent, belief, _result, :local) do
+    # Local-tier: contemplated without challenge → increase entrenchment
+    case Lincoln.Beliefs.get_belief!(belief.id) do
+      nil -> :ok
+      live_belief -> Lincoln.Beliefs.entrench_belief(live_belief)
+    end
+  rescue
+    _ -> :ok
+  end
+
+  defp feed_back_to_beliefs(agent, belief, result, _tier) do
+    # LLM-tier: evaluate whether reflection reinforces or challenges
+    case Cognition.evaluate_reflection(result) do
+      :reinforce ->
+        live_belief = Lincoln.Beliefs.get_belief!(belief.id)
+        Lincoln.Beliefs.strengthen_belief(live_belief, "Reinforced by reflection")
+        Lincoln.Beliefs.entrench_belief(live_belief)
+
+      :challenge ->
+        live_belief = Lincoln.Beliefs.get_belief!(belief.id)
+        Lincoln.Beliefs.weaken_belief(live_belief, "Challenged by reflection")
+
+      {:extend, insight} ->
+        Cognition.form_belief(agent, insight, "inference",
+          evidence: "Extended from: #{get_statement(belief)}",
+          confidence: 0.6
+        )
+
+      _ ->
+        :ok
+    end
+  rescue
+    _ -> :ok
   end
 
   defp get_statement(belief) when is_map(belief) do

@@ -148,6 +148,15 @@ defmodule Lincoln.Beliefs do
   # ============================================================================
 
   @doc """
+  Increases a belief's entrenchment — it becomes harder to revise.
+  Called when a belief is repeatedly thought about and reinforced.
+  """
+  def entrench_belief(%Belief{} = belief, amount \\ 1) do
+    new_entrenchment = min(10, belief.entrenchment + amount)
+    update_belief(belief, %{entrenchment: new_entrenchment})
+  end
+
+  @doc """
   Strengthens a belief when supporting evidence is found.
   """
   def strengthen_belief(%Belief{} = belief, evidence, opts \\ []) do

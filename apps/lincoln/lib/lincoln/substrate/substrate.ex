@@ -97,6 +97,8 @@ defmodule Lincoln.Substrate.Substrate do
     current_focus = List.first(beliefs)
 
     Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.thought_topic(state.agent_id))
+    Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.skeptic_topic(state.agent_id))
+    Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.resonator_topic(state.agent_id))
 
     # Zero timeout triggers the first tick immediately
     {:noreply, %{state | agent: agent, current_focus: current_focus}, 0}
@@ -172,6 +174,31 @@ defmodule Lincoln.Substrate.Substrate do
     )
 
     {:noreply, state, 0}
+  end
+
+  # Skeptic detected a contradiction — queue it as an event for processing
+  def handle_info({:contradiction_detected, relationship, belief_a, belief_b}, state) do
+    event = %{
+      type: :contradiction,
+      belief_a_id: belief_a.id,
+      belief_b_id: belief_b.id,
+      relationship_id: relationship.id
+    }
+
+    pending = (state.pending_events ++ [event]) |> Enum.take(100)
+    {:noreply, %{state | pending_events: pending}, 0}
+  end
+
+  # Resonator detected a cascade — queue it as an event for processing
+  def handle_info({:cascade_detected, cascade_info}, state) do
+    event = %{
+      type: :cascade,
+      belief_ids: cascade_info.belief_ids,
+      cascade_score: cascade_info.cascade_score
+    }
+
+    pending = (state.pending_events ++ [event]) |> Enum.take(100)
+    {:noreply, %{state | pending_events: pending}, 0}
   end
 
   @impl true
@@ -289,10 +316,21 @@ defmodule Lincoln.Substrate.Substrate do
   defp drain_pending_events(%{pending_events: events} = state) do
     now = DateTime.utc_now()
 
+    {reactive_events, regular_events} =
+      Enum.split_with(events, fn
+        %{type: type} when type in [:contradiction, :cascade] -> true
+        _ -> false
+      end)
+
     activation_map =
-      events
+      regular_events
       |> Enum.flat_map(&extract_belief_ids/1)
       |> Enum.reduce(state.activation_map, fn bid, acc -> Map.put(acc, bid, now) end)
+
+    # Spawn reactive thoughts for contradiction/cascade signals
+    Enum.each(reactive_events, fn event ->
+      spawn_reactive_thought(state, event)
+    end)
 
     Logger.debug("[Substrate #{state.agent_id}] Drained #{length(events)} events")
     %{state | pending_events: [], activation_map: activation_map}
@@ -303,6 +341,34 @@ defmodule Lincoln.Substrate.Substrate do
   end
 
   defp activate_current_focus(state), do: state.activation_map
+
+  defp spawn_reactive_thought(state, %{type: source} = signal) do
+    # Create a synthetic impulse belief that routes to the right handler
+    impulse_id = "impulse:#{source}"
+
+    thought_opts = %{
+      agent_id: state.agent_id,
+      belief: %{
+        id: impulse_id,
+        statement: "Reactive: #{source}",
+        confidence: 0.9,
+        source_type: "introspection"
+      },
+      attention_score: 0.9,
+      force_tier: :local,
+      reactive_context: signal
+    }
+
+    case ThoughtSupervisor.spawn_thought(state.agent_id, thought_opts) do
+      {:ok, _pid} ->
+        Logger.info("[Substrate #{state.agent_id}] Spawned reactive thought: #{source}")
+
+      {:error, reason} ->
+        Logger.debug(
+          "[Substrate #{state.agent_id}] Could not spawn reactive thought: #{inspect(reason)}"
+        )
+    end
+  end
 
   defp extract_belief_ids(%{belief_id: bid}) when is_binary(bid), do: [bid]
 
