@@ -430,11 +430,13 @@ defmodule Lincoln.Substrate.Attention do
     raw = belief.confidence * 0.5 + belief.entrenchment / 20.0 * 0.5
 
     # Penalize fully settled beliefs — nothing left to learn from them
-    # A belief at confidence 1.0 + entrenchment 10 gets a 60% penalty
     settled = belief.confidence * (belief.entrenchment / 10.0)
-    penalty = settled * settled * 0.6
+    settled_penalty = settled * settled * 0.6
 
-    max(0.0, raw - penalty)
+    # Penalize over-revised beliefs — diminishing returns on repeated revision
+    revision_penalty = min(belief.revision_count / 20.0, 0.5) * 0.3
+
+    max(0.0, raw - settled_penalty - revision_penalty)
   end
 
   defp contradiction_bonus(_belief_id, [], _params), do: 0.0

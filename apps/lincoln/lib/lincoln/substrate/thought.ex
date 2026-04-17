@@ -656,10 +656,17 @@ defmodule Lincoln.Substrate.Thought do
   end
 
   defp feed_back_to_beliefs(_agent, belief, _result, :local) do
-    # Local-tier: contemplated without challenge → increase entrenchment
+    # Local-tier: only entrench if belief is below entrenchment 5
+    # This prevents runaway entrenchment from endless L0 contemplation
     case Lincoln.Beliefs.get_belief!(belief.id) do
-      nil -> :ok
-      live_belief -> Lincoln.Beliefs.entrench_belief(live_belief)
+      nil ->
+        :ok
+
+      live_belief when live_belief.entrenchment < 5 ->
+        Lincoln.Beliefs.entrench_belief(live_belief)
+
+      _ ->
+        :ok
     end
   rescue
     _ -> :ok
@@ -671,7 +678,12 @@ defmodule Lincoln.Substrate.Thought do
       :reinforce ->
         live_belief = Lincoln.Beliefs.get_belief!(belief.id)
         Lincoln.Beliefs.strengthen_belief(live_belief, "Reinforced by reflection")
-        Lincoln.Beliefs.entrench_belief(live_belief)
+
+        # Only LLM-confirmed reinforcement pushes entrenchment past 5, caps at 8
+        # (only user testimony/observation should reach 10)
+        if live_belief.entrenchment < 8 do
+          Lincoln.Beliefs.entrench_belief(live_belief)
+        end
 
       :challenge ->
         live_belief = Lincoln.Beliefs.get_belief!(belief.id)
