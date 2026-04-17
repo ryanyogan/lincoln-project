@@ -109,11 +109,6 @@ defmodule Lincoln.PubSubBroadcaster do
     broadcast(agent_topic(agent_id), update)
   end
 
-  def broadcast_driver_action(agent_id, action) do
-    broadcast(driver_topic(agent_id), action)
-    broadcast(agent_topic(agent_id), action)
-  end
-
   def broadcast_skeptic_flag(agent_id, flag) do
     broadcast(skeptic_topic(agent_id), flag)
     broadcast(agent_topic(agent_id), flag)
@@ -148,7 +143,6 @@ defmodule Lincoln.PubSubBroadcaster do
 
   def substrate_topic(agent_id), do: "agent:#{agent_id}:substrate"
   def attention_topic(agent_id), do: "agent:#{agent_id}:attention"
-  def driver_topic(agent_id), do: "agent:#{agent_id}:driver"
   def skeptic_topic(agent_id), do: "agent:#{agent_id}:skeptic"
   def resonator_topic(agent_id), do: "agent:#{agent_id}:resonator"
   def thought_topic(agent_id), do: "agent:#{agent_id}:thoughts"

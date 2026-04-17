@@ -31,7 +31,6 @@ defmodule LincolnWeb.SubstrateLive do
       |> assign(:recent_events, [])
       |> assign(:attention_params_form, build_params_form(agent))
       |> assign(:top_beliefs, [])
-      |> assign(:tier_counts, %{local: 0, ollama: 0, claude: 0})
       |> assign(:recent_contradictions, [])
       |> assign(:recent_cascades, [])
       |> assign(:self_model, Lincoln.SelfModel.get(agent.id))
@@ -119,11 +118,7 @@ defmodule LincolnWeb.SubstrateLive do
   end
 
   # Catch-all for other PubSub messages
-  def handle_info(msg, socket) do
-    require Logger
-    Logger.debug("[SubstrateLive] Unhandled message: #{inspect(elem(msg, 0), limit: 1)}")
-    {:noreply, socket}
-  end
+  def handle_info(_msg, socket), do: {:noreply, socket}
 
   # ============================================================================
   # Events
@@ -387,20 +382,6 @@ defmodule LincolnWeb.SubstrateLive do
                 </div>
               </div>
 
-              <%!-- Driver Activity Card --%>
-              <div class="card bg-base-200 border-2 border-info/50 hover:border-info transition-colors">
-                <div class="card-body p-0">
-                  <div class="flex items-center justify-between px-4 py-3 border-b-2 border-info/30 bg-base-300">
-                    <h2 class="card-title text-sm font-terminal uppercase gap-2">
-                      <.icon name="hero-play" class="size-4 text-info" /> Driver Activity
-                    </h2>
-                  </div>
-                  <div class="p-4">
-                    <.driver_status events={@recent_events} />
-                  </div>
-                </div>
-              </div>
-
               <%!-- Attention Parameters Card --%>
               <div class="card bg-base-200 border-2 border-warning/50 hover:border-warning transition-colors">
                 <div class="card-body p-0">
@@ -575,33 +556,6 @@ defmodule LincolnWeb.SubstrateLive do
                 </div>
               </div>
 
-              <%!-- Tier Distribution --%>
-              <div class="card bg-base-200 border-2 border-base-content/20 hover:border-base-content/30 transition-colors">
-                <div class="card-body p-0">
-                  <div class="px-4 py-3 border-b-2 border-base-content/10 bg-base-300">
-                    <h2 class="card-title text-sm font-terminal uppercase gap-2">
-                      <.icon name="hero-server-stack" class="size-4 text-base-content/60" />
-                      Tier Distribution
-                    </h2>
-                  </div>
-                  <div class="p-4">
-                    <div class="grid grid-cols-3 gap-3">
-                      <.tier_counter label="Local" count={@tier_counts.local} color="success" />
-                      <.tier_counter label="Ollama" count={@tier_counts.ollama} color="warning" />
-                      <.tier_counter label="Claude" count={@tier_counts.claude} color="error" />
-                    </div>
-                    <div class="mt-3 pt-3 border-t border-base-content/10">
-                      <div class="flex items-center justify-between text-xs font-terminal text-base-content/50">
-                        <span>Total</span>
-                        <span class="font-bold text-base-content/70">
-                          {@tier_counts.local + @tier_counts.ollama + @tier_counts.claude}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
               <%!-- Skeptic Panel --%>
               <div class="card bg-base-200 border-2 border-error/50 hover:border-error transition-colors">
                 <div class="card-body p-0">
@@ -710,35 +664,6 @@ defmodule LincolnWeb.SubstrateLive do
   # Component Functions
   # ============================================================================
 
-  attr(:events, :list, required: true)
-
-  defp driver_status(assigns) do
-    last_action = Enum.find(assigns.events, &(&1.type == :driver_action))
-    assigns = assign(assigns, :last_action, last_action)
-
-    ~H"""
-    <%= if @last_action do %>
-      <div class="p-3 bg-base-300 border border-info/20">
-        <div class="flex items-center gap-2 mb-1">
-          <span class="node-indicator active"></span>
-          <span class="text-xs font-terminal uppercase text-base-content/60">Last Action</span>
-        </div>
-        <p class="text-sm font-terminal text-info">
-          {inspect(@last_action.action)}
-        </p>
-        <span class="text-[10px] font-terminal text-base-content/40 mt-1 block">
-          {format_time(@last_action.time)}
-        </span>
-      </div>
-    <% else %>
-      <div class="flex flex-col items-center justify-center py-8 text-base-content/40">
-        <.icon name="hero-pause" class="size-8 mb-2" />
-        <p class="text-sm font-terminal">Driver idle — no recent actions</p>
-      </div>
-    <% end %>
-    """
-  end
-
   attr(:event, :map, required: true)
 
   defp event_entry(assigns) do
@@ -791,7 +716,7 @@ defmodule LincolnWeb.SubstrateLive do
       <% :idle_tick -> %>
         <p class="text-xs font-terminal">
           <span class="text-base-content/40">Idle {@event.tick_count}</span>
-          <span class="text-base-content/30"> (streak   {@event.idle_streak})</span>
+          <span class="text-base-content/30">(streak {@event.idle_streak})</span>
           <%= if @event.focus do %>
             <span class="text-base-content/50"> — </span>
             <span class="text-base-content/40 line-clamp-1">{truncate(@event.focus, 40)}</span>
@@ -802,30 +727,6 @@ defmodule LincolnWeb.SubstrateLive do
     <% end %>
     """
   end
-
-  attr(:label, :string, required: true)
-  attr(:count, :integer, required: true)
-  attr(:color, :string, required: true)
-
-  defp tier_counter(assigns) do
-    assigns = assign(assigns, :color_class, tier_color_class(assigns.color))
-
-    ~H"""
-    <div class="text-center p-2 bg-base-300 border border-base-content/10">
-      <div class={["text-xl font-terminal font-black", @color_class]}>
-        {@count}
-      </div>
-      <div class="text-[10px] font-terminal uppercase text-base-content/50 mt-0.5">
-        {@label}
-      </div>
-    </div>
-    """
-  end
-
-  defp tier_color_class("success"), do: "text-success"
-  defp tier_color_class("warning"), do: "text-warning"
-  defp tier_color_class("error"), do: "text-error"
-  defp tier_color_class(_), do: "text-base-content"
 
   # ============================================================================
   # Helpers

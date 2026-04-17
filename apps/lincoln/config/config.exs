@@ -65,10 +65,7 @@ config :lincoln, Oban,
   repo: Lincoln.Repo,
   queues: [
     default: 10,
-    reflection: 2,
-    curiosity: 2,
     investigation: 5,
-    maintenance: 2,
     autonomy: 3
   ],
   plugins: [

@@ -58,24 +58,67 @@ defmodule LincolnWeb.Layouts do
                 </a>
               </li>
               <li>
-                <a href="/beliefs" class="text-sm">
-                  <.icon name="hero-light-bulb" class="size-4" /> Beliefs
-                </a>
+                <details>
+                  <summary class="text-sm">
+                    <.icon name="hero-cpu-chip" class="size-4" /> Substrate
+                  </summary>
+                  <ul class="bg-base-200 border border-base-300 rounded-box z-50 w-48">
+                    <li>
+                      <a href="/substrate">
+                        <.icon name="hero-cpu-chip" class="size-4" /> Dashboard
+                      </a>
+                    </li>
+                    <li>
+                      <a href="/substrate/compare">
+                        <.icon name="hero-arrows-right-left" class="size-4" /> Divergence
+                      </a>
+                    </li>
+                    <li>
+                      <a href="/substrate/thoughts">
+                        <.icon name="hero-sparkles" class="size-4" /> Thoughts
+                      </a>
+                    </li>
+                    <li>
+                      <a href="/autonomy">
+                        <.icon name="hero-bolt" class="size-4" /> Autonomy
+                      </a>
+                    </li>
+                  </ul>
+                </details>
               </li>
               <li>
-                <a href="/questions" class="text-sm">
-                  <.icon name="hero-question-mark-circle" class="size-4" /> Questions
-                </a>
-              </li>
-              <li>
-                <a href="/memories" class="text-sm">
-                  <.icon name="hero-archive-box" class="size-4" /> Memories
-                </a>
-              </li>
-              <li>
-                <a href="/autonomy" class="text-sm">
-                  <.icon name="hero-bolt" class="size-4" /> Autonomy
-                </a>
+                <details>
+                  <summary class="text-sm">
+                    <.icon name="hero-beaker" class="size-4" /> Research
+                  </summary>
+                  <ul class="bg-base-200 border border-base-300 rounded-box z-50 w-48">
+                    <li>
+                      <a href="/beliefs">
+                        <.icon name="hero-light-bulb" class="size-4" /> Beliefs
+                      </a>
+                    </li>
+                    <li>
+                      <a href="/questions">
+                        <.icon name="hero-question-mark-circle" class="size-4" /> Questions
+                      </a>
+                    </li>
+                    <li>
+                      <a href="/memories">
+                        <.icon name="hero-archive-box" class="size-4" /> Memories
+                      </a>
+                    </li>
+                    <li>
+                      <a href="/narrative">
+                        <.icon name="hero-book-open" class="size-4" /> Narrative
+                      </a>
+                    </li>
+                    <li>
+                      <a href="/benchmarks">
+                        <.icon name="hero-chart-bar" class="size-4" /> Benchmarks
+                      </a>
+                    </li>
+                  </ul>
+                </details>
               </li>
             </ul>
           </div>
@@ -153,6 +196,34 @@ defmodule LincolnWeb.Layouts do
                 <.icon name="hero-chat-bubble-left-right" class="size-5" /> Chat
               </a>
             </li>
+
+            <li class="menu-title text-xs tracking-wide mt-4">
+              <span>Substrate</span>
+            </li>
+            <li>
+              <a href="/substrate">
+                <.icon name="hero-cpu-chip" class="size-5" /> Dashboard
+              </a>
+            </li>
+            <li>
+              <a href="/substrate/compare">
+                <.icon name="hero-arrows-right-left" class="size-5" /> Divergence
+              </a>
+            </li>
+            <li>
+              <a href="/substrate/thoughts">
+                <.icon name="hero-sparkles" class="size-5" /> Thoughts
+              </a>
+            </li>
+            <li>
+              <a href="/autonomy">
+                <.icon name="hero-bolt" class="size-5" /> Autonomy
+              </a>
+            </li>
+
+            <li class="menu-title text-xs tracking-wide mt-4">
+              <span>Research</span>
+            </li>
             <li>
               <a href="/beliefs">
                 <.icon name="hero-light-bulb" class="size-5" /> Beliefs
@@ -169,8 +240,13 @@ defmodule LincolnWeb.Layouts do
               </a>
             </li>
             <li>
-              <a href="/autonomy">
-                <.icon name="hero-bolt" class="size-5" /> Autonomy
+              <a href="/narrative">
+                <.icon name="hero-book-open" class="size-5" /> Narrative
+              </a>
+            </li>
+            <li>
+              <a href="/benchmarks">
+                <.icon name="hero-chart-bar" class="size-5" /> Benchmarks
               </a>
             </li>
 
