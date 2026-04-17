@@ -134,7 +134,10 @@ defmodule LincolnWeb.SubstrateLive do
         _ -> AttentionParams.default()
       end
 
-    form_params = Map.new(params, fn {k, v} -> {to_string(k), to_string(v)} end)
+    form_params =
+      params
+      |> Enum.filter(fn {_k, v} -> is_number(v) end)
+      |> Map.new(fn {k, v} -> {to_string(k), to_string(v)} end)
 
     {:noreply,
      assign(socket, :attention_params_form, to_form(form_params, as: :attention_params))}
@@ -756,8 +759,11 @@ defmodule LincolnWeb.SubstrateLive do
     raw = agent.attention_params || %{}
     defaults = AttentionParams.default()
 
+    # Only include numeric params in the form — skip maps like thought_type_weights
     string_params =
-      Map.new(defaults, fn {key, default_val} ->
+      defaults
+      |> Enum.filter(fn {_key, val} -> is_number(val) end)
+      |> Map.new(fn {key, default_val} ->
         str_key = to_string(key)
         val = raw[str_key] || raw[key] || default_val
         {str_key, to_string(val)}
