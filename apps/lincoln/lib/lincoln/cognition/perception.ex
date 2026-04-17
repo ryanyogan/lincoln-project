@@ -224,6 +224,36 @@ defmodule Lincoln.Cognition.Perception do
     Enum.any?(emotional_phrases, &String.contains?(content, &1))
   end
 
+  defp conversational?(content) do
+    casual_starters = [
+      "well ",
+      "oh ",
+      "haha",
+      "lol",
+      "huh",
+      "hmm",
+      "wow",
+      "cool",
+      "nice",
+      "okay",
+      "sure",
+      "right",
+      "yeah",
+      "that's ",
+      "that is ",
+      "isn't that",
+      "look at that",
+      "tell me",
+      "show me",
+      "list ",
+      "describe ",
+      "explain "
+    ]
+
+    Enum.any?(casual_starters, &String.starts_with?(content, &1)) or
+      String.contains?(content, [":)", ":(", ":D", "!!", "..."])
+  end
+
   defp meta?(content) do
     meta_phrases = [
       "do you remember",
@@ -328,13 +358,18 @@ defmodule Lincoln.Cognition.Perception do
     sentences
     |> Enum.filter(fn sentence ->
       sentence_lower = String.downcase(sentence)
+      word_count = length(String.split(sentence))
 
-      # Not a question
-      # Not purely emotional
-      # Contains some substance (more than 3 words)
+      # Must be a real factual statement:
+      # - Not a question
+      # - Not purely emotional
+      # - Substantial (more than 5 words)
+      # - Not casual chat (too short to be a fact)
+      # - Not a command or request
       not String.ends_with?(sentence, "?") and
         not emotional?(sentence_lower) and
-        length(String.split(sentence)) > 3
+        word_count > 5 and
+        not conversational?(sentence_lower)
     end)
     |> Enum.map(fn sentence ->
       %{

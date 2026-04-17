@@ -1473,14 +1473,14 @@ defmodule Lincoln.Cognition.ConversationHandler do
   defp form_beliefs_from_facts(state) do
     state.perception.facts_claimed
     |> Enum.each(fn %{statement: statement, confidence: confidence} ->
-      # Only form beliefs from reasonably confident observations
       if confidence >= 0.6 do
-        Beliefs.create_belief(state.agent, %{
-          statement: statement,
-          confidence: confidence,
-          source_type: "testimony",
-          evidence: "User observation: #{state.user_message}"
-        })
+        Lincoln.Cognition.form_belief(
+          state.agent,
+          statement,
+          "testimony",
+          evidence: "User said: #{truncate(state.user_message, 100)}",
+          confidence: confidence
+        )
       end
     end)
   end
