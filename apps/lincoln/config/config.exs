@@ -72,16 +72,10 @@ config :lincoln, Oban,
     autonomy: 3
   ],
   plugins: [
-    Oban.Plugins.Pruner,
-    {Oban.Plugins.Cron,
-     crontab: [
-       # Reflection cycle every 6 hours
-       {"0 */6 * * *", Lincoln.Workers.ReflectionWorker},
-       # Curiosity check every hour
-       {"0 * * * *", Lincoln.Workers.CuriosityWorker},
-       # Belief maintenance daily at 3am
-       {"0 3 * * *", Lincoln.Workers.BeliefMaintenanceWorker}
-     ]}
+    Oban.Plugins.Pruner
+    # Cron removed — reflection, curiosity, and belief maintenance
+    # are now substrate-native via cognitive impulses and periodic tasks.
+    # Workers remain as fallback for agents without active substrates.
   ]
 
 # Lincoln-specific configuration

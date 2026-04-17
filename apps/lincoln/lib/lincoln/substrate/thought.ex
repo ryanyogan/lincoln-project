@@ -14,8 +14,8 @@ defmodule Lincoln.Substrate.Thought do
   use GenServer
   require Logger
 
-  alias Lincoln.{Agents, Narratives, PubSubBroadcaster}
-  alias Lincoln.Substrate.{InferenceTier, ThoughtSupervisor, Trajectory}
+  alias Lincoln.{Agents, Cognition, Narratives, PubSubBroadcaster}
+  alias Lincoln.Substrate.{CognitiveImpulse, InferenceTier, ThoughtSupervisor, Trajectory}
 
   defstruct [
     :id,
@@ -73,7 +73,7 @@ defmodule Lincoln.Substrate.Thought do
   @impl true
   def init(%{agent_id: agent_id, belief: belief, attention_score: score} = opts) do
     id = Map.get(opts, :id) || Ecto.UUID.generate()
-    tier = InferenceTier.select_tier(score)
+    tier = Map.get(opts, :force_tier) || InferenceTier.select_tier(score)
 
     state = %__MODULE__{
       id: id,
@@ -105,21 +105,36 @@ defmodule Lincoln.Substrate.Thought do
   end
 
   @impl true
-  def handle_continue(:execute, %{tier: :local} = state) do
+  def handle_continue(:execute, state) do
+    belief_id = state.belief && Map.get(state.belief, :id)
+
+    if is_binary(belief_id) and CognitiveImpulse.impulse?(belief_id) do
+      execute_impulse(state, CognitiveImpulse.impulse_type(belief_id))
+    else
+      execute_belief(state)
+    end
+  end
+
+  defp execute_impulse(state, impulse_type) do
+    Logger.info("[Thought #{state.id}] Executing impulse: #{impulse_type}")
+    agent = Agents.get_agent!(state.agent_id)
+    _task = Task.async(fn -> run_impulse(agent, impulse_type) end)
+    {:noreply, %{state | status: :awaiting_llm}}
+  end
+
+  defp execute_belief(%{tier: :local} = state) do
     new_state = execute_local(state)
     finalize(new_state)
     {:stop, :normal, new_state}
   end
 
-  @impl true
-  def handle_continue(:execute, %{is_narrative: true} = state) do
+  defp execute_belief(%{is_narrative: true} = state) do
     Logger.info("[Thought #{state.id}] Narrative reflection at tick #{state.narrative_tick}")
     _task = Task.async(fn -> run_narrative_llm(state) end)
     {:noreply, %{state | status: :awaiting_llm}}
   end
 
-  @impl true
-  def handle_continue(:execute, state) do
+  defp execute_belief(state) do
     # Don't spawn grandchildren — only top-level thoughts explore
     if state.parent_id do
       _task = Task.async(fn -> run_llm(state.belief, state.tier) end)
@@ -252,11 +267,71 @@ defmodule Lincoln.Substrate.Thought do
   # Private
   # ============================================================================
 
+  defp run_impulse(agent, :curiosity) do
+    case Cognition.generate_curiosity(agent) do
+      {:ok, questions} ->
+        {:ok, "Curiosity impulse: generated #{length(questions)} questions"}
+
+      {:error, reason} ->
+        {:ok, "Curiosity impulse: #{inspect(reason)}"}
+    end
+  end
+
+  defp run_impulse(agent, :reflection) do
+    case Cognition.reflect(agent) do
+      {:ok, insights} ->
+        {:ok, "Reflection impulse: #{length(insights)} insights"}
+
+      {:error, reason} ->
+        {:ok, "Reflection impulse: #{inspect(reason)}"}
+    end
+  end
+
+  defp run_impulse(_agent, type) do
+    {:ok, "Unknown impulse type: #{type}"}
+  end
+
   defp execute_local(state) do
     belief_statement = get_statement(state.belief)
     confidence = get_confidence(state.belief)
-    summary = "Contemplating: #{belief_statement} (confidence: #{Float.round(confidence, 2)})"
+    entrenchment = get_entrenchment(state.belief)
+
+    observations = build_local_observations(confidence, entrenchment)
+
+    summary = "Contemplating: #{belief_statement} — #{observations}"
     %{state | status: :completed, result: summary, completed_at: DateTime.utc_now()}
+  end
+
+  defp build_local_observations(confidence, entrenchment) do
+    observations = []
+
+    mismatch = abs(confidence - entrenchment / 10.0)
+
+    observations =
+      if mismatch > 0.3,
+        do: ["confidence/entrenchment gap of #{Float.round(mismatch, 2)}" | observations],
+        else: observations
+
+    observations =
+      cond do
+        confidence > 0.95 -> ["very high confidence, worth scrutiny" | observations]
+        confidence < 0.2 -> ["low confidence, needs evidence" | observations]
+        true -> observations
+      end
+
+    observations =
+      if confidence > 0.7 and entrenchment < 3,
+        do: ["newly confident but not entrenched" | observations],
+        else: observations
+
+    case observations do
+      [] -> "stable at confidence #{Float.round(confidence, 2)}"
+      obs -> Enum.join(obs, "; ")
+    end
+  end
+
+  defp get_entrenchment(belief) when is_map(belief) do
+    Map.get(belief, :entrenchment) || Map.get(belief, "entrenchment") || 5
   end
 
   defp run_llm(belief, tier) do

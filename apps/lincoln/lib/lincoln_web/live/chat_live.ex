@@ -673,12 +673,16 @@ defmodule LincolnWeb.ChatLive do
               </div>
               <div>
                 <span class="text-base-content/40">style</span>
-                <span class="text-base-content/60 ml-1">{@user_model.vocabulary_style || "unknown"}</span>
+                <span class="text-base-content/60 ml-1">
+                  {@user_model.vocabulary_style || "unknown"}
+                </span>
               </div>
               <%= if @user_model.topics != [] do %>
                 <div>
                   <span class="text-base-content/40">topics</span>
-                  <span class="text-base-content/50 ml-1">{Enum.join(Enum.take(@user_model.topics, 5), ", ")}</span>
+                  <span class="text-base-content/50 ml-1">
+                    {Enum.join(Enum.take(@user_model.topics, 5), ", ")}
+                  </span>
                 </div>
               <% end %>
             </div>

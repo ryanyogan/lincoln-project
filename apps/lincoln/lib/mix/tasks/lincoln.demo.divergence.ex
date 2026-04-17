@@ -162,9 +162,41 @@ defmodule Mix.Tasks.Lincoln.Demo.Divergence do
 
   defp print_trajectory(agent, label) do
     summary = Trajectory.summary(agent.id, hours: 1)
+    recent_ticks = Trajectory.get_recent_ticks(agent.id, limit: 5)
 
     Mix.shell().info("--- #{label} (#{agent.name}) ---")
     Mix.shell().info("  Total substrate events: #{summary.total_events}")
     Mix.shell().info("  Tier distribution: #{inspect(summary.tier_distribution)}")
+
+    recent_ticks
+    |> Enum.map(&Trajectory.scoring_detail/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.each(&print_tick_detail/1)
   end
+
+  defp print_tick_detail(detail) do
+    top = List.first(detail["top_candidates"] || [])
+    if top, do: print_candidate(top)
+  end
+
+  defp print_candidate(candidate) do
+    components = candidate["components"] || %{}
+
+    Mix.shell().info(
+      "  Focus: #{candidate["statement"] || "?"} " <>
+        "(score #{format_float(components["final_score"])})"
+    )
+
+    Mix.shell().info(
+      "    N=#{format_float(components["novelty"])} " <>
+        "T=#{format_float(components["tension"])} " <>
+        "S=#{format_float(components["staleness"])} " <>
+        "D=#{format_float(components["depth"])} " <>
+        "focus=#{format_float(components["focus_boost"])}"
+    )
+  end
+
+  defp format_float(nil), do: "—"
+  defp format_float(f) when is_float(f), do: :erlang.float_to_binary(f, decimals: 2)
+  defp format_float(f), do: inspect(f)
 end

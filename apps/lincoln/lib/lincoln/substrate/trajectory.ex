@@ -80,6 +80,23 @@ defmodule Lincoln.Substrate.Trajectory do
     }
   end
 
+  @doc "Get recent tick events for an agent."
+  def get_recent_ticks(agent_id, opts \\ []) do
+    limit = Keyword.get(opts, :limit, 10)
+
+    SubstrateEvent
+    |> where([e], e.agent_id == ^agent_id and e.event_type == "tick")
+    |> order_by([e], desc: e.inserted_at)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  @doc "Extract scoring detail from a trajectory event, nil-safe for old events."
+  def scoring_detail(%SubstrateEvent{event_data: %{"scoring" => detail}}) when is_map(detail),
+    do: detail
+
+  def scoring_detail(_), do: nil
+
   defp get_events(agent_id, limit) do
     SubstrateEvent
     |> where([e], e.agent_id == ^agent_id)

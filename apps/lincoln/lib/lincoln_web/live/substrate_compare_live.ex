@@ -27,6 +27,8 @@ defmodule LincolnWeb.SubstrateCompareLive do
       |> assign(:agent_b_state, nil)
       |> assign(:events_a, [])
       |> assign(:events_b, [])
+      |> assign(:scoring_a, nil)
+      |> assign(:scoring_b, nil)
 
     {:ok, socket}
   end
@@ -49,9 +51,7 @@ defmodule LincolnWeb.SubstrateCompareLive do
     # Subscribe to new agents
     if connected?(socket) do
       Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.substrate_topic(a_id))
-      Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.driver_topic(a_id))
       Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.substrate_topic(b_id))
-      Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.driver_topic(b_id))
     end
 
     state_a = fetch_state(a_id)
@@ -71,26 +71,24 @@ defmodule LincolnWeb.SubstrateCompareLive do
   # PubSub Handlers
   # ============================================================================
 
-  # Since {:tick, count, focus} doesn't include agent_id, refresh both states
-  # on every tick. This is cheap (Registry lookup + GenServer.call) and ensures
-  # both panels stay in sync.
+  # Handle enriched tick with scoring detail
   @impl true
-  def handle_info({:tick, tick_count, current_focus}, socket) do
+  def handle_info({:tick, tick_count, current_focus, scoring_detail}, socket) do
     prev_a = socket.assigns.agent_a_state
     prev_b = socket.assigns.agent_b_state
     new_a = fetch_state(socket.assigns.agent_a_id) || prev_a
     new_b = fetch_state(socket.assigns.agent_b_id) || prev_b
 
-    events_a =
+    {events_a, scoring_a} =
       case build_agent_tick_event(new_a, prev_a, tick_count, current_focus) do
-        nil -> socket.assigns.events_a
-        event -> prepend_event(socket.assigns.events_a, event)
+        nil -> {socket.assigns.events_a, socket.assigns.scoring_a}
+        event -> {prepend_event(socket.assigns.events_a, event), scoring_detail}
       end
 
-    events_b =
+    {events_b, scoring_b} =
       case build_agent_tick_event(new_b, prev_b, tick_count, current_focus) do
-        nil -> socket.assigns.events_b
-        event -> prepend_event(socket.assigns.events_b, event)
+        nil -> {socket.assigns.events_b, socket.assigns.scoring_b}
+        event -> {prepend_event(socket.assigns.events_b, event), scoring_detail}
       end
 
     {:noreply,
@@ -98,28 +96,29 @@ defmodule LincolnWeb.SubstrateCompareLive do
      |> assign(:agent_a_state, new_a)
      |> assign(:agent_b_state, new_b)
      |> assign(:events_a, events_a)
-     |> assign(:events_b, events_b)}
+     |> assign(:events_b, events_b)
+     |> assign(:scoring_a, scoring_a)
+     |> assign(:scoring_b, scoring_b)}
   end
 
-  def handle_info({:executed, action}, socket) do
-    # Route driver actions by refreshing states and checking which changed
-    new_a = fetch_state(socket.assigns.agent_a_id)
-    new_b = fetch_state(socket.assigns.agent_b_id)
+  # Backward compat for old-format tick without scoring detail
+  def handle_info({:tick, tick_count, current_focus}, socket) do
+    handle_info({:tick, tick_count, current_focus, nil}, socket)
+  end
 
-    event = %{time: DateTime.utc_now(), type: :driver_action, action: action}
-
-    # Append to both since we can't distinguish source — driver events are rare
-    events_a =
-      if new_a, do: prepend_event(socket.assigns.events_a, event), else: socket.assigns.events_a
+  # Handle idle ticks — substrate is thinking quietly
+  def handle_info({:idle_tick, _tick_count, _idle_streak, _belief}, socket) do
+    # Refresh states to stay in sync during idle periods
+    new_a = fetch_state(socket.assigns.agent_a_id) || socket.assigns.agent_a_state
+    new_b = fetch_state(socket.assigns.agent_b_id) || socket.assigns.agent_b_state
 
     {:noreply,
      socket
-     |> assign(:agent_a_state, new_a || socket.assigns.agent_a_state)
-     |> assign(:agent_b_state, new_b || socket.assigns.agent_b_state)
-     |> assign(:events_a, events_a)}
+     |> assign(:agent_a_state, new_a)
+     |> assign(:agent_b_state, new_b)}
   end
 
-  # Catch-all for other PubSub messages (attention, skeptic, resonator)
+  # Catch-all for other PubSub messages
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # ============================================================================
@@ -224,6 +223,7 @@ defmodule LincolnWeb.SubstrateCompareLive do
               agent_name={get_agent_name(@agents, @agent_a_id)}
               state={@agent_a_state}
               events={@events_a}
+              scoring={@scoring_a}
             />
 
             <%!-- Agent B --%>
@@ -233,6 +233,7 @@ defmodule LincolnWeb.SubstrateCompareLive do
               agent_name={get_agent_name(@agents, @agent_b_id)}
               state={@agent_b_state}
               events={@events_b}
+              scoring={@scoring_b}
             />
           </div>
         <% else %>
@@ -267,6 +268,7 @@ defmodule LincolnWeb.SubstrateCompareLive do
   attr(:agent_name, :string, required: true)
   attr(:state, :any, required: true)
   attr(:events, :list, required: true)
+  attr(:scoring, :any, default: nil)
 
   defp agent_panel(assigns) do
     ~H"""
@@ -338,11 +340,11 @@ defmodule LincolnWeb.SubstrateCompareLive do
                 </div>
 
                 <div class="stat">
-                  <div class="stat-title font-terminal uppercase text-xs">Interval</div>
+                  <div class="stat-title font-terminal uppercase text-xs">Mode</div>
                   <div class="stat-value font-terminal text-base-content/70 text-lg">
-                    {div(@state.tick_interval, 1000)}s
+                    {if (@state[:idle_streak] || 0) > 0, do: "idle", else: "active"}
                   </div>
-                  <div class="stat-desc font-terminal">Tick freq</div>
+                  <div class="stat-desc font-terminal">Event-driven</div>
                 </div>
               </div>
 
@@ -378,6 +380,11 @@ defmodule LincolnWeb.SubstrateCompareLive do
             </div>
           </div>
         </div>
+
+        <%!-- Scoring Breakdown --%>
+        <%= if @scoring do %>
+          <.scoring_breakdown scoring={@scoring} color={@color} />
+        <% end %>
 
         <%!-- Event Stream --%>
         <div class={[
@@ -477,8 +484,6 @@ defmodule LincolnWeb.SubstrateCompareLive do
         <%= case @event.type do %>
           <% :tick -> %>
             <.icon name="hero-arrow-path" class={["size-3.5", panel_text_class(@color) <> "/70"]} />
-          <% :driver_action -> %>
-            <.icon name="hero-play" class="size-3.5 text-info/70" />
           <% _ -> %>
             <.icon name="hero-signal" class="size-3.5 text-base-content/40" />
         <% end %>
@@ -493,11 +498,6 @@ defmodule LincolnWeb.SubstrateCompareLive do
                 <span class="text-base-content/60 line-clamp-1">{truncate(@event.focus, 50)}</span>
               <% end %>
             </p>
-          <% :driver_action -> %>
-            <p class="text-xs font-terminal">
-              <span class="text-info">Action</span>
-              <span class="text-base-content/60">{inspect(@event.action)}</span>
-            </p>
           <% _ -> %>
             <p class="text-xs font-terminal text-base-content/50">Event</p>
         <% end %>
@@ -508,6 +508,109 @@ defmodule LincolnWeb.SubstrateCompareLive do
     </div>
     """
   end
+
+  attr(:scoring, :map, required: true)
+  attr(:color, :string, required: true)
+
+  defp scoring_breakdown(assigns) do
+    candidates = Map.get(assigns.scoring, :top_candidates, [])
+    candidate_count = Map.get(assigns.scoring, :candidate_count, 0)
+    assigns = assign(assigns, :candidates, candidates)
+    assigns = assign(assigns, :candidate_count, candidate_count)
+
+    ~H"""
+    <div class={[
+      "card bg-base-200 border-2 hover:border-opacity-80 transition-colors",
+      panel_card_border(@color)
+    ]}>
+      <div class="card-body p-0">
+        <div class={[
+          "px-4 py-3 border-b-2 bg-base-300",
+          panel_header_border(@color)
+        ]}>
+          <h2 class="card-title text-sm font-terminal uppercase gap-2">
+            <.icon name="hero-chart-bar" class={["size-4", panel_text_class(@color)]} />
+            Attention Scoring
+            <span class="ml-auto text-[10px] text-base-content/40 font-terminal normal-case">
+              {@candidate_count} beliefs scored
+            </span>
+          </h2>
+        </div>
+        <div class="p-3 space-y-2">
+          <%= for candidate <- @candidates do %>
+            <div class={[
+              "p-2 border bg-base-300/50 space-y-1",
+              if(candidate.rank == 1,
+                do: panel_focus_border(@color),
+                else: "border-base-content/5"
+              )
+            ]}>
+              <div class="flex items-center gap-2">
+                <span class={[
+                  "text-[10px] font-terminal font-bold w-4 text-center",
+                  if(candidate.rank == 1, do: panel_text_class(@color), else: "text-base-content/40")
+                ]}>
+                  #{candidate.rank}
+                </span>
+                <span class="text-xs font-terminal text-base-content/70 flex-1 line-clamp-1">
+                  {candidate.statement}
+                </span>
+                <span class={[
+                  "text-xs font-terminal font-bold",
+                  panel_text_class(@color)
+                ]}>
+                  {format_score(candidate.components.final_score)}
+                </span>
+              </div>
+              <div class="flex gap-1 ml-6">
+                <.score_bar label="N" value={candidate.components.novelty} color="info" />
+                <.score_bar label="T" value={candidate.components.tension} color="warning" />
+                <.score_bar label="S" value={candidate.components.staleness} color="error" />
+                <.score_bar label="D" value={candidate.components.depth} color="success" />
+                <%= if candidate.components.focus_boost > 0 do %>
+                  <span class="text-[9px] font-terminal text-accent ml-1">
+                    +{format_score(candidate.components.focus_boost)} focus
+                  </span>
+                <% end %>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  attr(:label, :string, required: true)
+  attr(:value, :float, required: true)
+  attr(:color, :string, required: true)
+
+  defp score_bar(assigns) do
+    width = Float.round(assigns.value * 100, 0)
+    assigns = assign(assigns, :width, width)
+
+    ~H"""
+    <div class="flex items-center gap-0.5" title={"#{@label}: #{format_score(@value)}"}>
+      <span class="text-[8px] font-terminal text-base-content/40 w-2">{@label}</span>
+      <div class="w-8 h-1.5 bg-base-100 rounded-full overflow-hidden">
+        <div
+          class={["h-full rounded-full", bar_color(@color)]}
+          style={"width: #{@width}%"}
+        >
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp bar_color("info"), do: "bg-info"
+  defp bar_color("warning"), do: "bg-warning"
+  defp bar_color("error"), do: "bg-error"
+  defp bar_color("success"), do: "bg-success"
+  defp bar_color(_), do: "bg-base-content/50"
+
+  defp format_score(score) when is_float(score), do: :erlang.float_to_binary(score, decimals: 2)
+  defp format_score(_), do: "—"
 
   # ============================================================================
   # Color Helpers — panel theming
@@ -547,7 +650,6 @@ defmodule LincolnWeb.SubstrateCompareLive do
   defp event_style(:tick, "secondary"),
     do: "bg-base-300/50 border-secondary/10 hover:border-secondary/30"
 
-  defp event_style(:driver_action, _), do: "bg-base-300/50 border-info/10 hover:border-info/30"
   defp event_style(_, _), do: "bg-base-300/50 border-base-content/5"
 
   # ============================================================================
@@ -567,7 +669,6 @@ defmodule LincolnWeb.SubstrateCompareLive do
 
   defp unsubscribe_agent(agent_id) do
     Phoenix.PubSub.unsubscribe(Lincoln.PubSub, PubSubBroadcaster.substrate_topic(agent_id))
-    Phoenix.PubSub.unsubscribe(Lincoln.PubSub, PubSubBroadcaster.driver_topic(agent_id))
   end
 
   defp get_agent_name(agents, id) do

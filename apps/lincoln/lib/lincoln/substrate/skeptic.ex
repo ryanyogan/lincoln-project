@@ -1,6 +1,6 @@
 defmodule Lincoln.Substrate.Skeptic do
   @moduledoc """
-  Background process that looks for contradictions between beliefs.
+  Contradiction detection in the belief graph.
 
   Heuristic detection (no LLM):
   1. Picks a high-confidence active belief
@@ -11,108 +11,21 @@ defmodule Lincoln.Substrate.Skeptic do
      - One recently challenged while other is not
   4. Creates belief_relationship with type "contradicts"
   5. Broadcasts skeptic flag for Attention to notice
+
+  Called periodically by the Substrate tick loop — not a GenServer.
   """
 
-  use GenServer
   require Logger
 
-  alias Lincoln.{Agents, Beliefs, PubSubBroadcaster}
+  alias Lincoln.{Beliefs, PubSubBroadcaster}
 
-  @tick_interval 30_000
   @similarity_threshold 0.75
 
-  defstruct [
-    :agent_id,
-    :agent,
-    :tick_count,
-    :last_tick_at,
-    :tick_interval
-  ]
-
-  # =============================================================================
-  # Client API
-  # =============================================================================
-
-  def start_link(%{agent_id: agent_id} = opts) do
-    name = {:via, Registry, {Lincoln.AgentRegistry, {agent_id, :skeptic}}}
-    GenServer.start_link(__MODULE__, opts, name: name)
-  end
-
-  def child_spec(%{agent_id: agent_id} = opts) do
-    %{
-      id: {__MODULE__, agent_id},
-      start: {__MODULE__, :start_link, [opts]},
-      type: :worker,
-      restart: :permanent
-    }
-  end
-
-  @doc "Returns the full state struct."
-  def get_state(pid), do: GenServer.call(pid, :get_state)
-
-  # =============================================================================
-  # Server Callbacks
-  # =============================================================================
-
-  @impl true
-  def init(%{agent_id: agent_id} = opts) do
-    interval = Map.get(opts, :tick_interval, @tick_interval)
-
-    state = %__MODULE__{
-      agent_id: agent_id,
-      agent: nil,
-      tick_count: 0,
-      last_tick_at: nil,
-      tick_interval: interval
-    }
-
-    {:ok, state, {:continue, :load_state}}
-  end
-
-  @impl true
-  def handle_continue(:load_state, state) do
-    agent = Agents.get_agent!(state.agent_id)
-    schedule_tick(state.tick_interval)
-
-    {:noreply, %{state | agent: agent}}
-  end
-
-  @impl true
-  def handle_call(:get_state, _from, state) do
-    {:reply, state, state}
-  end
-
-  @impl true
-  def handle_info(:tick, state) do
-    detect_contradictions(state)
-
-    new_state = %{
-      state
-      | tick_count: state.tick_count + 1,
-        last_tick_at: DateTime.utc_now()
-    }
-
-    schedule_tick(state.tick_interval)
-    {:noreply, new_state}
-  end
-
-  @impl true
-  def handle_info(_msg, state), do: {:noreply, state}
-
-  @impl true
-  def terminate(reason, state) do
-    Logger.info("[Skeptic #{state.agent_id}] Terminating: #{inspect(reason)}")
-    :ok
-  end
-
-  # =============================================================================
-  # Private — Tick Logic
-  # =============================================================================
-
-  defp detect_contradictions(state) do
-    case pick_target_belief(state.agent) do
+  @doc "Run one round of contradiction detection for the agent."
+  def detect_contradictions(agent) do
+    case pick_target_belief(agent) do
       nil -> :ok
-      belief -> investigate_belief(belief, state)
+      belief -> investigate_belief(belief, agent)
     end
   end
 
@@ -121,28 +34,30 @@ defmodule Lincoln.Substrate.Skeptic do
     if beliefs == [], do: nil, else: Enum.random(beliefs)
   end
 
-  defp investigate_belief(belief, state) do
-    case get_embedding(belief) do
+  defp investigate_belief(belief, agent) do
+    case belief.embedding do
       nil ->
         :ok
 
       embedding ->
         similar =
-          Beliefs.find_similar_beliefs(state.agent, embedding,
+          Beliefs.find_similar_beliefs(agent, embedding,
             limit: 5,
             threshold: @similarity_threshold
           )
 
-        candidates = Enum.reject(similar, fn b -> b.id == belief.id end)
-
-        Enum.each(candidates, fn candidate ->
-          check_and_flag_contradiction(belief, candidate, state)
+        similar
+        |> Enum.reject(fn b -> b.id == belief.id end)
+        |> Enum.each(fn candidate ->
+          check_and_flag_contradiction(belief, candidate, agent)
         end)
     end
   end
 
-  defp get_embedding(belief) do
-    belief.embedding
+  defp check_and_flag_contradiction(belief_a, candidate, agent) do
+    if contradiction_signals?(belief_a, candidate) do
+      maybe_create_contradiction(belief_a, candidate, agent)
+    end
   end
 
   defp contradiction_signals?(belief_a, belief_b) do
@@ -155,20 +70,14 @@ defmodule Lincoln.Substrate.Skeptic do
     both_confident and (different_sources or recently_challenged)
   end
 
-  defp check_and_flag_contradiction(belief_a, candidate, state) do
-    if contradiction_signals?(belief_a, candidate) do
-      maybe_create_contradiction(belief_a, candidate, state)
-    end
-  end
-
-  defp maybe_create_contradiction(belief_a, belief_b, state) do
+  defp maybe_create_contradiction(belief_a, belief_b, agent) do
     already_exists =
-      Beliefs.relationship_exists?(state.agent, belief_a.id, belief_b.id, "contradicts") or
-        Beliefs.relationship_exists?(state.agent, belief_b.id, belief_a.id, "contradicts")
+      Beliefs.relationship_exists?(agent, belief_a.id, belief_b.id, "contradicts") or
+        Beliefs.relationship_exists?(agent, belief_b.id, belief_a.id, "contradicts")
 
     unless already_exists do
       attrs = %{
-        agent_id: state.agent_id,
+        agent_id: agent.id,
         source_belief_id: belief_a.id,
         target_belief_id: belief_b.id,
         relationship_type: "contradicts",
@@ -181,11 +90,11 @@ defmodule Lincoln.Substrate.Skeptic do
       case Beliefs.create_relationship(attrs) do
         {:ok, relationship} ->
           Logger.info(
-            "[Skeptic #{state.agent_id}] Contradiction detected: #{belief_a.id} <-> #{belief_b.id}"
+            "[Skeptic #{agent.id}] Contradiction detected: #{belief_a.id} <-> #{belief_b.id}"
           )
 
           PubSubBroadcaster.broadcast_skeptic_flag(
-            state.agent_id,
+            agent.id,
             {:contradiction_detected, relationship, belief_a, belief_b}
           )
 
@@ -193,9 +102,5 @@ defmodule Lincoln.Substrate.Skeptic do
           :ok
       end
     end
-  end
-
-  defp schedule_tick(interval) do
-    Process.send_after(self(), :tick, interval)
   end
 end

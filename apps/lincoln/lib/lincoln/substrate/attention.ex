@@ -20,7 +20,7 @@ defmodule Lincoln.Substrate.Attention do
   require Logger
 
   alias Lincoln.{Agents, Beliefs, PubSubBroadcaster}
-  alias Lincoln.Substrate.AttentionParams
+  alias Lincoln.Substrate.{AttentionParams, CognitiveImpulse}
 
   defstruct [
     :agent_id,
@@ -28,7 +28,8 @@ defmodule Lincoln.Substrate.Attention do
     :attention_params,
     :current_focus_id,
     :last_scored_at,
-    activation_map: %{}
+    activation_map: %{},
+    impulse_state: CognitiveImpulse.initial_state()
   ]
 
   @source_novelty %{
@@ -56,12 +57,23 @@ defmodule Lincoln.Substrate.Attention do
     }
   end
 
+  @max_trajectory_candidates 5
+
   @doc """
   Returns the next belief to focus on, scored by attention parameters.
 
-  Returns `{:ok, belief, score}` or `{:ok, nil}`.
+  Returns `{:ok, belief, score, scoring_detail}` or `{:ok, nil}`.
+  The `scoring_detail` map contains the top candidates with per-component
+  score breakdowns and the active attention params.
   """
   def next_thought(pid), do: GenServer.call(pid, :next_thought)
+
+  @doc """
+  Lightweight scoring for idle ticks — skips relationship queries and
+  does not update activation_map or broadcast. Returns the same shape
+  as `next_thought/1`.
+  """
+  def idle_score(pid), do: GenServer.call(pid, :idle_score)
 
   @doc """
   Returns the score breakdown for a specific belief.
@@ -103,35 +115,61 @@ defmodule Lincoln.Substrate.Attention do
   def handle_call(:next_thought, _from, state) do
     beliefs = Beliefs.list_beliefs(state.agent, status: "active")
 
-    case beliefs do
-      [] ->
-        {:reply, {:ok, nil}, %{state | last_scored_at: DateTime.utc_now()}}
+    now = DateTime.utc_now()
 
-      beliefs ->
-        now = DateTime.utc_now()
+    # Include cognitive impulses alongside real beliefs
+    impulses = CognitiveImpulse.candidates(state.agent, state.impulse_state, now)
+    all_candidates = beliefs ++ impulses
+
+    case all_candidates do
+      [] ->
+        {:reply, {:ok, nil}, %{state | last_scored_at: now}}
+
+      candidates ->
         params = state.attention_params
         all_relationships = Beliefs.find_all_relationships(state.agent)
 
         scored =
-          beliefs
+          candidates
           |> Enum.map(fn belief ->
-            score = score_with_focus(belief, state, params, now, all_relationships)
-            {belief, score}
-          end)
-          |> Enum.sort_by(fn {_belief, score} -> score end, :desc)
+            {score, components} =
+              score_with_focus_detailed(belief, state, params, now, all_relationships)
 
-        {best_belief, best_score} = hd(scored)
+            {belief, score, components}
+          end)
+          |> Enum.sort_by(fn {_belief, score, _components} -> score end, :desc)
+
+        {best_belief, best_score, _best_components} = hd(scored)
+
+        scoring_detail = build_scoring_detail(scored, params)
+
+        # Update impulse cooldowns if an impulse was selected
+        impulse_state =
+          if CognitiveImpulse.impulse?(best_belief.id) do
+            case CognitiveImpulse.impulse_type(best_belief.id) do
+              :curiosity -> %{state.impulse_state | last_curiosity_at: now}
+              :reflection -> %{state.impulse_state | last_reflection_at: now}
+              _ -> state.impulse_state
+            end
+          else
+            state.impulse_state
+          end
 
         new_activation_map =
-          state.activation_map
-          |> Map.put(best_belief.id, now)
-          |> bound_map(500)
+          if CognitiveImpulse.impulse?(best_belief.id) do
+            state.activation_map
+          else
+            state.activation_map
+            |> Map.put(best_belief.id, now)
+            |> bound_map(500)
+          end
 
         new_state = %{
           state
           | current_focus_id: best_belief.id,
             last_scored_at: now,
-            activation_map: new_activation_map
+            activation_map: new_activation_map,
+            impulse_state: impulse_state
         }
 
         PubSubBroadcaster.broadcast_attention_update(
@@ -139,7 +177,39 @@ defmodule Lincoln.Substrate.Attention do
           {:next_thought, best_belief, best_score}
         )
 
-        {:reply, {:ok, best_belief, best_score}, new_state}
+        {:reply, {:ok, best_belief, best_score, scoring_detail}, new_state}
+    end
+  end
+
+  @impl true
+  def handle_call(:idle_score, _from, state) do
+    beliefs = Beliefs.list_beliefs(state.agent, status: "active")
+
+    case beliefs do
+      [] ->
+        {:reply, {:ok, nil}, state}
+
+      beliefs ->
+        now = DateTime.utc_now()
+        params = state.attention_params
+
+        # Skip relationship query — pass empty list for lightweight scoring
+        scored =
+          beliefs
+          |> Enum.map(fn belief ->
+            {score, components} =
+              score_with_focus_detailed(belief, state, params, now, [])
+
+            {belief, score, components}
+          end)
+          |> Enum.sort_by(fn {_belief, score, _components} -> score end, :desc)
+
+        {best_belief, best_score, _best_components} = hd(scored)
+
+        scoring_detail = build_scoring_detail(scored, params)
+
+        # No activation_map update, no PubSub broadcast — this is a read-only score
+        {:reply, {:ok, best_belief, best_score, scoring_detail}, state}
     end
   end
 
@@ -202,17 +272,20 @@ defmodule Lincoln.Substrate.Attention do
   # Scoring
   # =============================================================================
 
-  defp score_with_focus(belief, state, params, now, all_relationships) do
-    score = score_belief(belief, state, params, now, all_relationships)
+  defp score_with_focus_detailed(belief, state, params, now, all_relationships) do
+    {base_score, components} =
+      score_belief_detailed(belief, state, params, now, all_relationships)
 
     if state.current_focus_id == belief.id do
-      min(1.0, score + params.focus_momentum * 0.3)
+      focus_boost = params.focus_momentum * 0.3
+      final_score = min(1.0, base_score + focus_boost)
+      {final_score, Map.merge(components, %{focus_boost: focus_boost, final_score: final_score})}
     else
-      score
+      {base_score, Map.merge(components, %{focus_boost: 0.0, final_score: base_score})}
     end
   end
 
-  defp score_belief(belief, state, params, now, belief_rels) do
+  defp score_belief_detailed(belief, state, params, now, belief_rels) do
     novelty = novelty_score(belief, now)
     tension = tension_score(belief, now)
     staleness = staleness_score(belief, state, now)
@@ -220,11 +293,22 @@ defmodule Lincoln.Substrate.Attention do
 
     base = compute_combined_score(novelty, tension, staleness, depth, params)
 
-    # Skeptic/Resonator flag bonuses
-    contradiction_bonus = contradiction_bonus(belief.id, belief_rels, params)
-    cascade_bonus = cascade_bonus(belief.id, belief_rels, params)
+    cb = contradiction_bonus(belief.id, belief_rels, params)
+    csb = cascade_bonus(belief.id, belief_rels, params)
 
-    min(1.0, max(0.0, base + contradiction_bonus + cascade_bonus))
+    score = min(1.0, max(0.0, base + cb + csb))
+
+    components = %{
+      novelty: novelty,
+      tension: tension,
+      staleness: staleness,
+      depth: depth,
+      contradiction_bonus: cb,
+      cascade_bonus: csb,
+      base_score: score
+    }
+
+    {score, components}
   end
 
   defp compute_combined_score(novelty, tension, staleness, depth, params) do
@@ -353,6 +437,31 @@ defmodule Lincoln.Substrate.Attention do
         support_count = length(matched)
         params.novelty_weight * min(support_count / 5.0, 1.0) * 0.3
     end
+  end
+
+  # =============================================================================
+  # Trajectory Detail
+  # =============================================================================
+
+  defp build_scoring_detail(scored, params) do
+    top_candidates =
+      scored
+      |> Enum.take(@max_trajectory_candidates)
+      |> Enum.with_index(1)
+      |> Enum.map(fn {{belief, _score, components}, rank} ->
+        %{
+          belief_id: belief.id,
+          statement: String.slice(belief.statement || "", 0, 80),
+          components: components,
+          rank: rank
+        }
+      end)
+
+    %{
+      params: params,
+      candidate_count: length(scored),
+      top_candidates: top_candidates
+    }
   end
 
   # =============================================================================

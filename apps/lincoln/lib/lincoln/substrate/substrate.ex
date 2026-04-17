@@ -2,19 +2,33 @@ defmodule Lincoln.Substrate.Substrate do
   @moduledoc """
   The core cognitive substrate — an always-running GenServer.
 
-  Every tick: drain events → ask Attention what to think about → ask Driver to execute → record trajectory.
-  The substrate never idles. Even with no events, Attention still scores and Driver still executes.
+  Every tick: drain events → consult Attention → spawn Thought → record trajectory.
+  The substrate never idles. Even with no events, Attention still scores and
+  idle ticks produce local contemplation.
   """
 
   use GenServer
   require Logger
 
   alias Lincoln.{Agents, Beliefs, PubSubBroadcaster}
-  alias Lincoln.Substrate.{Attention, InferenceTier, Thought, ThoughtSupervisor, Trajectory}
 
-  @tick_interval 5_000
+  alias Lincoln.Substrate.{
+    Attention,
+    BeliefMaintenance,
+    InferenceTier,
+    Resonator,
+    Skeptic,
+    Thought,
+    ThoughtSupervisor,
+    Trajectory
+  }
+
+  @default_timeout 5_000
   @narrative_interval 200
   @self_model_interval 50
+  @belief_maintenance_interval 1000
+  @skeptic_interval 6
+  @resonator_interval 12
 
   defstruct [
     :agent_id,
@@ -24,10 +38,10 @@ defmodule Lincoln.Substrate.Substrate do
     :pending_events,
     :tick_count,
     :last_tick_at,
-    :tick_interval,
     :started_at,
     :last_attention_score,
-    :last_tier
+    :last_tier,
+    idle_streak: 0
   ]
 
   # =============================================================================
@@ -59,9 +73,7 @@ defmodule Lincoln.Substrate.Substrate do
   # =============================================================================
 
   @impl true
-  def init(%{agent_id: agent_id} = opts) do
-    interval = Map.get(opts, :tick_interval, @tick_interval)
-
+  def init(%{agent_id: agent_id} = _opts) do
     state = %__MODULE__{
       agent_id: agent_id,
       agent: nil,
@@ -70,7 +82,6 @@ defmodule Lincoln.Substrate.Substrate do
       pending_events: [],
       tick_count: 0,
       last_tick_at: nil,
-      tick_interval: interval,
       started_at: DateTime.utc_now(),
       last_attention_score: nil,
       last_tier: nil
@@ -86,9 +97,9 @@ defmodule Lincoln.Substrate.Substrate do
     current_focus = List.first(beliefs)
 
     Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.thought_topic(state.agent_id))
-    schedule_tick(state.tick_interval)
 
-    {:noreply, %{state | agent: agent, current_focus: current_focus}}
+    # Zero timeout triggers the first tick immediately
+    {:noreply, %{state | agent: agent, current_focus: current_focus}, 0}
   end
 
   @impl true
@@ -99,42 +110,21 @@ defmodule Lincoln.Substrate.Substrate do
   @impl true
   def handle_cast({:event, event}, state) do
     pending = (state.pending_events ++ [event]) |> Enum.take(100)
-    {:noreply, %{state | pending_events: pending}}
+    # Zero timeout — process the event on the very next iteration
+    {:noreply, %{state | pending_events: pending}, 0}
   end
 
   @impl true
-  def handle_info(:tick, state) do
-    state_after_events = drain_pending_events(state)
-    {chosen_belief, attention_score} = consult_attention(state_after_events)
-    tier = spawn_thought(state_after_events, chosen_belief, attention_score)
+  def handle_info(:timeout, state) do
+    new_state =
+      if state.pending_events != [] or not has_running_thought?(state) do
+        handle_active_tick(state)
+      else
+        handle_idle_tick(state)
+      end
 
-    new_state = %{
-      state_after_events
-      | current_focus: chosen_belief,
-        tick_count: state.tick_count + 1,
-        last_tick_at: DateTime.utc_now(),
-        last_attention_score: attention_score,
-        last_tier: tier
-    }
-
-    PubSubBroadcaster.broadcast_substrate_event(
-      state.agent_id,
-      {:tick, new_state.tick_count, new_state.current_focus}
-    )
-
-    record_trajectory(state.agent_id, new_state, chosen_belief, attention_score, tier)
-
-    # Trigger narrative reflection at regular intervals
-    if rem(new_state.tick_count, @narrative_interval) == 0 and new_state.tick_count > 0 do
-      spawn_narrative_thought(new_state)
-    end
-
-    if rem(new_state.tick_count, @self_model_interval) == 0 and new_state.tick_count > 0 do
-      update_self_model(state.agent_id)
-    end
-
-    schedule_tick(state.tick_interval)
-    {:noreply, new_state}
+    run_periodic_tasks(new_state)
+    {:noreply, new_state, next_timeout(new_state)}
   end
 
   @impl true
@@ -146,29 +136,22 @@ defmodule Lincoln.Substrate.Substrate do
       "[Substrate #{state.agent_id}] Thought #{thought_id} completed: #{String.slice(to_string(result), 0, 80)}"
     )
 
-    activation_map =
-      if state.current_focus do
-        Map.put(state.activation_map, state.current_focus.id, DateTime.utc_now())
-      else
-        state.activation_map
-      end
+    activation_map = activate_current_focus(state)
 
-    Task.start(fn ->
-      try do
-        Trajectory.record_event(state.agent_id, %{
-          type: :thought_completed,
-          thought_id: thought_id,
-          belief_id: state.current_focus && Map.get(state.current_focus, :id),
-          belief_statement: state.current_focus && Map.get(state.current_focus, :statement),
-          result_summary: String.slice(to_string(result), 0, 200),
-          tick_count: state.tick_count
-        })
-      rescue
-        e -> Logger.warning("[Substrate] Thought trajectory failed: #{Exception.message(e)}")
-      end
-    end)
+    event_data = %{
+      type: :thought_completed,
+      thought_id: thought_id,
+      belief_id: state.current_focus && Map.get(state.current_focus, :id),
+      belief_statement: state.current_focus && Map.get(state.current_focus, :statement),
+      result_summary: String.slice(to_string(result), 0, 200),
+      tick_count: state.tick_count
+    }
 
-    {:noreply, %{state | activation_map: activation_map}}
+    run_background_task(fn -> Trajectory.record_event(state.agent_id, event_data) end,
+      label: "thought trajectory"
+    )
+
+    {:noreply, %{state | activation_map: activation_map}, 0}
   end
 
   @impl true
@@ -177,25 +160,22 @@ defmodule Lincoln.Substrate.Substrate do
       "[Substrate #{state.agent_id}] Thought #{thought_id} failed: #{inspect(reason)}"
     )
 
-    Task.start(fn ->
-      try do
-        Trajectory.record_event(state.agent_id, %{
-          type: :thought_failed,
-          thought_id: thought_id,
-          reason: inspect(reason),
-          tick_count: state.tick_count
-        })
-      rescue
-        e ->
-          Logger.warning("[Substrate] Thought failure trajectory failed: #{Exception.message(e)}")
-      end
-    end)
+    event_data = %{
+      type: :thought_failed,
+      thought_id: thought_id,
+      reason: inspect(reason),
+      tick_count: state.tick_count
+    }
 
-    {:noreply, state}
+    run_background_task(fn -> Trajectory.record_event(state.agent_id, event_data) end,
+      label: "thought failure trajectory"
+    )
+
+    {:noreply, state, 0}
   end
 
   @impl true
-  def handle_info(_msg, state), do: {:noreply, state}
+  def handle_info(_msg, state), do: {:noreply, state, next_timeout(state)}
 
   @impl true
   def terminate(reason, state) do
@@ -207,27 +187,137 @@ defmodule Lincoln.Substrate.Substrate do
   # Private — Tick Logic
   # =============================================================================
 
+  defp has_running_thought?(state) do
+    ThoughtSupervisor.list_children(state.agent_id) != []
+  end
+
+  defp run_periodic_tasks(state) do
+    tick = state.tick_count
+    if tick == 0, do: :noop
+
+    if tick > 0 do
+      if rem(tick, @narrative_interval) == 0, do: spawn_narrative_thought(state)
+      if rem(tick, @self_model_interval) == 0, do: update_self_model(state.agent_id)
+
+      if rem(tick, @skeptic_interval) == 0 do
+        run_background_task(fn -> Skeptic.detect_contradictions(state.agent) end,
+          label: "skeptic"
+        )
+      end
+
+      if rem(tick, @resonator_interval) == 0 do
+        run_background_task(fn -> Resonator.detect_cascades(state.agent) end,
+          label: "resonator"
+        )
+      end
+
+      if rem(tick, @belief_maintenance_interval) == 0 do
+        run_background_task(fn -> BeliefMaintenance.decay_unreinforced(state.agent_id) end,
+          label: "belief maintenance"
+        )
+      end
+    end
+  end
+
+  defp run_background_task(fun, opts) do
+    label = Keyword.get(opts, :label, "background task")
+
+    Task.start(fn ->
+      try do
+        fun.()
+      rescue
+        e -> Logger.debug("[Substrate] #{label} failed: #{Exception.message(e)}")
+      end
+    end)
+  end
+
+  defp handle_active_tick(state) do
+    state_after_events = drain_pending_events(state)
+    {chosen_belief, attention_score, scoring_detail} = consult_attention(state_after_events)
+    tier = spawn_thought(state_after_events, chosen_belief, attention_score)
+
+    new_state = %{
+      state_after_events
+      | current_focus: chosen_belief,
+        tick_count: state.tick_count + 1,
+        last_tick_at: DateTime.utc_now(),
+        last_attention_score: attention_score,
+        last_tier: tier,
+        idle_streak: 0
+    }
+
+    PubSubBroadcaster.broadcast_substrate_event(
+      state.agent_id,
+      {:tick, new_state.tick_count, new_state.current_focus, scoring_detail}
+    )
+
+    record_trajectory(
+      state.agent_id,
+      new_state,
+      chosen_belief,
+      attention_score,
+      tier,
+      scoring_detail
+    )
+
+    new_state
+  end
+
+  defp handle_idle_tick(state) do
+    {idle_belief, idle_score, idle_detail} = consult_attention_idle(state)
+
+    new_state = %{
+      state
+      | current_focus: idle_belief || state.current_focus,
+        tick_count: state.tick_count + 1,
+        last_tick_at: DateTime.utc_now(),
+        last_attention_score: idle_score,
+        idle_streak: state.idle_streak + 1
+    }
+
+    PubSubBroadcaster.broadcast_substrate_event(
+      state.agent_id,
+      {:idle_tick, new_state.tick_count, new_state.idle_streak, idle_belief}
+    )
+
+    record_idle_trajectory(state.agent_id, new_state, idle_belief, idle_score, idle_detail)
+    new_state
+  end
+
   defp drain_pending_events(%{pending_events: []} = state), do: state
 
   defp drain_pending_events(%{pending_events: events} = state) do
+    now = DateTime.utc_now()
+
     activation_map =
-      Enum.reduce(events, state.activation_map, fn event, acc ->
-        case event do
-          %{belief_id: bid} when is_binary(bid) -> Map.put(acc, bid, DateTime.utc_now())
-          _ -> acc
-        end
-      end)
+      events
+      |> Enum.flat_map(&extract_belief_ids/1)
+      |> Enum.reduce(state.activation_map, fn bid, acc -> Map.put(acc, bid, now) end)
 
     Logger.debug("[Substrate #{state.agent_id}] Drained #{length(events)} events")
     %{state | pending_events: [], activation_map: activation_map}
   end
 
+  defp activate_current_focus(%{current_focus: %{id: id}} = state) when is_binary(id) do
+    Map.put(state.activation_map, id, DateTime.utc_now())
+  end
+
+  defp activate_current_focus(state), do: state.activation_map
+
+  defp extract_belief_ids(%{belief_id: bid}) when is_binary(bid), do: [bid]
+
+  defp extract_belief_ids(%{type: :conversation, belief_ids: ids}) when is_list(ids) do
+    Enum.filter(ids, &is_binary/1)
+  end
+
+  defp extract_belief_ids(_), do: []
+
   defp consult_attention(state) do
     case lookup_process(state.agent_id, :attention) do
       {:ok, pid} ->
         case Attention.next_thought(pid) do
-          {:ok, belief, score} -> {belief, score}
-          {:ok, nil} -> {nil, nil}
+          {:ok, belief, score, scoring_detail} -> {belief, score, scoring_detail}
+          {:ok, nil} -> {nil, nil, nil}
         end
 
       {:error, :not_running} ->
@@ -235,8 +325,39 @@ defmodule Lincoln.Substrate.Substrate do
           if state.agent,
             do: Beliefs.list_beliefs(state.agent, limit: 1, status: "active") |> List.first()
 
-        {belief, nil}
+        {belief, nil, nil}
     end
+  end
+
+  defp consult_attention_idle(state) do
+    case lookup_process(state.agent_id, :attention) do
+      {:ok, pid} ->
+        case Attention.idle_score(pid) do
+          {:ok, belief, score, scoring_detail} -> {belief, score, scoring_detail}
+          {:ok, nil} -> {nil, nil, nil}
+        end
+
+      {:error, :not_running} ->
+        {nil, nil, nil}
+    end
+  end
+
+  defp record_idle_trajectory(agent_id, state, belief, score, scoring_detail) do
+    event_data = %{
+      type: :idle_tick,
+      tick_count: state.tick_count,
+      idle_streak: state.idle_streak,
+      current_focus_id: belief && Map.get(belief, :id),
+      current_focus_statement: belief && Map.get(belief, :statement),
+      attention_score: score,
+      tier: :local,
+      pending_events_count: 0,
+      scoring: scoring_detail
+    }
+
+    run_background_task(fn -> Trajectory.record_event(agent_id, event_data) end,
+      label: "idle trajectory recording"
+    )
   end
 
   defp spawn_thought(_state, nil, _score), do: :no_belief
@@ -316,22 +437,21 @@ defmodule Lincoln.Substrate.Substrate do
     end
   end
 
-  defp record_trajectory(agent_id, state, belief, score, tier) do
-    Task.start(fn ->
-      try do
-        Trajectory.record_event(agent_id, %{
-          type: :tick,
-          tick_count: state.tick_count,
-          current_focus_id: belief && Map.get(belief, :id),
-          current_focus_statement: belief && Map.get(belief, :statement),
-          attention_score: score,
-          tier: tier,
-          pending_events_count: length(state.pending_events)
-        })
-      rescue
-        e -> Logger.warning("[Substrate] Trajectory recording failed: #{Exception.message(e)}")
-      end
-    end)
+  defp record_trajectory(agent_id, state, belief, score, tier, scoring_detail) do
+    event_data = %{
+      type: :tick,
+      tick_count: state.tick_count,
+      current_focus_id: belief && Map.get(belief, :id),
+      current_focus_statement: belief && Map.get(belief, :statement),
+      attention_score: score,
+      tier: tier,
+      pending_events_count: length(state.pending_events),
+      scoring: scoring_detail
+    }
+
+    run_background_task(fn -> Trajectory.record_event(agent_id, event_data) end,
+      label: "trajectory recording"
+    )
   end
 
   defp lookup_process(agent_id, type) do
@@ -369,16 +489,17 @@ defmodule Lincoln.Substrate.Substrate do
   end
 
   defp update_self_model(agent_id) do
-    Task.start(fn ->
-      try do
-        Lincoln.SelfModel.update_from_trajectory(agent_id)
-      rescue
-        e -> Logger.debug("[Substrate] SelfModel update failed: #{Exception.message(e)}")
-      end
-    end)
+    run_background_task(fn -> Lincoln.SelfModel.update_from_trajectory(agent_id) end,
+      label: "self model update"
+    )
   end
 
-  defp schedule_tick(interval) do
-    Process.send_after(self(), :tick, interval)
+  defp next_timeout(state) do
+    cond do
+      state.pending_events != [] -> 0
+      state.idle_streak == 0 -> 1_000
+      state.idle_streak < 10 -> 3_000
+      true -> @default_timeout
+    end
   end
 end

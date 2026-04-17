@@ -33,7 +33,6 @@ defmodule LincolnWeb.NarrativeLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <div class="container mx-auto max-w-2xl p-6">
-
         <%!-- Header --%>
         <div class="mb-8">
           <h1 class="font-terminal text-xl text-primary">LINCOLN'S AUTOBIOGRAPHY</h1>
@@ -56,7 +55,10 @@ defmodule LincolnWeb.NarrativeLive do
               wait ~16 minutes at default tick rate. The first entry will appear here.
             </p>
             <div class="mt-6">
-              <.link navigate={~p"/substrate"} class="font-terminal text-xs text-primary/50 hover:text-primary transition-colors">
+              <.link
+                navigate={~p"/substrate"}
+                class="font-terminal text-xs text-primary/50 hover:text-primary transition-colors"
+              >
                 → Start substrate
               </.link>
             </div>
@@ -93,7 +95,6 @@ defmodule LincolnWeb.NarrativeLive do
             <% end %>
           </div>
         <% end %>
-
       </div>
     </Layouts.app>
     """

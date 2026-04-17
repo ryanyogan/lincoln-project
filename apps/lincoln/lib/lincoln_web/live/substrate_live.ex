@@ -38,7 +38,6 @@ defmodule LincolnWeb.SubstrateLive do
 
     if connected?(socket) do
       Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.substrate_topic(agent.id))
-      Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.driver_topic(agent.id))
       Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.attention_topic(agent.id))
       Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.skeptic_topic(agent.id))
       Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.resonator_topic(agent.id))
@@ -57,12 +56,8 @@ defmodule LincolnWeb.SubstrateLive do
   # ============================================================================
 
   @impl true
-  def handle_info({:tick, tick_count, current_focus}, socket) do
-    substrate_state =
-      case Substrate.get_agent_state(socket.assigns.agent.id) do
-        {:ok, state} -> state
-        {:error, _} -> nil
-      end
+  def handle_info({:tick, tick_count, current_focus, _scoring_detail}, socket) do
+    substrate_state = refresh_substrate_state(socket)
 
     event_entry = %{
       time: DateTime.utc_now(),
@@ -80,28 +75,13 @@ defmodule LincolnWeb.SubstrateLive do
      |> assign(:recent_events, recent)}
   end
 
-  def handle_info({:executed, action}, socket) do
-    event_entry = %{
-      time: DateTime.utc_now(),
-      type: :driver_action,
-      action: action
-    }
-
-    recent = [event_entry | socket.assigns.recent_events] |> Enum.take(20)
-
-    tier_counts =
-      case action do
-        %{tier: tier} when tier in [:local, :ollama, :claude] ->
-          Map.update!(socket.assigns.tier_counts, tier, &(&1 + 1))
-
-        _ ->
-          socket.assigns.tier_counts
-      end
+  def handle_info({:idle_tick, _tick_count, _idle_streak, _belief}, socket) do
+    substrate_state = refresh_substrate_state(socket)
 
     {:noreply,
      socket
-     |> assign(:recent_events, recent)
-     |> assign(:tier_counts, tier_counts)}
+     |> assign(:substrate_state, substrate_state)
+     |> assign(:substrate_running, substrate_state != nil)}
   end
 
   def handle_info({:next_thought, belief, score}, socket) do
@@ -156,8 +136,7 @@ defmodule LincolnWeb.SubstrateLive do
       focus_momentum: parse_float(raw_params["focus_momentum"], 0.5),
       interrupt_threshold: parse_float(raw_params["interrupt_threshold"], 0.7),
       boredom_decay: parse_float(raw_params["boredom_decay"], 0.1),
-      depth_preference: parse_float(raw_params["depth_preference"], 0.5),
-      tick_interval_ms: parse_integer(raw_params["tick_interval_ms"], 5_000)
+      depth_preference: parse_float(raw_params["depth_preference"], 0.5)
     }
 
     {:ok, _agent} = Agents.update_agent(socket.assigns.agent, %{attention_params: parsed})
@@ -266,13 +245,13 @@ defmodule LincolnWeb.SubstrateLive do
 
                       <div class="stat">
                         <div class="stat-figure text-secondary">
-                          <.icon name="hero-clock" class="size-7" />
+                          <.icon name="hero-bolt" class="size-7" />
                         </div>
-                        <div class="stat-title font-terminal uppercase text-xs">Interval</div>
+                        <div class="stat-title font-terminal uppercase text-xs">Mode</div>
                         <div class="stat-value text-secondary font-terminal text-lg">
-                          {div(@substrate_state.tick_interval, 1000)}s
+                          {if (@substrate_state[:idle_streak] || 0) > 0, do: "idle", else: "active"}
                         </div>
-                        <div class="stat-desc font-terminal">Tick frequency</div>
+                        <div class="stat-desc font-terminal">Event-driven</div>
                       </div>
                     </div>
 
@@ -429,15 +408,6 @@ defmodule LincolnWeb.SubstrateLive do
                           step="0.05"
                           min="0"
                           max="1"
-                          class="w-full input input-xs bg-base-300 border-base-content/10 font-terminal text-xs"
-                        />
-                        <.input
-                          field={@attention_params_form[:tick_interval_ms]}
-                          type="number"
-                          label="tick_interval_ms"
-                          step="1000"
-                          min="1000"
-                          max="60000"
                           class="w-full input input-xs bg-base-300 border-base-content/10 font-terminal text-xs"
                         />
                       </div>
@@ -802,6 +772,13 @@ defmodule LincolnWeb.SubstrateLive do
     to_form(string_params, as: :attention_params)
   end
 
+  defp refresh_substrate_state(socket) do
+    case Substrate.get_agent_state(socket.assigns.agent.id) do
+      {:ok, state} -> state
+      {:error, _} -> nil
+    end
+  end
+
   defp update_top_beliefs(current, belief, score) do
     [{belief, score} | Enum.reject(current, fn {b, _} -> b.id == belief.id end)]
     |> Enum.sort_by(fn {_, s} -> s end, :desc)
@@ -816,13 +793,4 @@ defmodule LincolnWeb.SubstrateLive do
   end
 
   defp parse_float(_, default), do: default
-
-  defp parse_integer(str, default) when is_binary(str) do
-    case Integer.parse(str) do
-      {i, _} -> i
-      :error -> default
-    end
-  end
-
-  defp parse_integer(_, default), do: default
 end
