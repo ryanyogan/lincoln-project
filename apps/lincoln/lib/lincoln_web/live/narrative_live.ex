@@ -20,12 +20,19 @@ defmodule LincolnWeb.NarrativeLive do
     reflections = Narratives.list_reflections(agent.id, limit: 50)
     reflection_count = Narratives.count_reflections(agent.id)
 
+    substrate_running =
+      case Lincoln.Substrate.get_agent_state(agent.id) do
+        {:ok, _} -> true
+        _ -> false
+      end
+
     {:ok,
      socket
      |> assign(:page_title, "Lincoln's Autobiography")
      |> assign(:agent, agent)
      |> assign(:reflections, reflections)
-     |> assign(:reflection_count, reflection_count)}
+     |> assign(:reflection_count, reflection_count)
+     |> assign(:substrate_running, substrate_running)}
   end
 
   @impl true
@@ -37,7 +44,7 @@ defmodule LincolnWeb.NarrativeLive do
         <div class="mb-8">
           <h1 class="font-terminal text-xl text-primary">LINCOLN'S AUTOBIOGRAPHY</h1>
           <p class="text-base-content/30 text-xs mt-1">
-            Self-generated reflections · every 200 substrate ticks (~16 min at 5s/tick)
+            Self-generated reflections · every 50 substrate ticks (~1 min)
           </p>
           <%= if @reflection_count > 0 do %>
             <div class="font-terminal text-xs text-base-content/40 mt-2">
@@ -51,15 +58,15 @@ defmodule LincolnWeb.NarrativeLive do
           <div class="text-center py-20">
             <div class="font-terminal text-base-content/20 text-sm mb-3">NO ENTRIES YET</div>
             <p class="text-base-content/20 text-xs max-w-sm mx-auto leading-relaxed">
-              Lincoln writes after every 200 substrate ticks. Start the substrate and
-              wait ~16 minutes at default tick rate. The first entry will appear here.
+              Lincoln writes after every 50 substrate ticks. Start the substrate and
+              the first entry will appear within ~1 minute.
             </p>
             <div class="mt-6">
               <.link
                 navigate={~p"/substrate"}
                 class="font-terminal text-xs text-primary/50 hover:text-primary transition-colors"
               >
-                → Start substrate
+                {if @substrate_running, do: "→ View substrate", else: "→ Start substrate"}
               </.link>
             </div>
           </div>

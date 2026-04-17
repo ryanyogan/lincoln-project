@@ -24,7 +24,7 @@ defmodule Lincoln.Substrate.Substrate do
   }
 
   @default_timeout 5_000
-  @narrative_interval 200
+  @narrative_interval 50
   @self_model_interval 50
   @belief_maintenance_interval 1000
   @skeptic_interval 6

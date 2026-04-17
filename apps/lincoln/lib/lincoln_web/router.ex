@@ -36,9 +36,6 @@ defmodule LincolnWeb.Router do
     live("/memories", MemoriesLive, :index)
     live("/memories/:id", MemoriesLive, :show)
 
-    # Autonomy - Night Shift
-    live("/autonomy", AutonomyLive, :index)
-
     # Substrate - Real-time cognitive state
     live("/substrate", SubstrateLive, :index)
     live("/substrate/compare", SubstrateCompareLive, :index)

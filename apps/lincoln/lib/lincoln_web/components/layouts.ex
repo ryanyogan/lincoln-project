@@ -78,11 +78,6 @@ defmodule LincolnWeb.Layouts do
                         <.icon name="hero-sparkles" class="size-4" /> Thoughts
                       </a>
                     </li>
-                    <li>
-                      <a href="/autonomy">
-                        <.icon name="hero-bolt" class="size-4" /> Autonomy
-                      </a>
-                    </li>
                   </ul>
                 </details>
               </li>
@@ -215,12 +210,6 @@ defmodule LincolnWeb.Layouts do
                 <.icon name="hero-sparkles" class="size-5" /> Thoughts
               </a>
             </li>
-            <li>
-              <a href="/autonomy">
-                <.icon name="hero-bolt" class="size-5" /> Autonomy
-              </a>
-            </li>
-
             <li class="menu-title text-xs tracking-wide mt-4">
               <span>Research</span>
             </li>
