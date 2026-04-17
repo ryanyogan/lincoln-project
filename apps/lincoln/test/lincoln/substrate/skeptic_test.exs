@@ -9,66 +9,12 @@ defmodule Lincoln.Substrate.SkepticTest do
     %{agent: agent}
   end
 
-  describe "start_link/1" do
-    test "starts and registers in AgentRegistry", %{agent: agent} do
-      pid = start_supervised!({Skeptic, %{agent_id: agent.id, tick_interval: 60_000}})
-      [{reg_pid, _}] = Registry.lookup(Lincoln.AgentRegistry, {agent.id, :skeptic})
-      assert reg_pid == pid
+  describe "detect_contradictions/1" do
+    test "handles agent with no beliefs gracefully", %{agent: agent} do
+      assert :ok = Skeptic.detect_contradictions(agent)
     end
 
-    test "initializes with correct state", %{agent: agent} do
-      pid = start_supervised!({Skeptic, %{agent_id: agent.id, tick_interval: 60_000}})
-
-      state = Skeptic.get_state(pid)
-      assert state.agent_id == agent.id
-      assert state.agent.id == agent.id
-      assert state.tick_count == 0
-      assert state.tick_interval == 60_000
-      assert is_nil(state.last_tick_at)
-    end
-
-    test "uses default tick interval when not specified", %{agent: agent} do
-      pid = start_supervised!({Skeptic, %{agent_id: agent.id, tick_interval: 60_000}})
-      state = Skeptic.get_state(pid)
-      assert state.tick_interval == 60_000
-    end
-  end
-
-  describe "tick" do
-    test "increments tick_count", %{agent: agent} do
-      pid = start_supervised!({Skeptic, %{agent_id: agent.id, tick_interval: 60_000}})
-
-      send(pid, :tick)
-      _ = :sys.get_state(pid)
-
-      state = Skeptic.get_state(pid)
-      assert state.tick_count == 1
-      assert %DateTime{} = state.last_tick_at
-    end
-
-    test "multiple ticks accumulate", %{agent: agent} do
-      pid = start_supervised!({Skeptic, %{agent_id: agent.id, tick_interval: 60_000}})
-
-      send(pid, :tick)
-      _ = :sys.get_state(pid)
-      send(pid, :tick)
-      _ = :sys.get_state(pid)
-
-      state = Skeptic.get_state(pid)
-      assert state.tick_count == 2
-    end
-
-    test "handles tick with no beliefs gracefully", %{agent: agent} do
-      pid = start_supervised!({Skeptic, %{agent_id: agent.id, tick_interval: 60_000}})
-
-      send(pid, :tick)
-      _ = :sys.get_state(pid)
-
-      state = Skeptic.get_state(pid)
-      assert state.tick_count == 1
-    end
-
-    test "handles tick with beliefs that have no embeddings", %{agent: agent} do
+    test "handles beliefs without embeddings gracefully", %{agent: agent} do
       {:ok, _belief_a} =
         Beliefs.create_belief(agent, %{
           statement: "Elixir is statically typed",
@@ -85,24 +31,33 @@ defmodule Lincoln.Substrate.SkepticTest do
           entrenchment: 3
         })
 
-      pid = start_supervised!({Skeptic, %{agent_id: agent.id, tick_interval: 60_000}})
-
-      send(pid, :tick)
-      _ = :sys.get_state(pid)
-
-      state = Skeptic.get_state(pid)
-      assert state.tick_count == 1
+      # No embeddings, so no similarity search possible — should return :ok
+      assert :ok = Skeptic.detect_contradictions(agent)
     end
-  end
 
-  describe "get_state/1" do
-    test "returns full state struct", %{agent: agent} do
-      pid = start_supervised!({Skeptic, %{agent_id: agent.id, tick_interval: 60_000}})
+    test "handles single high-confidence belief", %{agent: agent} do
+      {:ok, _belief} =
+        Beliefs.create_belief(agent, %{
+          statement: "The BEAM VM is concurrent",
+          source_type: "observation",
+          confidence: 0.9,
+          entrenchment: 5
+        })
 
-      state = Skeptic.get_state(pid)
-      assert %Skeptic{} = state
-      assert state.agent_id == agent.id
-      assert state.tick_count == 0
+      assert :ok = Skeptic.detect_contradictions(agent)
+    end
+
+    test "handles beliefs below confidence threshold", %{agent: agent} do
+      {:ok, _belief} =
+        Beliefs.create_belief(agent, %{
+          statement: "Uncertain belief",
+          source_type: "observation",
+          confidence: 0.3,
+          entrenchment: 1
+        })
+
+      # Below 0.7 confidence threshold — won't be picked as target
+      assert :ok = Skeptic.detect_contradictions(agent)
     end
   end
 end

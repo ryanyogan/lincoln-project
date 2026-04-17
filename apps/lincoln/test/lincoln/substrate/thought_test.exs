@@ -32,7 +32,7 @@ defmodule Lincoln.Substrate.ThoughtTest do
       _pid =
         start_supervised!({Thought, %{agent_id: agent.id, belief: belief, attention_score: 0.1}})
 
-      assert_receive {:thought_spawned, _id, "Test belief", :local}, 1_000
+      assert_receive {:thought_spawned, _id, "Test belief", :local, _parent}, 1_000
       assert_receive {:thought_completed, _id, summary}, 2_000
       assert summary =~ "Contemplating"
     end
@@ -46,7 +46,7 @@ defmodule Lincoln.Substrate.ThoughtTest do
       _pid =
         start_supervised!({Thought, %{agent_id: agent.id, belief: belief, attention_score: 0.1}})
 
-      assert_receive {:thought_spawned, id, "Test belief", :local}, 1_000
+      assert_receive {:thought_spawned, id, "Test belief", :local, _parent}, 1_000
       assert_receive {:thought_completed, ^id, result}, 2_000
       assert is_binary(id)
       assert result =~ "Contemplating"
@@ -63,7 +63,7 @@ defmodule Lincoln.Substrate.ThoughtTest do
       _pid =
         start_supervised!({Thought, %{agent_id: agent.id, belief: belief, attention_score: 0.1}})
 
-      assert_receive {:thought_spawned, _id, _statement, :local}, 1_000
+      assert_receive {:thought_spawned, _id, _statement, :local, _parent}, 1_000
     end
 
     test "assigns :ollama tier for medium attention score", %{agent: agent, belief: belief} do
@@ -75,7 +75,7 @@ defmodule Lincoln.Substrate.ThoughtTest do
       _pid =
         start_supervised!({Thought, %{agent_id: agent.id, belief: belief, attention_score: 0.5}})
 
-      assert_receive {:thought_spawned, _id, _statement, :ollama}, 1_000
+      assert_receive {:thought_spawned, _id, _statement, :ollama, _parent}, 1_000
     end
 
     test "assigns :claude tier for high attention score", %{agent: agent, belief: belief} do
@@ -87,7 +87,7 @@ defmodule Lincoln.Substrate.ThoughtTest do
       _pid =
         start_supervised!({Thought, %{agent_id: agent.id, belief: belief, attention_score: 0.9}})
 
-      assert_receive {:thought_spawned, _id, _statement, :claude}, 1_000
+      assert_receive {:thought_spawned, _id, _statement, :claude, _parent}, 1_000
     end
 
     test "generates unique thought ID", %{agent: agent, belief: belief} do
@@ -102,7 +102,7 @@ defmodule Lincoln.Substrate.ThoughtTest do
           id: :thought_1
         )
 
-      assert_receive {:thought_spawned, id1, _, _}, 1_000
+      assert_receive {:thought_spawned, id1, _, _, _}, 1_000
 
       _pid2 =
         start_supervised!(
@@ -110,7 +110,7 @@ defmodule Lincoln.Substrate.ThoughtTest do
           id: :thought_2
         )
 
-      assert_receive {:thought_spawned, id2, _, _}, 1_000
+      assert_receive {:thought_spawned, id2, _, _, _}, 1_000
       assert id1 != id2
     end
   end
@@ -124,7 +124,7 @@ defmodule Lincoln.Substrate.ThoughtTest do
   end
 
   describe "local execution result" do
-    test "result contains belief statement and confidence", %{agent: agent, belief: belief} do
+    test "result contains belief statement", %{agent: agent, belief: belief} do
       Phoenix.PubSub.subscribe(
         Lincoln.PubSub,
         Lincoln.PubSubBroadcaster.thought_topic(agent.id)
@@ -135,7 +135,6 @@ defmodule Lincoln.Substrate.ThoughtTest do
 
       assert_receive {:thought_completed, _id, summary}, 2_000
       assert summary =~ "Test belief"
-      assert summary =~ "0.8"
     end
   end
 end

@@ -8,7 +8,6 @@ defmodule Lincoln.Substrate.AgentSupervisorTest do
       Lincoln.Agents.create_agent(%{name: "Supervisor Test #{System.unique_integer()}"})
 
     on_exit(fn ->
-      # Clean up: stop agent if still running
       Substrate.stop_agent(agent.id)
     end)
 
@@ -16,12 +15,11 @@ defmodule Lincoln.Substrate.AgentSupervisorTest do
   end
 
   describe "start_agent/1" do
-    test "starts all 3 processes", %{agent: agent} do
+    test "starts substrate and attention processes", %{agent: agent} do
       assert {:ok, _pid} = Substrate.start_agent(agent.id)
 
       assert [{_pid1, _}] = Registry.lookup(Lincoln.AgentRegistry, {agent.id, :substrate})
       assert [{_pid2, _}] = Registry.lookup(Lincoln.AgentRegistry, {agent.id, :attention})
-      assert [{_pid3, _}] = Registry.lookup(Lincoln.AgentRegistry, {agent.id, :driver})
     end
 
     test "registers supervisor in registry", %{agent: agent} do
@@ -48,11 +46,9 @@ defmodule Lincoln.Substrate.AgentSupervisorTest do
 
       [{sub_pid, _}] = Registry.lookup(Lincoln.AgentRegistry, {agent.id, :substrate})
       [{att_pid, _}] = Registry.lookup(Lincoln.AgentRegistry, {agent.id, :attention})
-      [{drv_pid, _}] = Registry.lookup(Lincoln.AgentRegistry, {agent.id, :driver})
 
       sub_ref = Process.monitor(sub_pid)
       att_ref = Process.monitor(att_pid)
-      drv_ref = Process.monitor(drv_pid)
       sup_ref = Process.monitor(sup_pid)
 
       assert :ok = Substrate.stop_agent(agent.id)
@@ -60,11 +56,9 @@ defmodule Lincoln.Substrate.AgentSupervisorTest do
       assert_receive {:DOWN, ^sup_ref, :process, ^sup_pid, _reason}
       assert_receive {:DOWN, ^sub_ref, :process, ^sub_pid, _reason}
       assert_receive {:DOWN, ^att_ref, :process, ^att_pid, _reason}
-      assert_receive {:DOWN, ^drv_ref, :process, ^drv_pid, _reason}
 
       assert [] = Registry.lookup(Lincoln.AgentRegistry, {agent.id, :substrate})
       assert [] = Registry.lookup(Lincoln.AgentRegistry, {agent.id, :attention})
-      assert [] = Registry.lookup(Lincoln.AgentRegistry, {agent.id, :driver})
       assert [] = Registry.lookup(Lincoln.AgentRegistry, {agent.id, :supervisor})
     end
 
@@ -94,12 +88,12 @@ defmodule Lincoln.Substrate.AgentSupervisorTest do
 
       assert :ok = Substrate.send_event(agent.id, %{type: :test, content: "hello"})
 
-      # Synchronize: ensure the cast has been processed
-      {:ok, pid} = Substrate.get_process(agent.id, :substrate)
-      _ = :sys.get_state(pid)
+      # With adaptive timeout, events are processed immediately
+      # Just verify the send succeeded and tick_count advanced
+      Process.sleep(50)
 
       {:ok, state} = Substrate.get_agent_state(agent.id)
-      assert length(state.pending_events) == 1
+      assert state.tick_count >= 1
     end
 
     test "returns error if not running" do
@@ -144,9 +138,6 @@ defmodule Lincoln.Substrate.AgentSupervisorTest do
       assert is_pid(pid)
 
       assert {:ok, pid} = Substrate.get_process(agent.id, :attention)
-      assert is_pid(pid)
-
-      assert {:ok, pid} = Substrate.get_process(agent.id, :driver)
       assert is_pid(pid)
     end
 

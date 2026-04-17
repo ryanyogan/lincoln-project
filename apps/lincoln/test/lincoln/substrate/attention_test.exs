@@ -10,9 +10,13 @@ defmodule Lincoln.Substrate.AttentionTest do
   end
 
   describe "next_thought/1" do
-    test "returns nil for agent with no beliefs", %{agent: agent} do
+    test "returns an impulse when agent has no beliefs", %{agent: agent} do
       pid = start_supervised!({Attention, %{agent_id: agent.id}})
-      assert {:ok, nil} = Attention.next_thought(pid)
+      # With no beliefs, cognitive impulses (curiosity/reflection) still compete
+      {:ok, candidate, score, _detail} = Attention.next_thought(pid)
+      assert candidate != nil
+      assert candidate.id =~ "impulse:"
+      assert is_float(score)
     end
 
     test "returns a belief with a computed score", %{agent: agent} do
@@ -25,7 +29,7 @@ defmodule Lincoln.Substrate.AttentionTest do
         })
 
       pid = start_supervised!({Attention, %{agent_id: agent.id}})
-      {:ok, belief, score} = Attention.next_thought(pid)
+      {:ok, belief, score, _detail} = Attention.next_thought(pid)
       assert belief.statement == "Scored belief"
       assert is_float(score)
       assert score > 0.0
@@ -37,8 +41,7 @@ defmodule Lincoln.Substrate.AttentionTest do
         "focus_momentum" => 0.8,
         "interrupt_threshold" => 0.8,
         "boredom_decay" => 0.05,
-        "depth_preference" => 0.8,
-        "tick_interval_ms" => 5_000
+        "depth_preference" => 0.8
       }
 
       {:ok, focused_agent} =
@@ -76,7 +79,7 @@ defmodule Lincoln.Substrate.AttentionTest do
         })
 
       pid = start_supervised!({Attention, %{agent_id: focused_agent.id}})
-      {:ok, belief, _score} = Attention.next_thought(pid)
+      {:ok, belief, _score, _detail} = Attention.next_thought(pid)
 
       assert belief.statement in ["Deep entrenched belief", "Tensioned belief"]
     end
@@ -87,8 +90,7 @@ defmodule Lincoln.Substrate.AttentionTest do
         "focus_momentum" => 0.2,
         "interrupt_threshold" => 0.3,
         "boredom_decay" => 0.3,
-        "depth_preference" => 0.2,
-        "tick_interval_ms" => 5_000
+        "depth_preference" => 0.2
       }
 
       {:ok, butterfly_agent} =
@@ -114,7 +116,7 @@ defmodule Lincoln.Substrate.AttentionTest do
         })
 
       pid = start_supervised!({Attention, %{agent_id: butterfly_agent.id}})
-      {:ok, belief, _score} = Attention.next_thought(pid)
+      {:ok, belief, _score, _detail} = Attention.next_thought(pid)
       assert belief.statement == "Fresh observation"
     end
 
@@ -124,8 +126,7 @@ defmodule Lincoln.Substrate.AttentionTest do
         "focus_momentum" => 0.8,
         "interrupt_threshold" => 0.8,
         "boredom_decay" => 0.05,
-        "depth_preference" => 0.8,
-        "tick_interval_ms" => 5_000
+        "depth_preference" => 0.8
       }
 
       butterfly_params = %{
@@ -133,8 +134,7 @@ defmodule Lincoln.Substrate.AttentionTest do
         "focus_momentum" => 0.2,
         "interrupt_threshold" => 0.3,
         "boredom_decay" => 0.3,
-        "depth_preference" => 0.2,
-        "tick_interval_ms" => 5_000
+        "depth_preference" => 0.2
       }
 
       {:ok, agent_a} =
@@ -170,8 +170,8 @@ defmodule Lincoln.Substrate.AttentionTest do
       pid_a = start_supervised!({Attention, %{agent_id: agent_a.id}}, id: :attn_a)
       pid_b = start_supervised!({Attention, %{agent_id: agent_b.id}}, id: :attn_b)
 
-      {:ok, belief_a, score_a} = Attention.next_thought(pid_a)
-      {:ok, belief_b, score_b} = Attention.next_thought(pid_b)
+      {:ok, belief_a, score_a, _} = Attention.next_thought(pid_a)
+      {:ok, belief_b, score_b, _} = Attention.next_thought(pid_b)
 
       assert belief_a.statement != belief_b.statement
       assert score_a != score_b
@@ -186,8 +186,7 @@ defmodule Lincoln.Substrate.AttentionTest do
             "focus_momentum" => 0.0,
             "interrupt_threshold" => 0.7,
             "boredom_decay" => 0.5,
-            "depth_preference" => 0.1,
-            "tick_interval_ms" => 5_000
+            "depth_preference" => 0.1
           }
         })
 
@@ -208,8 +207,8 @@ defmodule Lincoln.Substrate.AttentionTest do
         })
 
       pid = start_supervised!({Attention, %{agent_id: rotator.id}})
-      {:ok, b1, _} = Attention.next_thought(pid)
-      {:ok, b2, _} = Attention.next_thought(pid)
+      {:ok, b1, _, _} = Attention.next_thought(pid)
+      {:ok, b2, _, _} = Attention.next_thought(pid)
 
       assert b1.id != b2.id
     end

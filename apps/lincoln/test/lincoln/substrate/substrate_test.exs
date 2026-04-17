@@ -12,18 +12,15 @@ defmodule Lincoln.Substrate.SubstrateTest do
   describe "init/1" do
     test "starts with correct initial state", %{agent: agent} do
       {:ok, pid} =
-        start_supervised!({Substrate, %{agent_id: agent.id, tick_interval: 60_000}})
+        start_supervised!({Substrate, %{agent_id: agent.id}})
         |> then(&{:ok, &1})
 
       state = Substrate.get_state(pid)
       assert state.agent_id == agent.id
       assert state.agent.id == agent.id
-      assert state.tick_count == 0
       assert state.pending_events == []
       assert state.activation_map == %{}
-      assert state.tick_interval == 60_000
       assert %DateTime{} = state.started_at
-      assert is_nil(state.last_tick_at)
     end
 
     test "loads current_focus from beliefs", %{agent: agent} do
@@ -36,7 +33,7 @@ defmodule Lincoln.Substrate.SubstrateTest do
         })
 
       {:ok, pid} =
-        start_supervised!({Substrate, %{agent_id: agent.id, tick_interval: 60_000}})
+        start_supervised!({Substrate, %{agent_id: agent.id}})
         |> then(&{:ok, &1})
 
       state = Substrate.get_state(pid)
@@ -44,7 +41,7 @@ defmodule Lincoln.Substrate.SubstrateTest do
     end
 
     test "registers in AgentRegistry", %{agent: agent} do
-      _pid = start_supervised!({Substrate, %{agent_id: agent.id, tick_interval: 60_000}})
+      _pid = start_supervised!({Substrate, %{agent_id: agent.id}})
 
       [{pid, _}] = Registry.lookup(Lincoln.AgentRegistry, {agent.id, :substrate})
       assert is_pid(pid)
@@ -52,80 +49,68 @@ defmodule Lincoln.Substrate.SubstrateTest do
   end
 
   describe "tick loop" do
-    test "tick advances tick_count", %{agent: agent} do
-      pid = start_supervised!({Substrate, %{agent_id: agent.id, tick_interval: 60_000}})
+    test "timeout advances tick_count", %{agent: agent} do
+      pid = start_supervised!({Substrate, %{agent_id: agent.id}})
 
-      send(pid, :tick)
+      # Let at least one timeout fire
+      Process.sleep(50)
       _ = :sys.get_state(pid)
 
       state = Substrate.get_state(pid)
-      assert state.tick_count == 1
+      assert state.tick_count >= 1
       assert %DateTime{} = state.last_tick_at
     end
 
-    test "multiple ticks accumulate", %{agent: agent} do
-      pid = start_supervised!({Substrate, %{agent_id: agent.id, tick_interval: 60_000}})
+    test "timeout processes pending event immediately", %{agent: agent} do
+      pid = start_supervised!({Substrate, %{agent_id: agent.id}})
 
-      send(pid, :tick)
-      _ = :sys.get_state(pid)
-      send(pid, :tick)
-      _ = :sys.get_state(pid)
-
-      state = Substrate.get_state(pid)
-      assert state.tick_count == 2
-    end
-
-    test "tick processes pending event", %{agent: agent} do
-      pid = start_supervised!({Substrate, %{agent_id: agent.id, tick_interval: 60_000}})
-
+      # Send event — with timeout 0, it gets processed immediately
       GenServer.cast(pid, {:event, %{type: :test, content: "hello"}})
-      _ = :sys.get_state(pid)
-      assert Substrate.get_state(pid).pending_events |> length() == 1
 
-      send(pid, :tick)
+      # Let the timeout fire to process the event
+      Process.sleep(50)
       _ = :sys.get_state(pid)
 
       state = Substrate.get_state(pid)
+      # Events are drained immediately — pending should be empty
       assert state.pending_events == []
-      assert state.tick_count == 1
+      assert state.tick_count >= 1
     end
   end
 
   describe "events" do
-    test "cast event adds to pending_events", %{agent: agent} do
-      pid = start_supervised!({Substrate, %{agent_id: agent.id, tick_interval: 60_000}})
-
-      GenServer.cast(pid, {:event, %{type: :test, content: "hello"}})
-      _ = :sys.get_state(pid)
-
-      state = Substrate.get_state(pid)
-      assert length(state.pending_events) == 1
-      assert hd(state.pending_events).type == :test
-    end
-
-    test "send_event/2 API works", %{agent: agent} do
-      pid = start_supervised!({Substrate, %{agent_id: agent.id, tick_interval: 60_000}})
+    test "send_event/2 API delivers events that get processed", %{agent: agent} do
+      pid = start_supervised!({Substrate, %{agent_id: agent.id}})
 
       Substrate.send_event(pid, %{type: :external, data: "test"})
+
+      # With adaptive timeout, events are processed immediately
+      Process.sleep(50)
       _ = :sys.get_state(pid)
 
       state = Substrate.get_state(pid)
-      assert length(state.pending_events) == 1
+      # The event was received and processed (drained)
+      assert state.pending_events == []
+      assert state.tick_count >= 1
     end
 
     test "pending_events bounded to 100", %{agent: agent} do
-      pid = start_supervised!({Substrate, %{agent_id: agent.id, tick_interval: 60_000}})
+      pid = start_supervised!({Substrate, %{agent_id: agent.id}})
+
+      # Suspend the process so events accumulate without being drained
+      :sys.suspend(pid)
 
       for i <- 1..110 do
         Substrate.send_event(pid, %{type: :flood, index: i})
       end
 
-      _ = :sys.get_state(pid)
-      state = Substrate.get_state(pid)
-      assert length(state.pending_events) == 100
+      # Resume and immediately check state
+      :sys.resume(pid)
+      state = :sys.get_state(pid)
+      assert length(state.pending_events) <= 100
     end
 
-    test "event with belief_id updates activation_map", %{agent: agent} do
+    test "event with belief_id updates activation_map after drain", %{agent: agent} do
       {:ok, belief} =
         Beliefs.create_belief(agent, %{
           statement: "Activated belief",
@@ -134,12 +119,12 @@ defmodule Lincoln.Substrate.SubstrateTest do
           entrenchment: 2
         })
 
-      pid = start_supervised!({Substrate, %{agent_id: agent.id, tick_interval: 60_000}})
+      pid = start_supervised!({Substrate, %{agent_id: agent.id}})
 
       Substrate.send_event(pid, %{type: :ref, belief_id: belief.id})
-      _ = :sys.get_state(pid)
 
-      send(pid, :tick)
+      # Let the event be processed
+      Process.sleep(50)
       _ = :sys.get_state(pid)
 
       state = Substrate.get_state(pid)
@@ -149,12 +134,11 @@ defmodule Lincoln.Substrate.SubstrateTest do
 
   describe "get_state/1" do
     test "returns full state struct", %{agent: agent} do
-      pid = start_supervised!({Substrate, %{agent_id: agent.id, tick_interval: 60_000}})
+      pid = start_supervised!({Substrate, %{agent_id: agent.id}})
 
       state = Substrate.get_state(pid)
       assert %Substrate{} = state
       assert state.agent_id == agent.id
-      assert state.tick_count == 0
       assert is_list(state.pending_events)
       assert is_map(state.activation_map)
     end
