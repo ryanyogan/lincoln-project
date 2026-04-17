@@ -678,10 +678,21 @@ defmodule Lincoln.Substrate.Thought do
         Lincoln.Beliefs.weaken_belief(live_belief, "Challenged by reflection")
 
       {:extend, insight} ->
-        Cognition.form_belief(agent, insight, "inference",
-          evidence: "Extended from: #{get_statement(belief)}",
-          confidence: 0.6
-        )
+        # Rate-limit: only form new belief if we haven't created too many recently
+        recent_inferences =
+          Lincoln.Beliefs.list_beliefs(agent, status: "active")
+          |> Enum.count(fn b ->
+            b.source_type == "inference" and
+              b.inserted_at != nil and
+              DateTime.diff(DateTime.utc_now(), b.inserted_at, :second) < 300
+          end)
+
+        if recent_inferences < 5 do
+          Cognition.form_belief(agent, insight, "inference",
+            evidence: "Extended from: #{get_statement(belief)}",
+            confidence: 0.6
+          )
+        end
 
       _ ->
         :ok
