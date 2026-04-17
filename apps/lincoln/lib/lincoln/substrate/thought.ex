@@ -309,6 +309,18 @@ defmodule Lincoln.Substrate.Thought do
     end
   end
 
+  defp run_impulse(agent, :investigation) do
+    alias Lincoln.Substrate.InvestigationThought
+
+    case InvestigationThought.execute(agent) do
+      {:ok, summary} ->
+        {:ok, "Investigation impulse: #{summary}"}
+
+      {:error, reason} ->
+        {:ok, "Investigation failed: #{inspect(reason)}"}
+    end
+  end
+
   defp run_impulse(agent, :learning) do
     alias Lincoln.Substrate.LearningThought
 

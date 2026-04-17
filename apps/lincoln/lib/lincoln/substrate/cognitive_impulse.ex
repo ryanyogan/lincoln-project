@@ -14,11 +14,12 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
   Each impulse has a cooldown to prevent runaway execution.
   """
 
-  alias Lincoln.{Autonomy, Beliefs}
+  alias Lincoln.{Autonomy, Beliefs, Questions}
 
   @curiosity_cooldown_seconds 1800
   @reflection_cooldown_seconds 7200
   @learning_cooldown_seconds 300
+  @investigation_cooldown_seconds 120
 
   @doc """
   Returns a list of impulse candidates with computed scores.
@@ -30,7 +31,8 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
     [
       curiosity_impulse(agent, impulse_state, now),
       reflection_impulse(agent, impulse_state, now),
-      learning_impulse(agent, impulse_state, now)
+      learning_impulse(agent, impulse_state, now),
+      investigation_impulse(agent, impulse_state, now)
     ]
     |> Enum.reject(&is_nil/1)
   end
@@ -47,7 +49,8 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
     %{
       last_curiosity_at: nil,
       last_reflection_at: nil,
-      last_learning_at: nil
+      last_learning_at: nil,
+      last_investigation_at: nil
     }
   end
 
@@ -92,6 +95,32 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
         last_reinforced_at: nil,
         status: "active"
       }
+    end
+  end
+
+  defp investigation_impulse(agent, impulse_state, now) do
+    if on_cooldown?(impulse_state.last_investigation_at, now, @investigation_cooldown_seconds) do
+      nil
+    else
+      score = investigation_score(agent)
+
+      if score > 0.0 do
+        %{
+          id: "impulse:investigation",
+          statement: "I should investigate one of my open questions",
+          confidence: score,
+          entrenchment: 1,
+          source_type: "introspection",
+          revision_count: 0,
+          inserted_at: now,
+          updated_at: now,
+          last_challenged_at: nil,
+          last_reinforced_at: nil,
+          status: "active"
+        }
+      else
+        nil
+      end
     end
   end
 
@@ -146,6 +175,17 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
 
       min(1.0, staleness_ratio * 0.6 + 0.1)
     end
+  end
+
+  defp investigation_score(agent) do
+    questions = Questions.list_investigatable_questions(agent, limit: 5)
+
+    case length(questions) do
+      0 -> 0.0
+      n -> min(0.85, 0.4 + n * 0.1)
+    end
+  rescue
+    _ -> 0.0
   end
 
   defp learning_score(agent) do

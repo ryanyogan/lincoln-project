@@ -146,27 +146,8 @@ defmodule Lincoln.Substrate.Attention do
 
         scoring_detail = build_scoring_detail(scored, params)
 
-        # Update impulse cooldowns if an impulse was selected
-        impulse_state =
-          if CognitiveImpulse.impulse?(best_belief.id) do
-            case CognitiveImpulse.impulse_type(best_belief.id) do
-              :curiosity -> %{state.impulse_state | last_curiosity_at: now}
-              :reflection -> %{state.impulse_state | last_reflection_at: now}
-              :learning -> %{state.impulse_state | last_learning_at: now}
-              _ -> state.impulse_state
-            end
-          else
-            state.impulse_state
-          end
-
-        new_activation_map =
-          if CognitiveImpulse.impulse?(best_belief.id) do
-            state.activation_map
-          else
-            state.activation_map
-            |> Map.put(best_belief.id, now)
-            |> bound_map(500)
-          end
+        impulse_state = update_impulse_cooldown(state.impulse_state, best_belief.id, now)
+        new_activation_map = update_activation_map(state.activation_map, best_belief.id, now)
 
         # Track recent focus for monotony detection
         recent = [best_belief.id | state.recent_focus_ids] |> Enum.take(@max_focus_history)
@@ -280,6 +261,34 @@ defmodule Lincoln.Substrate.Attention do
   def terminate(reason, state) do
     Logger.info("[Attention #{state.agent_id}] Terminating: #{inspect(reason)}")
     :ok
+  end
+
+  # =============================================================================
+  # Impulse & Activation Helpers
+  # =============================================================================
+
+  defp update_impulse_cooldown(impulse_state, belief_id, now) do
+    if CognitiveImpulse.impulse?(belief_id) do
+      key = :"last_#{CognitiveImpulse.impulse_type(belief_id)}_at"
+
+      if Map.has_key?(impulse_state, key) do
+        Map.put(impulse_state, key, now)
+      else
+        impulse_state
+      end
+    else
+      impulse_state
+    end
+  end
+
+  defp update_activation_map(activation_map, belief_id, now) do
+    if CognitiveImpulse.impulse?(belief_id) do
+      activation_map
+    else
+      activation_map
+      |> Map.put(belief_id, now)
+      |> bound_map(500)
+    end
   end
 
   # =============================================================================

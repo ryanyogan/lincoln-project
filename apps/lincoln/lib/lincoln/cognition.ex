@@ -97,18 +97,18 @@ defmodule Lincoln.Cognition do
   defp get_reflection_candidates(agent, hours) do
     memories = Memory.list_recent_memories(agent, hours, limit: 50)
 
-    # Filter to memories that haven't been reflected on much
-    # and have sufficient importance
+    # Include all memory types with importance >= 3
+    # Previous filter excluded "reflection" type which filtered out most memories
     candidates =
       memories
-      |> Enum.filter(fn m -> m.importance >= 4 and m.memory_type != "reflection" end)
+      |> Enum.filter(fn m -> m.importance >= 3 end)
       |> Enum.take(20)
 
     {:ok, candidates}
   end
 
-  defp generate_insights(memories, _llm) when is_list(memories) and length(memories) < 3 do
-    # Not enough material for reflection
+  defp generate_insights(memories, _llm) when is_list(memories) and length(memories) < 2 do
+    # Not enough material for reflection (lowered from 3 to 2)
     {:ok, []}
   end
 
