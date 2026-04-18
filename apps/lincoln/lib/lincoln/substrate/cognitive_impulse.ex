@@ -47,8 +47,16 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
   def impulse?(<<"impulse:" <> _rest>>), do: true
   def impulse?(_), do: false
 
+  @impulse_types %{
+    "curiosity" => :curiosity,
+    "reflection" => :reflection,
+    "learning" => :learning,
+    "investigation" => :investigation,
+    "self_improve" => :self_improve
+  }
+
   @doc "Extract the impulse type from an impulse ID."
-  def impulse_type(<<"impulse:" <> type>>), do: String.to_existing_atom(type)
+  def impulse_type(<<"impulse:" <> type>>), do: Map.get(@impulse_types, type, :unknown)
 
   @doc "Initial impulse state for the Attention struct."
   def initial_state do
