@@ -551,7 +551,7 @@ defmodule Lincoln.Cognition.ConversationHandler do
   defp trigger_evolution_reflection(agent, opts) do
     llm = get_llm_adapter(opts)
 
-    Task.start(fn ->
+    Task.Supervisor.start_child(Lincoln.TaskSupervisor, fn ->
       # Gather rich context for reflection
       context = build_evolution_context(agent)
 
@@ -691,7 +691,7 @@ defmodule Lincoln.Cognition.ConversationHandler do
 
         # Immediately process the improvement (don't wait for next worker cycle)
         # This runs in a separate task so we don't block the conversation
-        Task.start(fn ->
+        Task.Supervisor.start_child(Lincoln.TaskSupervisor, fn ->
           run_immediate_improvement(agent, opportunity)
         end)
 
@@ -945,7 +945,7 @@ defmodule Lincoln.Cognition.ConversationHandler do
   # Step 5: LEARN - Store memories, update beliefs (async).
   defp learn_async(state, _opts) do
     # Spawn async task to not block response
-    Task.start(fn ->
+    Task.Supervisor.start_child(Lincoln.TaskSupervisor, fn ->
       learn(state)
     end)
 

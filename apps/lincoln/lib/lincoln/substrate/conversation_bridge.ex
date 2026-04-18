@@ -143,7 +143,7 @@ defmodule Lincoln.Substrate.ConversationBridge do
   defp extract_belief_ids(_), do: []
 
   defp observe_user_message(agent_id, session_id, user_content) do
-    Task.start(fn ->
+    Task.Supervisor.start_child(Lincoln.TaskSupervisor, fn ->
       try do
         UserModels.observe_message(agent_id, to_string(session_id), user_content)
       rescue
