@@ -93,15 +93,15 @@ defmodule Lincoln.Substrate.InferenceTier do
     belief = Keyword.get(opts, :belief)
 
     if agent && belief && is_binary(belief.id) do
-      has_embedding = belief.embedding != nil
       relationships = Beliefs.find_relationships(agent, belief.id)
       support_count = Enum.count(relationships, &(&1.relationship_type == "supports"))
+      derived_count = Enum.count(relationships, &(&1.relationship_type == "derived_from"))
 
-      # Well-covered requires BOTH graph connectivity AND examination:
-      # - Must have an embedding (otherwise Skeptic/Resonator can't work with it)
-      # - Must have 3+ support relationships (genuinely connected)
-      # - OR has been revised 10+ times (thoroughly examined by LLM)
-      has_embedding and (support_count >= 3 or belief.revision_count >= 10)
+      # Well-covered ONLY if the belief graph shows genuine connections:
+      # - 3+ support relationships, OR
+      # - 2+ derived_from relationships (belief has produced offspring)
+      # Revision count is NOT a signal — local entrenchment inflates it
+      support_count >= 3 or derived_count >= 2
     else
       false
     end
