@@ -311,6 +311,29 @@ defmodule Lincoln.Substrate.Thought do
     end
   end
 
+  defp run_impulse(agent, :self_improve) do
+    alias Lincoln.Autonomy.SelfImprovement
+
+    llm = Application.get_env(:lincoln, :llm_adapter, Lincoln.Adapters.LLM.Anthropic)
+
+    case SelfImprovement.process_next(agent, llm) do
+      {:ok, code_change} ->
+        {:ok, "Self-improvement: modified #{code_change.file_path}"}
+
+      :queue_empty ->
+        {:ok, "No improvements pending"}
+
+      :already_working ->
+        {:ok, "Already working on an improvement"}
+
+      :skipped ->
+        {:ok, "Improvement analyzed but skipped"}
+
+      {:error, reason} ->
+        {:ok, "Self-improvement failed: #{inspect(reason)}"}
+    end
+  end
+
   defp run_impulse(agent, :investigation) do
     alias Lincoln.Substrate.InvestigationThought
 

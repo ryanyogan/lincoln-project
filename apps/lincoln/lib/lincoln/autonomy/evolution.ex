@@ -32,7 +32,13 @@ defmodule Lincoln.Autonomy.Evolution do
   @project_root SelfAwareness.project_root()
 
   # Files Lincoln should NOT modify (core stability)
-  @protected_files ["mix.exs"]
+  @protected_files [
+    "mix.exs",
+    "lib/lincoln/substrate/substrate.ex",
+    "lib/lincoln/substrate/attention.ex",
+    "lib/lincoln/autonomy/evolution.ex",
+    "lib/lincoln/autonomy/self_improvement.ex"
+  ]
 
   # ============================================================================
   # Code Reading (via SelfAwareness)
@@ -294,12 +300,40 @@ defmodule Lincoln.Autonomy.Evolution do
 
     case File.write(full_path, code_change.new_content) do
       :ok ->
-        Logger.info("Applied code change to: #{code_change.file_path}")
+        Logger.info("[Evolution] Applied code change to: #{code_change.file_path}")
+        # Hot-swap the module into the running BEAM VM
+        hot_swap_module(code_change.file_path)
         {:ok, code_change}
 
       {:error, reason} ->
         {:error, {:write_failed, reason}}
     end
+  end
+
+  @doc """
+  Hot-swap a modified module into the running BEAM VM.
+  Uses Code.compile_file + :code.load_binary for live reloading.
+  """
+  def hot_swap_module(file_path) do
+    full_path = Path.join(@project_root, file_path)
+
+    if String.ends_with?(file_path, ".ex") and File.exists?(full_path) do
+      case Code.compile_file(full_path) do
+        [{module, _binary} | _] ->
+          Logger.info("[Evolution] Hot-swapped #{inspect(module)} into running VM")
+          :ok
+
+        [] ->
+          Logger.warning("[Evolution] No modules compiled from #{file_path}")
+          :ok
+      end
+    else
+      :ok
+    end
+  rescue
+    e ->
+      Logger.warning("[Evolution] Hot-swap failed for #{file_path}: #{Exception.message(e)}")
+      :ok
   end
 
   @doc """
