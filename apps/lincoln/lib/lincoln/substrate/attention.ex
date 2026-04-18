@@ -32,7 +32,11 @@ defmodule Lincoln.Substrate.Attention do
     :last_scored_at,
     activation_map: %{},
     impulse_state: CognitiveImpulse.initial_state(),
-    recent_focus_ids: []
+    recent_focus_ids: [],
+    beliefs_cache: nil,
+    beliefs_cached_at: nil,
+    relationships_cache: nil,
+    relationships_cached_at: nil
   ]
 
   @source_novelty %{
@@ -61,6 +65,7 @@ defmodule Lincoln.Substrate.Attention do
   end
 
   @max_trajectory_candidates 5
+  @cache_ttl_seconds 5
 
   @doc """
   Returns the next belief to focus on, scored by attention parameters.
@@ -116,12 +121,13 @@ defmodule Lincoln.Substrate.Attention do
 
   @impl true
   def handle_call(:next_thought, _from, state) do
-    beliefs = Beliefs.list_beliefs(state.agent, status: "active")
-
     now = DateTime.utc_now()
 
-    # Include cognitive impulses alongside real beliefs
-    impulses = CognitiveImpulse.candidates(state.agent, state.impulse_state, now)
+    # Cache beliefs and relationships to avoid querying on every tick
+    {beliefs, state} = cached_beliefs(state, now)
+    {relationships, state} = cached_relationships(state, now)
+
+    impulses = CognitiveImpulse.candidates(state.agent, state.impulse_state, now, beliefs)
     all_candidates = beliefs ++ impulses
 
     case all_candidates do
@@ -130,7 +136,7 @@ defmodule Lincoln.Substrate.Attention do
 
       candidates ->
         params = state.attention_params
-        all_relationships = Beliefs.find_all_relationships(state.agent)
+        all_relationships = relationships
 
         scored =
           candidates
@@ -265,6 +271,30 @@ defmodule Lincoln.Substrate.Attention do
   def terminate(reason, state) do
     Logger.info("[Attention #{state.agent_id}] Terminating: #{inspect(reason)}")
     :ok
+  end
+
+  # =============================================================================
+  # Query Caching
+  # =============================================================================
+
+  defp cached_beliefs(state, now) do
+    if state.beliefs_cache && state.beliefs_cached_at &&
+         DateTime.diff(now, state.beliefs_cached_at, :second) < @cache_ttl_seconds do
+      {state.beliefs_cache, state}
+    else
+      beliefs = Beliefs.list_beliefs(state.agent, status: "active")
+      {beliefs, %{state | beliefs_cache: beliefs, beliefs_cached_at: now}}
+    end
+  end
+
+  defp cached_relationships(state, now) do
+    if state.relationships_cache && state.relationships_cached_at &&
+         DateTime.diff(now, state.relationships_cached_at, :second) < @cache_ttl_seconds do
+      {state.relationships_cache, state}
+    else
+      rels = Beliefs.find_all_relationships(state.agent)
+      {rels, %{state | relationships_cache: rels, relationships_cached_at: now}}
+    end
   end
 
   # =============================================================================

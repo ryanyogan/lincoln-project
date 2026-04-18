@@ -37,7 +37,7 @@ defmodule Lincoln.Events.Emitter do
         PubSubBroadcaster.broadcast("agent:#{agent.id}:events", {:event, event})
 
         # Run immediate handlers (async)
-        Task.start(fn ->
+        Task.Supervisor.start_child(Lincoln.TaskSupervisor, fn ->
           Handlers.handle(event)
         end)
 

@@ -127,7 +127,7 @@ defmodule Lincoln.Beliefs do
   end
 
   defp embed_belief_async(belief) do
-    Task.start(fn ->
+    Task.Supervisor.start_child(Lincoln.TaskSupervisor, fn ->
       try do
         embeddings =
           Application.get_env(

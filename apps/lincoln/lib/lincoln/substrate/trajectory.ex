@@ -127,6 +127,16 @@ defmodule Lincoln.Substrate.Trajectory do
     |> Enum.reverse()
   end
 
+  @doc "Prune old substrate events to prevent unbounded table growth."
+  def prune_old_events(agent_id, opts \\ []) do
+    hours = Keyword.get(opts, :hours, 24)
+    cutoff = DateTime.add(DateTime.utc_now(), -hours, :hour)
+
+    SubstrateEvent
+    |> where([e], e.agent_id == ^agent_id and e.inserted_at < ^cutoff)
+    |> Repo.delete_all()
+  end
+
   @doc "Extract scoring detail from a trajectory event, nil-safe for old events."
   def scoring_detail(%SubstrateEvent{event_data: %{"scoring" => detail}}) when is_map(detail),
     do: detail

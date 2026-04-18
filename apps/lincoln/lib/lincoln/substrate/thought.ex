@@ -646,7 +646,7 @@ defmodule Lincoln.Substrate.Thought do
 
     case InferenceTier.execute_at_tier(:claude, messages, []) do
       {:ok, text} ->
-        Task.start(fn ->
+        Task.Supervisor.start_child(Lincoln.TaskSupervisor, fn ->
           try do
             Narratives.create_reflection(state.agent_id, %{
               content: text,
@@ -763,17 +763,20 @@ defmodule Lincoln.Substrate.Thought do
   end
 
   defp process_thought_result(agent_id, belief, result, tier) do
-    Task.start(fn ->
+    Task.Supervisor.start_child(Lincoln.TaskSupervisor, fn ->
       try do
         agent = Agents.get_agent!(agent_id)
         belief_id = belief && Map.get(belief, :id)
 
-        # Store the reflection as a memory regardless
-        Lincoln.Memory.create_memory(agent, %{
-          content: "Reflection on '#{get_statement(belief)}': #{result}",
-          memory_type: "reflection",
-          importance: 5
-        })
+        # Only store memories for LLM-tier thoughts — local thoughts produce
+        # repetitive observations that flood the memory table
+        if tier != :local do
+          Lincoln.Memory.create_memory(agent, %{
+            content: "Reflection on '#{get_statement(belief)}': #{result}",
+            memory_type: "reflection",
+            importance: 5
+          })
+        end
 
         # Feed back into beliefs based on tier
         if belief_id && is_binary(belief_id) && not CognitiveImpulse.impulse?(belief_id) do

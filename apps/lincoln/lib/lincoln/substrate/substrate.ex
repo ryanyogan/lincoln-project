@@ -30,6 +30,7 @@ defmodule Lincoln.Substrate.Substrate do
   @belief_maintenance_interval 1000
   @consolidation_interval 20
   @diversity_monitor_interval 25
+  @event_cleanup_interval 500
   @skeptic_interval 6
   @resonator_interval 12
 
@@ -44,6 +45,7 @@ defmodule Lincoln.Substrate.Substrate do
     :started_at,
     :last_attention_score,
     :last_tier,
+    :tick_timer_ref,
     idle_streak: 0
   ]
 
@@ -121,9 +123,8 @@ defmodule Lincoln.Substrate.Substrate do
   @impl true
   def handle_cast({:event, event}, state) do
     pending = (state.pending_events ++ [event]) |> Enum.take(100)
-    # Schedule immediate tick to process the event
-    schedule_tick(0)
-    {:noreply, %{state | pending_events: pending}}
+    new_state = schedule_tick_cancel_old(%{state | pending_events: pending}, 0)
+    {:noreply, new_state}
   end
 
   @impl true
@@ -136,8 +137,8 @@ defmodule Lincoln.Substrate.Substrate do
       end
 
     run_periodic_tasks(new_state)
-    schedule_tick(next_timeout(new_state))
-    {:noreply, new_state}
+    final_state = schedule_tick_cancel_old(new_state, next_timeout(new_state))
+    {:noreply, final_state}
   end
 
   @impl true
@@ -165,8 +166,8 @@ defmodule Lincoln.Substrate.Substrate do
     )
 
     # Thought completed — schedule immediate tick to spawn next thought
-    schedule_tick(0)
-    {:noreply, %{state | activation_map: activation_map}}
+    new_state = schedule_tick_cancel_old(%{state | activation_map: activation_map}, 0)
+    {:noreply, new_state}
   end
 
   @impl true
@@ -186,8 +187,8 @@ defmodule Lincoln.Substrate.Substrate do
       label: "thought failure trajectory"
     )
 
-    schedule_tick(0)
-    {:noreply, state}
+    new_state = schedule_tick_cancel_old(state, 0)
+    {:noreply, new_state}
   end
 
   # Skeptic detected a contradiction — queue it as an event for processing
@@ -200,8 +201,8 @@ defmodule Lincoln.Substrate.Substrate do
     }
 
     pending = (state.pending_events ++ [event]) |> Enum.take(100)
-    schedule_tick(0)
-    {:noreply, %{state | pending_events: pending}}
+    new_state = schedule_tick_cancel_old(%{state | pending_events: pending}, 0)
+    {:noreply, new_state}
   end
 
   # Resonator detected a cascade — queue it as an event for processing
@@ -213,8 +214,8 @@ defmodule Lincoln.Substrate.Substrate do
     }
 
     pending = (state.pending_events ++ [event]) |> Enum.take(100)
-    schedule_tick(0)
-    {:noreply, %{state | pending_events: pending}}
+    new_state = schedule_tick_cancel_old(%{state | pending_events: pending}, 0)
+    {:noreply, new_state}
   end
 
   @impl true
@@ -258,6 +259,10 @@ defmodule Lincoln.Substrate.Substrate do
       run_bg(fn -> DiversityMonitor.check_and_adjust(state.agent) end, "diversity")
     end)
 
+    maybe_run(tick, @event_cleanup_interval, fn ->
+      run_bg(fn -> Trajectory.prune_old_events(state.agent_id, hours: 24) end, "event cleanup")
+    end)
+
     maybe_run(tick, @belief_maintenance_interval, fn ->
       run_bg(fn -> BeliefMaintenance.decay_unreinforced(state.agent_id) end, "maintenance")
     end)
@@ -272,7 +277,7 @@ defmodule Lincoln.Substrate.Substrate do
   defp run_background_task(fun, opts) do
     label = Keyword.get(opts, :label, "background task")
 
-    Task.start(fn ->
+    Task.Supervisor.start_child(Lincoln.TaskSupervisor, fn ->
       try do
         fun.()
       rescue
@@ -582,7 +587,14 @@ defmodule Lincoln.Substrate.Substrate do
   end
 
   defp schedule_tick(delay_ms) do
+    # Returns the timer ref — callers should store in state.tick_timer_ref
     Process.send_after(self(), :tick, delay_ms)
+  end
+
+  defp schedule_tick_cancel_old(state, delay_ms) do
+    if state.tick_timer_ref, do: Process.cancel_timer(state.tick_timer_ref)
+    ref = Process.send_after(self(), :tick, delay_ms)
+    %{state | tick_timer_ref: ref}
   end
 
   defp next_timeout(state) do

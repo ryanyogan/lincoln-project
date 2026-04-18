@@ -14,6 +14,8 @@ defmodule Lincoln.Application do
       {Phoenix.PubSub, name: Lincoln.PubSub},
       {Registry, keys: :unique, name: Lincoln.AgentRegistry},
       {DynamicSupervisor, name: Lincoln.AgentSupervisor, strategy: :one_for_one},
+      # Supervised task pool for fire-and-forget background work
+      {Task.Supervisor, name: Lincoln.TaskSupervisor},
       # Oban for background job processing
       {Oban, Application.fetch_env!(:lincoln, Oban)},
       # Events cache for fast pattern analysis

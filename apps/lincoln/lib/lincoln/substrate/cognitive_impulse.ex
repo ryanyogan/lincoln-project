@@ -14,7 +14,7 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
   Each impulse has a cooldown to prevent runaway execution.
   """
 
-  alias Lincoln.{Autonomy, Beliefs, Questions}
+  alias Lincoln.{Autonomy, Questions}
   alias Lincoln.Events.ImprovementQueue
 
   @curiosity_cooldown_seconds 1800
@@ -29,10 +29,13 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
   Each impulse is a map that looks like a belief to Attention:
   `%{id: "impulse:type", statement: ..., confidence: ..., ...}`
   """
-  def candidates(agent, impulse_state, now) do
+  def candidates(agent, impulse_state, now, beliefs \\ nil) do
+    # Accept pre-fetched beliefs to avoid re-querying on every tick
+    cached_beliefs = beliefs || []
+
     [
-      curiosity_impulse(agent, impulse_state, now),
-      reflection_impulse(agent, impulse_state, now),
+      curiosity_impulse(cached_beliefs, impulse_state, now),
+      reflection_impulse(cached_beliefs, impulse_state, now),
       learning_impulse(agent, impulse_state, now),
       investigation_impulse(agent, impulse_state, now),
       self_improve_impulse(agent, impulse_state, now)
@@ -58,11 +61,11 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
     }
   end
 
-  defp curiosity_impulse(agent, impulse_state, now) do
+  defp curiosity_impulse(beliefs, impulse_state, now) do
     if on_cooldown?(impulse_state.last_curiosity_at, now, @curiosity_cooldown_seconds) do
       nil
     else
-      score = curiosity_score(agent)
+      score = curiosity_score(beliefs)
 
       %{
         id: "impulse:curiosity",
@@ -80,11 +83,11 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
     end
   end
 
-  defp reflection_impulse(agent, impulse_state, now) do
+  defp reflection_impulse(beliefs, impulse_state, now) do
     if on_cooldown?(impulse_state.last_reflection_at, now, @reflection_cooldown_seconds) do
       nil
     else
-      score = reflection_score(agent)
+      score = reflection_score(beliefs)
 
       %{
         id: "impulse:reflection",
@@ -186,10 +189,7 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
     DateTime.diff(now, last_at, :second) < seconds
   end
 
-  defp curiosity_score(agent) do
-    # Score high when the belief set is going stale (few recent updates)
-    beliefs = Beliefs.list_beliefs(agent, status: "active", limit: 50)
-
+  defp curiosity_score(beliefs) do
     if beliefs == [] do
       0.8
     else
@@ -230,25 +230,17 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
   defp learning_score(agent) do
     case Autonomy.get_active_session(agent) do
       nil ->
-        # No session — can self-initiate if agent has enough beliefs
-        belief_count = length(Beliefs.list_beliefs(agent, status: "active", limit: 4))
-        if belief_count >= 3, do: 0.25, else: 0.0
+        0.2
 
       session ->
         pending = Autonomy.count_pending_topics(session)
-
-        if pending > 0 do
-          min(0.8, 0.3 + pending * 0.1)
-        else
-          0.1
-        end
+        if pending > 0, do: min(0.8, 0.3 + pending * 0.1), else: 0.1
     end
+  rescue
+    _ -> 0.0
   end
 
-  defp reflection_score(agent) do
-    # Score high when many beliefs have been recently created or revised
-    beliefs = Beliefs.list_beliefs(agent, status: "active", limit: 50)
-
+  defp reflection_score(beliefs) do
     if beliefs == [] do
       0.0
     else
