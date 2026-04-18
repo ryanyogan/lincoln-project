@@ -360,7 +360,15 @@ defmodule Lincoln.Substrate.Attention do
     # Monotony penalty — prevent perseveration on the same belief
     monotony = monotony_penalty(belief.id, state.recent_focus_ids)
 
-    final_score = min(1.0, max(0.0, base_score + focus_boost - monotony))
+    # Impulse urgency bonus — impulses represent actions, not topics.
+    # Their confidence IS their urgency and should boost their final score
+    # so they can compete with high-scoring beliefs.
+    impulse_boost =
+      if CognitiveImpulse.impulse?(belief.id),
+        do: belief.confidence * 0.3,
+        else: 0.0
+
+    final_score = min(1.0, max(0.0, base_score + focus_boost + impulse_boost - monotony))
 
     extra = %{focus_boost: focus_boost, monotony_penalty: monotony, final_score: final_score}
     {final_score, Map.merge(components, extra)}
