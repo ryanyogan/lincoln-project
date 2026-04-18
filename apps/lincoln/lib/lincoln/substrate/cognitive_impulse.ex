@@ -221,7 +221,7 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
 
     case length(questions) do
       0 -> 0.0
-      n -> min(0.85, 0.4 + n * 0.1)
+      n -> min(0.95, 0.5 + n * 0.1)
     end
   rescue
     _ -> 0.0
