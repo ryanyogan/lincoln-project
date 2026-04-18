@@ -207,7 +207,8 @@ defmodule Lincoln.Beliefs do
   defp find_similar_pairs(beliefs) do
     for a <- beliefs, b <- beliefs, a.id < b.id do
       sim = embedding_similarity(a.embedding, b.embedding)
-      if sim >= 0.85, do: {a, b, sim}, else: nil
+      # 0.95 threshold — only consolidate near-exact duplicates, not related beliefs
+      if sim >= 0.95, do: {a, b, sim}, else: nil
     end
     |> Enum.reject(&is_nil/1)
     |> Enum.sort_by(fn {_, _, sim} -> -sim end)
