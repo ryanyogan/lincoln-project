@@ -185,7 +185,11 @@ defmodule Lincoln.Beliefs do
 
   @doc """
   Consolidate similar beliefs — keep the strongest, retract duplicates.
-  Uses embedding similarity to find near-duplicates (>0.85 cosine similarity).
+
+  Uses two thresholds:
+  - 0.95 for high-confidence beliefs (near-exact duplicates only)
+  - 0.88 for low-confidence beliefs (<0.4) which tend to accumulate as
+    slight restatements of the same idea
   """
   def consolidate_similar(%Agent{} = agent) do
     beliefs = list_beliefs(agent, status: "active")
@@ -194,11 +198,11 @@ defmodule Lincoln.Beliefs do
     if length(beliefs_with_embeddings) < 2 do
       0
     else
-      do_consolidate(agent, beliefs_with_embeddings)
+      do_consolidate(beliefs_with_embeddings)
     end
   end
 
-  defp do_consolidate(_agent, beliefs) do
+  defp do_consolidate(beliefs) do
     find_similar_pairs(beliefs)
     |> Enum.reduce({MapSet.new(), 0}, &merge_pair/2)
     |> elem(1)
@@ -207,11 +211,18 @@ defmodule Lincoln.Beliefs do
   defp find_similar_pairs(beliefs) do
     for a <- beliefs, b <- beliefs, a.id < b.id do
       sim = embedding_similarity(a.embedding, b.embedding)
-      # 0.95 threshold — only consolidate near-exact duplicates, not related beliefs
-      if sim >= 0.95, do: {a, b, sim}, else: nil
+      threshold = consolidation_threshold(a, b)
+
+      if sim >= threshold, do: {a, b, sim}, else: nil
     end
     |> Enum.reject(&is_nil/1)
     |> Enum.sort_by(fn {_, _, sim} -> -sim end)
+  end
+
+  # Low-confidence beliefs get a more aggressive consolidation threshold
+  # since they tend to accumulate as slight restatements
+  defp consolidation_threshold(a, b) do
+    if a.confidence < 0.4 and b.confidence < 0.4, do: 0.88, else: 0.95
   end
 
   defp merge_pair({a, b, _sim}, {retracted, count}) do

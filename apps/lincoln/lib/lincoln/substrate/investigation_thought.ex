@@ -1,11 +1,11 @@
 defmodule Lincoln.Substrate.InvestigationThought do
   @moduledoc """
-  Substrate-native question investigation — extracted from InvestigationWorker.
+  Substrate-native question investigation.
 
   Picks the oldest open question, gathers context from beliefs and memories,
   calls the LLM for an answer, creates a finding, and forms a belief if
-  confidence is high enough. Follow-up questions become research topics
-  for the learning impulse.
+  confidence is high enough. Records an observation memory of the investigation.
+  Follow-up questions become research topics for the learning impulse.
   """
 
   alias Lincoln.{Autonomy, Beliefs, Cognition, Memory, Questions}
@@ -36,7 +36,8 @@ defmodule Lincoln.Substrate.InvestigationThought do
         process_answer(agent, question, answer_data)
 
       {:error, reason} ->
-        {:ok, "Investigation failed: #{inspect(reason)}"}
+        Logger.warning("[InvestigationThought] LLM call failed: #{inspect(reason)}")
+        {:error, "Investigation LLM call failed: #{inspect(reason)}"}
     end
   end
 
@@ -90,39 +91,85 @@ defmodule Lincoln.Substrate.InvestigationThought do
     confidence = answer_data["confidence"] || 0.5
     follow_ups = answer_data["follow_up_questions"] || []
 
-    # Create finding
-    Questions.create_finding(agent, question, %{
-      answer: answer,
-      source_type: "investigation",
-      evidence: answer_data["reasoning"] || "",
-      confidence: confidence
-    })
+    # Step 1: Create finding — this also resolves the question in a transaction
+    case Questions.create_finding(agent, question, %{
+           answer: answer,
+           source_type: "investigation",
+           evidence: answer_data["reasoning"] || "",
+           confidence: confidence
+         }) do
+      {:ok, _finding} ->
+        Logger.info(
+          "[InvestigationThought] Finding created for question #{String.slice(question.question, 0, 40)}"
+        )
 
-    # Form belief if confident enough
-    if confidence >= 0.7 do
-      Cognition.form_belief(agent, answer, "inference",
-        evidence: "From investigating: #{String.slice(question.question, 0, 80)}"
-      )
+        # Step 2: Record observation memory of the investigation
+        record_investigation_memory(agent, question, answer, confidence)
+
+        # Step 3: Form belief if confident enough
+        if confidence >= 0.7 do
+          try do
+            Cognition.form_belief(agent, answer, "inference",
+              evidence: "From investigating: #{String.slice(question.question, 0, 80)}"
+            )
+          rescue
+            e ->
+              Logger.warning(
+                "[InvestigationThought] Belief formation failed: #{Exception.message(e)}"
+              )
+          end
+        end
+
+        # Step 4: Queue follow-up questions
+        queue_follow_ups(agent, follow_ups)
+
+        summary =
+          "Investigated '#{String.slice(question.question, 0, 40)}' → #{String.slice(answer, 0, 60)}"
+
+        Logger.info("[InvestigationThought] #{summary}")
+        {:ok, summary}
+
+      {:error, reason} ->
+        Logger.error("[InvestigationThought] Failed to create finding: #{inspect(reason)}")
+
+        {:error, "Failed to create finding: #{inspect(reason)}"}
+
+      # Handle the case where create_finding returns just the transaction result
+      other ->
+        Logger.warning(
+          "[InvestigationThought] Unexpected create_finding result: #{inspect(other)}"
+        )
+
+        # Still record the observation even if finding creation had unexpected format
+        record_investigation_memory(agent, question, answer, confidence)
+
+        summary =
+          "Investigated '#{String.slice(question.question, 0, 40)}' → #{String.slice(answer, 0, 60)}"
+
+        {:ok, summary}
     end
+  end
 
-    # Queue follow-up questions as research topics
-    queue_follow_ups(agent, follow_ups)
+  defp record_investigation_memory(agent, question, answer, confidence) do
+    content =
+      "Investigated question: '#{String.slice(question.question, 0, 120)}' — " <>
+        "Answer (confidence #{Float.round(confidence * 100, 0)}%): #{String.slice(answer, 0, 300)}"
 
-    # Resolve the question
-    Questions.resolve_question(question, %Lincoln.Questions.Finding{
-      answer: answer,
-      confidence: confidence
-    })
+    importance = if confidence >= 0.7, do: 7, else: 5
 
-    summary =
-      "Investigated '#{String.slice(question.question, 0, 40)}' → #{String.slice(answer, 0, 60)}"
-
-    Logger.info("[InvestigationThought] #{summary}")
-    {:ok, summary}
-  rescue
-    e ->
-      Logger.warning("[InvestigationThought] Processing failed: #{Exception.message(e)}")
-      {:ok, "Investigation completed but processing failed"}
+    try do
+      Memory.record_observation(agent, content,
+        importance: importance,
+        context: %{
+          question_id: question.id,
+          confidence: confidence,
+          source: "investigation"
+        }
+      )
+    rescue
+      e ->
+        Logger.warning("[InvestigationThought] Memory creation failed: #{Exception.message(e)}")
+    end
   end
 
   defp queue_follow_ups(_agent, []), do: :ok

@@ -16,7 +16,7 @@ defmodule Lincoln.Substrate.ConversationBridge do
 
   require Logger
 
-  alias Lincoln.{Beliefs, Substrate}
+  alias Lincoln.{Agents, Beliefs, Memory, Substrate}
   alias Lincoln.Substrate.Trajectory
   alias Lincoln.UserModels
 
@@ -39,6 +39,7 @@ defmodule Lincoln.Substrate.ConversationBridge do
 
     if is_binary(user_content) and byte_size(user_content) > 0 do
       observe_user_message(agent_id, session_id, user_content)
+      record_conversation_memory(agent_id, user_content, message, session_id)
     end
 
     # Extract belief IDs from cognitive metadata for substrate activation
@@ -141,6 +142,38 @@ defmodule Lincoln.Substrate.ConversationBridge do
   end
 
   defp extract_belief_ids(_), do: []
+
+  defp record_conversation_memory(agent_id, user_content, lincoln_response, session_id) do
+    # Only record meaningful exchanges (skip very short messages like "hi")
+    if String.length(user_content) > 20 or String.length(to_string(lincoln_response)) > 50 do
+      Task.Supervisor.start_child(Lincoln.TaskSupervisor, fn ->
+        try do
+          agent = Agents.get_agent!(agent_id)
+
+          user_snippet = String.slice(user_content, 0, 200)
+          response_snippet = String.slice(to_string(lincoln_response), 0, 300)
+
+          content =
+            "Conversation exchange — User: #{user_snippet}" <>
+              if(String.length(user_content) > 200, do: "...", else: "") <>
+              " | Lincoln: #{response_snippet}" <>
+              if(String.length(to_string(lincoln_response)) > 300, do: "...", else: "")
+
+          importance = if String.length(user_content) > 100, do: 6, else: 4
+
+          Memory.record_conversation(agent, content,
+            importance: importance,
+            context: %{conversation_id: session_id, source: "chat"}
+          )
+        rescue
+          e ->
+            Logger.warning(
+              "[ConversationBridge] Conversation memory failed: #{Exception.message(e)}"
+            )
+        end
+      end)
+    end
+  end
 
   defp observe_user_message(agent_id, session_id, user_content) do
     Task.Supervisor.start_child(Lincoln.TaskSupervisor, fn ->
