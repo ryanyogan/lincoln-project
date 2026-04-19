@@ -17,31 +17,34 @@ defmodule LincolnWeb.Router do
   scope "/", LincolnWeb do
     pipe_through(:browser)
 
-    # Dashboard is the main page
-    live("/", DashboardLive)
+    live_session :default,
+      on_mount: [LincolnWeb.Live.Hooks.AssignCurrentPath] do
+      # Dashboard is the main page
+      live("/", DashboardLive)
 
-    # Chat interface
-    live("/chat", ChatLive, :index)
-    live("/chat/:id", ChatLive, :show)
+      # Chat interface
+      live("/chat", ChatLive, :index)
+      live("/chat/:id", ChatLive, :show)
 
-    # Beliefs
-    live("/beliefs", BeliefsLive, :index)
-    live("/beliefs/:id", BeliefsLive, :show)
+      # Beliefs
+      live("/beliefs", BeliefsLive, :index)
+      live("/beliefs/:id", BeliefsLive, :show)
 
-    # Questions
-    live("/questions", QuestionsLive, :index)
-    live("/questions/:id", QuestionsLive, :show)
+      # Questions
+      live("/questions", QuestionsLive, :index)
+      live("/questions/:id", QuestionsLive, :show)
 
-    # Memories
-    live("/memories", MemoriesLive, :index)
-    live("/memories/:id", MemoriesLive, :show)
+      # Memories
+      live("/memories", MemoriesLive, :index)
+      live("/memories/:id", MemoriesLive, :show)
 
-    # Substrate - Real-time cognitive state
-    live("/substrate", SubstrateLive, :index)
-    live("/substrate/compare", SubstrateCompareLive, :index)
-    live("/substrate/thoughts", SubstrateThoughtsLive, :index)
-    live("/narrative", NarrativeLive, :index)
-    live("/benchmarks", BenchmarksLive, :index)
+      # Substrate - Real-time cognitive state
+      live("/substrate", SubstrateLive, :index)
+      live("/substrate/compare", SubstrateCompareLive, :index)
+      live("/substrate/thoughts", SubstrateThoughtsLive, :index)
+      live("/narrative", NarrativeLive, :index)
+      live("/benchmarks", BenchmarksLive, :index)
+    end
 
     # Keep the old page controller for reference
     get("/welcome", PageController, :home)

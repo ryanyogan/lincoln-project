@@ -1,5 +1,6 @@
-/* Lincoln Neural Dashboard Theme
-   Clean admin dashboard with neural/brain aesthetic */
+/* Lincoln — West World Neobrutalism Theme
+   Delos control room meets Memphis design:
+   thick borders, offset shadows, terminal fonts, high contrast */
 
 @import "tailwindcss" source(none);
 @source "../css";
@@ -14,7 +15,7 @@
 }
 
 /* =============================================================================
-   LINCOLN DARK THEME - Neural Dashboard
+   LINCOLN DARK THEME — Neobrutalist Neural Dashboard
    ============================================================================= */
 
 @plugin "../vendor/daisyui-theme" {
@@ -22,47 +23,47 @@
   default: true;
   prefersdark: true;
   color-scheme: "dark";
-  
+
   /* Zinc-based neutral palette */
-  --color-base-100: oklch(21% 0.006 285);      /* zinc-900 */
-  --color-base-200: oklch(27% 0.006 286);      /* zinc-800 */
-  --color-base-300: oklch(37% 0.013 285);      /* zinc-700 */
-  --color-base-content: oklch(97% 0.001 286);  /* zinc-50 */
-  
-  /* Blue primary - clean, professional */
-  --color-primary: oklch(70% 0.17 250);        /* blue-400 */
-  --color-primary-content: oklch(15% 0.01 250);
-  
-  /* Violet secondary - neural accent */
+  --color-base-100: oklch(21% 0.006 285);      /* zinc-900 — deep background */
+  --color-base-200: oklch(27% 0.006 286);      /* zinc-800 — cards, sidebar */
+  --color-base-300: oklch(37% 0.013 285);      /* zinc-700 — borders, elevated */
+  --color-base-content: oklch(97% 0.001 286);  /* zinc-50  — text */
+
+  /* Cyan-blue primary — Delos diagnostic screens */
+  --color-primary: oklch(72% 0.17 220);        /* cyan-blue */
+  --color-primary-content: oklch(12% 0.01 220);
+
+  /* Violet secondary — neural accent */
   --color-secondary: oklch(70% 0.16 290);      /* violet-400 */
   --color-secondary-content: oklch(15% 0.01 290);
-  
-  /* Emerald accent - success/positive */
-  --color-accent: oklch(70% 0.17 162);         /* emerald-400 */
-  --color-accent-content: oklch(15% 0.01 162);
-  
+
+  /* Amber accent — West World desert/park warmth */
+  --color-accent: oklch(76% 0.14 70);          /* amber-gold */
+  --color-accent-content: oklch(15% 0.01 70);
+
   /* Neutral */
   --color-neutral: oklch(45% 0.014 286);       /* zinc-600 */
   --color-neutral-content: oklch(92% 0.004 286);
-  
+
   /* Status colors */
   --color-info: oklch(65% 0.19 250);
   --color-info-content: oklch(98% 0.01 250);
   --color-success: oklch(65% 0.2 162);
   --color-success-content: oklch(15% 0.01 162);
-  --color-warning: oklch(75% 0.15 85);
-  --color-warning-content: oklch(15% 0.01 85);
+  --color-warning: oklch(78% 0.16 70);         /* warmer amber */
+  --color-warning-content: oklch(15% 0.01 70);
   --color-error: oklch(60% 0.2 25);
   --color-error-content: oklch(98% 0.01 25);
-  
-  /* Clean rounded corners */
-  --radius-selector: 0.375rem;
-  --radius-field: 0.375rem;
-  --radius-box: 0.5rem;
+
+  /* Neobrutalist shape system */
+  --radius-selector: 0.125rem;   /* near-square */
+  --radius-field: 0.125rem;
+  --radius-box: 0.1875rem;       /* 3px — barely rounded */
   --size-selector: 0.25rem;
   --size-field: 0.25rem;
-  --border: 1px;
-  --depth: 1;
+  --border: 2px;                 /* thick, pronounced borders */
+  --depth: 0;                    /* flat — shadows via utility classes */
   --noise: 0;
 }
 
@@ -75,42 +76,43 @@
   default: false;
   prefersdark: false;
   color-scheme: "light";
-  
+
   /* Light zinc palette */
-  --color-base-100: oklch(100% 0 0);           /* white */
-  --color-base-200: oklch(97% 0.001 286);      /* zinc-100 */
-  --color-base-300: oklch(93% 0.003 286);      /* zinc-200 */
+  --color-base-100: oklch(99% 0.001 286);      /* near-white */
+  --color-base-200: oklch(96% 0.002 286);      /* zinc-100 */
+  --color-base-300: oklch(90% 0.004 286);      /* zinc-200 */
   --color-base-content: oklch(21% 0.006 285);  /* zinc-900 */
-  
+
   /* Deeper primary for contrast */
-  --color-primary: oklch(55% 0.2 250);         /* blue-500 */
-  --color-primary-content: oklch(98% 0.01 250);
-  
-  --color-secondary: oklch(55% 0.18 290);      /* violet-500 */
+  --color-primary: oklch(50% 0.2 220);
+  --color-primary-content: oklch(98% 0.01 220);
+
+  --color-secondary: oklch(55% 0.18 290);
   --color-secondary-content: oklch(98% 0.01 290);
-  
-  --color-accent: oklch(55% 0.2 162);          /* emerald-500 */
-  --color-accent-content: oklch(98% 0.01 162);
-  
-  --color-neutral: oklch(32% 0.01 286);        /* zinc-700 */
+
+  --color-accent: oklch(58% 0.16 70);
+  --color-accent-content: oklch(98% 0.01 70);
+
+  --color-neutral: oklch(32% 0.01 286);
   --color-neutral-content: oklch(97% 0.001 286);
-  
-  --color-info: oklch(55% 0.2 250);
+
+  --color-info: oklch(50% 0.2 250);
   --color-info-content: oklch(98% 0.01 250);
-  --color-success: oklch(55% 0.2 162);
+  --color-success: oklch(50% 0.2 162);
   --color-success-content: oklch(98% 0.01 162);
-  --color-warning: oklch(65% 0.17 85);
-  --color-warning-content: oklch(15% 0.01 85);
+  --color-warning: oklch(60% 0.17 70);
+  --color-warning-content: oklch(15% 0.01 70);
   --color-error: oklch(55% 0.22 25);
   --color-error-content: oklch(98% 0.01 25);
-  
-  --radius-selector: 0.375rem;
-  --radius-field: 0.375rem;
-  --radius-box: 0.5rem;
+
+  /* Same neobrutalist shapes */
+  --radius-selector: 0.125rem;
+  --radius-field: 0.125rem;
+  --radius-box: 0.1875rem;
   --size-selector: 0.25rem;
   --size-field: 0.25rem;
-  --border: 1px;
-  --depth: 1;
+  --border: 2px;
+  --depth: 0;
   --noise: 0;
 }
 
@@ -126,16 +128,114 @@
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
 /* =============================================================================
-   NEURAL AESTHETIC - Subtle brain/network visuals
+   TYPOGRAPHY — Terminal font (used 177+ times, now actually defined!)
+   ============================================================================= */
+
+.font-terminal {
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Cascadia Code', ui-monospace, monospace;
+  letter-spacing: -0.01em;
+}
+
+/* =============================================================================
+   NEOBRUTALISM UTILITIES
+   ============================================================================= */
+
+/* Offset shadows — the signature neobrutalist look */
+.shadow-brutal {
+  box-shadow: 4px 4px 0 oklch(0% 0 0 / 0.25);
+}
+.shadow-brutal-sm {
+  box-shadow: 2px 2px 0 oklch(0% 0 0 / 0.2);
+}
+.shadow-brutal-primary {
+  box-shadow: 4px 4px 0 oklch(72% 0.17 220 / 0.3);
+}
+.shadow-brutal-accent {
+  box-shadow: 4px 4px 0 oklch(76% 0.14 70 / 0.3);
+}
+
+/* Light theme shadow adjustments */
+[data-theme="lincoln-light"] .shadow-brutal {
+  box-shadow: 4px 4px 0 oklch(0% 0 0 / 0.12);
+}
+[data-theme="lincoln-light"] .shadow-brutal-sm {
+  box-shadow: 2px 2px 0 oklch(0% 0 0 / 0.08);
+}
+
+/* Card with neobrutalist border + shadow */
+.card-brutal {
+  border-width: 2px;
+  border-style: solid;
+  border-color: oklch(37% 0.013 285);
+  box-shadow: 4px 4px 0 oklch(0% 0 0 / 0.25);
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+.card-brutal:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 5px 5px 0 oklch(0% 0 0 / 0.3);
+}
+.card-brutal:active {
+  transform: translate(2px, 2px);
+  box-shadow: 2px 2px 0 oklch(0% 0 0 / 0.15);
+}
+[data-theme="lincoln-light"] .card-brutal {
+  border-color: oklch(90% 0.004 286);
+  box-shadow: 4px 4px 0 oklch(0% 0 0 / 0.1);
+}
+[data-theme="lincoln-light"] .card-brutal:hover {
+  box-shadow: 5px 5px 0 oklch(0% 0 0 / 0.12);
+}
+
+/* Hover lift for interactive cards */
+.hover-lift {
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+.hover-lift:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 oklch(0% 0 0 / 0.2);
+}
+
+/* =============================================================================
+   STATUS INDICATORS — Standardized (replaces 3 different implementations)
+   ============================================================================= */
+
+.status-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  border: 1.5px solid oklch(0% 0 0 / 0.15);
+}
+.status-dot-online {
+  background: oklch(65% 0.2 162);
+  box-shadow: 0 0 6px oklch(65% 0.2 162 / 0.5);
+}
+.status-dot-offline {
+  background: oklch(55% 0.014 286);
+}
+.status-dot-warning {
+  background: oklch(78% 0.16 70);
+  box-shadow: 0 0 4px oklch(78% 0.16 70 / 0.4);
+}
+.status-dot-error {
+  background: oklch(60% 0.2 25);
+  box-shadow: 0 0 4px oklch(60% 0.2 25 / 0.4);
+}
+.status-dot-idle {
+  background: oklch(45% 0.014 286);
+}
+
+/* =============================================================================
+   NEURAL AESTHETIC — Subtle brain/network visuals
    ============================================================================= */
 
 /* Neural dot grid background */
 .neural-grid {
-  background-image: radial-gradient(circle at 1px 1px, oklch(70% 0.17 250 / 0.15) 1px, transparent 0);
+  background-image: radial-gradient(circle at 1px 1px, oklch(72% 0.17 220 / 0.12) 1px, transparent 0);
   background-size: 24px 24px;
 }
 
-/* Subtle connection pattern for cards */
+/* Subtle gradient overlay for cards */
 .neural-card {
   position: relative;
   overflow: hidden;
@@ -147,13 +247,31 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background-image: 
-    radial-gradient(circle at 10% 20%, oklch(70% 0.17 250 / 0.05) 0%, transparent 50%),
-    radial-gradient(circle at 90% 80%, oklch(70% 0.16 290 / 0.05) 0%, transparent 50%);
+  background-image:
+    radial-gradient(circle at 10% 20%, oklch(72% 0.17 220 / 0.04) 0%, transparent 50%),
+    radial-gradient(circle at 90% 80%, oklch(70% 0.16 290 / 0.04) 0%, transparent 50%);
   pointer-events: none;
 }
 
-/* Neural pulse animation for active states */
+/* West World scan line effect — subtle, for hero/header areas */
+.scan-lines {
+  position: relative;
+}
+.scan-lines::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    oklch(0% 0 0 / 0.03) 0px,
+    oklch(0% 0 0 / 0.03) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  pointer-events: none;
+}
+
+/* Neural pulse animation */
 .neural-pulse {
   animation: neural-pulse 2s ease-in-out infinite;
 }
@@ -162,9 +280,18 @@
   50% { opacity: 0.6; }
 }
 
+/* Angular pulse — more brutalist */
+.brutal-pulse {
+  animation: brutal-pulse 1.5s step-end infinite;
+}
+@keyframes brutal-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
 /* Synapse glow for important elements */
 .synapse-glow {
-  box-shadow: 0 0 20px oklch(70% 0.17 250 / 0.2);
+  box-shadow: 0 0 20px oklch(72% 0.17 220 / 0.2);
 }
 
 /* Node indicator (small dot) */
@@ -172,74 +299,67 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: oklch(70% 0.17 250);
-  box-shadow: 0 0 8px oklch(70% 0.17 250 / 0.5);
+  background: oklch(72% 0.17 220);
+  box-shadow: 0 0 8px oklch(72% 0.17 220 / 0.5);
 }
 .node-indicator.active {
   animation: node-blink 1s ease-in-out infinite;
 }
 @keyframes node-blink {
-  0%, 100% { opacity: 1; box-shadow: 0 0 8px oklch(70% 0.17 250 / 0.5); }
-  50% { opacity: 0.7; box-shadow: 0 0 16px oklch(70% 0.17 250 / 0.8); }
+  0%, 100% { opacity: 1; box-shadow: 0 0 8px oklch(72% 0.17 220 / 0.5); }
+  50% { opacity: 0.7; box-shadow: 0 0 16px oklch(72% 0.17 220 / 0.8); }
 }
 
 /* Connection line */
 .connection-line {
-  background: linear-gradient(90deg, 
-    oklch(70% 0.17 250 / 0.3) 0%, 
+  background: linear-gradient(90deg,
+    oklch(72% 0.17 220 / 0.3) 0%,
     oklch(70% 0.16 290 / 0.3) 100%
   );
-  height: 1px;
+  height: 2px;
+}
+
+/* =============================================================================
+   SCROLLBAR
+   ============================================================================= */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: oklch(21% 0.006 285);
+}
+::-webkit-scrollbar-thumb {
+  background: oklch(45% 0.014 286);
+  border: 1px solid oklch(37% 0.013 285);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: oklch(55% 0.014 286);
 }
 
 /* =============================================================================
    UTILITY CLASSES
    ============================================================================= */
 
-/* Smooth scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-::-webkit-scrollbar-track {
-  background: oklch(27% 0.006 286);
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb {
-  background: oklch(45% 0.014 286);
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: oklch(55% 0.014 286);
-}
-
 /* Selection */
 ::selection {
-  background: oklch(70% 0.17 250 / 0.3);
+  background: oklch(72% 0.17 220 / 0.3);
   color: oklch(97% 0.001 286);
 }
 
 /* Focus ring */
 .focus-ring:focus-visible {
-  outline: 2px solid oklch(70% 0.17 250);
+  outline: 2px solid oklch(72% 0.17 220);
   outline-offset: 2px;
-}
-
-/* Card hover effect */
-.card-hover {
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-.card-hover:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px oklch(0% 0 0 / 0.15);
 }
 
 /* Fade in animation */
 .fade-in {
-  animation: fade-in 0.2s ease-out;
+  animation: fade-in 0.15s ease-out;
 }
 @keyframes fade-in {
-  from { opacity: 0; transform: translateY(4px); }
+  from { opacity: 0; transform: translateY(2px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
@@ -252,45 +372,42 @@
   50% { opacity: 0.5; }
 }
 
-/* Status indicators */
-.status-online { color: oklch(70% 0.17 162); }
+/* Status text colors */
+.status-online { color: oklch(65% 0.2 162); }
 .status-offline { color: oklch(55% 0.014 286); }
-.status-busy { color: oklch(75% 0.15 85); }
+.status-busy { color: oklch(78% 0.16 70); }
 .status-error { color: oklch(60% 0.2 25); }
 
-/* Badge variations */
+/* Badge gradient */
 .badge-neural {
-  background: linear-gradient(135deg, oklch(70% 0.17 250) 0%, oklch(70% 0.16 290) 100%);
-  color: oklch(15% 0.01 250);
+  background: linear-gradient(135deg, oklch(72% 0.17 220) 0%, oklch(70% 0.16 290) 100%);
+  color: oklch(12% 0.01 220);
+  font-weight: 700;
 }
 
-/* Text utilities */
+/* Text muted */
 .text-muted {
   color: oklch(65% 0.01 286);
 }
 
-/* Consistent spacing for page content */
+/* Page container */
 .page-container {
   max-width: 80rem;
   margin: 0 auto;
-  padding: 1.5rem;
 }
 
-/* Card container */
+/* Consistent card container (legacy compat) */
 .card-container {
   background: oklch(27% 0.006 286);
-  border: 1px solid oklch(37% 0.013 285);
-  border-radius: 0.5rem;
+  border: 2px solid oklch(37% 0.013 285);
   padding: 1.5rem;
 }
-
-/* Light theme card */
 [data-theme="lincoln-light"] .card-container {
-  background: oklch(100% 0 0);
-  border-color: oklch(93% 0.003 286);
+  background: oklch(99% 0.001 286);
+  border-color: oklch(90% 0.004 286);
 }
 
-/* Stat card */
+/* Stat card (legacy compat) */
 .stat-card {
   display: flex;
   flex-direction: column;
@@ -304,4 +421,18 @@
 .stat-card .stat-label {
   font-size: 0.875rem;
   color: oklch(65% 0.01 286);
+}
+
+/* =============================================================================
+   NAVIGATION — Active state indicator
+   ============================================================================= */
+
+/* Sidebar active item — thick left border indicator */
+.nav-item-active {
+  border-left: 3px solid oklch(72% 0.17 220);
+  background: oklch(72% 0.17 220 / 0.08);
+  font-weight: 700;
+}
+.nav-item-active .icon {
+  color: oklch(72% 0.17 220);
 }

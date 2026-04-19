@@ -230,41 +230,20 @@ defmodule LincolnWeb.SubstrateLive do
     <Layouts.app flash={@flash}>
       <div class="space-y-6">
         <%!-- Page Header --%>
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            <div class="relative">
-              <.icon name="hero-cpu-chip" class="size-8 text-primary" />
-              <span class={[
-                "absolute -bottom-0.5 -right-0.5 size-2.5 rounded-full border-2 border-base-100",
-                if(@substrate_running, do: "bg-success", else: "bg-error")
-              ]}>
-              </span>
-            </div>
-            <div>
-              <h1 class="text-2xl font-black font-terminal uppercase tracking-tight">
-                Cognitive Substrate
-              </h1>
-              <p class="text-base-content/50 text-sm font-terminal">
-                Real-time process state for {@agent.name}
-              </p>
-            </div>
-          </div>
-          <span class={[
-            "badge font-terminal font-bold uppercase text-xs",
-            if(@substrate_running, do: "badge-success", else: "badge-error")
-          ]}>
-            <span class={[
-              "size-2 rounded-full mr-1.5",
-              if(@substrate_running, do: "bg-success-content animate-pulse", else: "bg-error-content")
-            ]}>
-            </span>
-            <%= if @substrate_running do %>
-              Running
-            <% else %>
-              Offline
-            <% end %>
-          </span>
-        </div>
+        <.page_header
+          title="Cognitive Substrate"
+          subtitle={"Real-time process state for #{@agent.name}"}
+          icon="hero-cpu-chip"
+          icon_color={if(@substrate_running, do: "text-primary", else: "text-error")}
+        >
+          <:actions>
+            <.status_indicator
+              status={if(@substrate_running, do: :online, else: :offline)}
+              label={if(@substrate_running, do: "Running", else: "Offline")}
+              pulse={@substrate_running}
+            />
+          </:actions>
+        </.page_header>
 
         <%= if @substrate_running do %>
           <%!-- Main 2-column grid --%>
@@ -272,19 +251,19 @@ defmodule LincolnWeb.SubstrateLive do
             <%!-- Left column: Status + Driver (2/3 width) --%>
             <div class="lg:col-span-2 space-y-6">
               <%!-- Substrate Status Card --%>
-              <div class="card bg-base-200 border-2 border-primary/50 hover:border-primary transition-colors neural-card">
+              <div class="card bg-base-200 border-2 border-primary/50 hover:border-primary transition-colors neural-card shadow-brutal-sm">
                 <div class="card-body p-0">
-                  <div class="flex items-center justify-between px-4 py-3 border-b-2 border-primary/30 bg-base-300">
+                  <div class="flex items-center justify-between px-4 py-3 border-b-2 border-primary/30 bg-base-300 scan-lines">
                     <h2 class="card-title text-sm font-terminal uppercase gap-2">
                       <.icon name="hero-cpu-chip" class="size-4 text-primary" /> Substrate State
                     </h2>
                     <div class="flex items-center gap-3">
-                      <span class="text-xs font-terminal text-base-content/40">
+                      <span class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
                         Since {format_time(@substrate_state.started_at)}
                       </span>
                       <button
                         phx-click="stop_substrate"
-                        class="btn btn-xs bg-error/20 border-error/50 hover:bg-error/30 text-error font-terminal uppercase"
+                        class="btn btn-xs bg-error/20 border-2 border-error/50 hover:bg-error/30 text-error font-terminal uppercase"
                       >
                         <.icon name="hero-stop" class="size-3" /> Stop
                       </button>
@@ -293,7 +272,7 @@ defmodule LincolnWeb.SubstrateLive do
 
                   <div class="p-4">
                     <%!-- Stats row --%>
-                    <div class="stats stats-vertical sm:stats-horizontal bg-base-300 w-full border border-primary/20">
+                    <div class="stats stats-vertical sm:stats-horizontal bg-base-300 w-full border-2 border-primary/20">
                       <div class="stat">
                         <div class="stat-figure text-primary">
                           <.icon name="hero-arrow-path" class="size-7 neural-pulse" />
@@ -337,22 +316,23 @@ defmodule LincolnWeb.SubstrateLive do
                     </div>
 
                     <%!-- Current Focus --%>
-                    <div class="mt-4 p-3 bg-base-300 border border-accent/30">
+                    <div class="mt-4 p-3 bg-base-300 border-2 border-accent/30">
                       <div class="flex items-center gap-2 mb-2">
-                        <span class="node-indicator active"></span>
-                        <span class="text-xs font-terminal uppercase text-base-content/60">
-                          Current Focus
-                        </span>
+                        <.status_indicator
+                          status={if(@substrate_state.current_focus, do: :online, else: :idle)}
+                          label="Current Focus"
+                          pulse={@substrate_state.current_focus != nil}
+                        />
                       </div>
                       <%= if @substrate_state.current_focus do %>
                         <p class="text-sm font-terminal text-accent leading-relaxed">
                           {@substrate_state.current_focus.statement}
                         </p>
                         <div class="flex items-center gap-2 mt-2">
-                          <span class="badge badge-accent badge-xs font-terminal">
+                          <.badge type={:accent}>
                             {Float.round(@substrate_state.current_focus.confidence * 100, 0)}%
-                          </span>
-                          <span class="text-[10px] font-terminal text-base-content/40">
+                          </.badge>
+                          <span class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
                             E:{@substrate_state.current_focus.entrenchment}
                           </span>
                         </div>
@@ -367,60 +347,61 @@ defmodule LincolnWeb.SubstrateLive do
               </div>
 
               <%!-- Self Model Card --%>
-              <div class="card bg-base-200/50 border border-base-content/10">
+              <div class="card bg-base-200/50 border-2 border-base-content/10 shadow-brutal-sm">
                 <div class="card-body p-4">
-                  <h3 class="font-terminal text-sm text-base-content/50 mb-2">SELF MODEL</h3>
+                  <h3 class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40 mb-2">
+                    Self Model
+                  </h3>
                   <%= if @self_model do %>
-                    <p class="text-xs text-base-content/60">
+                    <p class="text-xs font-terminal text-base-content/60">
                       {Lincoln.SelfModel.to_summary_string(@self_model)}
                     </p>
-                    <div class="flex gap-3 mt-2 text-xs font-terminal text-base-content/30">
-                      <span>L0:{@self_model.local_tier_count}</span>
-                      <span>L1:{@self_model.ollama_tier_count}</span>
-                      <span>L2:{@self_model.claude_tier_count}</span>
+                    <div class="flex gap-3 mt-2">
+                      <.badge type={:default}>L0:{@self_model.local_tier_count}</.badge>
+                      <.badge type={:default}>L1:{@self_model.ollama_tier_count}</.badge>
+                      <.badge type={:default}>L2:{@self_model.claude_tier_count}</.badge>
                     </div>
                   <% else %>
-                    <p class="text-xs text-base-content/30">Updates every 50 ticks</p>
+                    <p class="text-xs font-terminal text-base-content/30">Updates every 50 ticks</p>
                   <% end %>
                 </div>
               </div>
 
               <%!-- Attention Parameters Card --%>
-              <div class="card bg-base-200 border-2 border-warning/50 hover:border-warning transition-colors">
+              <div class="card bg-base-200 border-2 border-warning/50 hover:border-warning transition-colors shadow-brutal-sm">
                 <div class="card-body p-0">
-                  <div class="flex items-center justify-between px-4 py-3 border-b-2 border-warning/30 bg-base-300">
-                    <h2 class="card-title text-sm font-terminal uppercase gap-2">
+                  <.section_header title="Attention Parameters" subtitle="Tuning knobs">
+                    <:actions>
                       <.icon name="hero-adjustments-horizontal" class="size-4 text-warning" />
-                      Attention Parameters
-                    </h2>
-                  </div>
+                    </:actions>
+                  </.section_header>
                   <div class="p-4">
                     <div class="flex flex-wrap gap-1.5 mb-4">
                       <button
                         phx-click="select_preset"
                         phx-value-preset="focused"
-                        class="btn btn-xs bg-base-300 border-warning/30 hover:border-warning text-warning font-terminal uppercase"
+                        class="btn btn-xs bg-base-300 border-2 border-warning/30 hover:border-warning text-warning font-terminal uppercase"
                       >
                         Focused
                       </button>
                       <button
                         phx-click="select_preset"
                         phx-value-preset="butterfly"
-                        class="btn btn-xs bg-base-300 border-warning/30 hover:border-warning text-warning font-terminal uppercase"
+                        class="btn btn-xs bg-base-300 border-2 border-warning/30 hover:border-warning text-warning font-terminal uppercase"
                       >
                         Butterfly
                       </button>
                       <button
                         phx-click="select_preset"
                         phx-value-preset="adhd_like"
-                        class="btn btn-xs bg-base-300 border-warning/30 hover:border-warning text-warning font-terminal uppercase"
+                        class="btn btn-xs bg-base-300 border-2 border-warning/30 hover:border-warning text-warning font-terminal uppercase"
                       >
                         ADHD-like
                       </button>
                       <button
                         phx-click="select_preset"
                         phx-value-preset="default"
-                        class="btn btn-xs bg-base-300 border-base-content/10 hover:border-base-content/30 text-base-content/60 font-terminal uppercase"
+                        class="btn btn-xs bg-base-300 border-2 border-base-content/10 hover:border-base-content/30 text-base-content/60 font-terminal uppercase"
                       >
                         Default
                       </button>
@@ -480,7 +461,7 @@ defmodule LincolnWeb.SubstrateLive do
                       </div>
                       <button
                         type="submit"
-                        class="btn btn-sm bg-warning/20 border-warning/50 hover:bg-warning/30 text-warning font-terminal uppercase w-full mt-4"
+                        class="btn btn-sm bg-warning/20 border-2 border-warning/50 hover:bg-warning/30 text-warning font-terminal uppercase w-full mt-4"
                       >
                         <.icon name="hero-check" class="size-3.5" /> Apply Parameters
                       </button>
@@ -492,19 +473,16 @@ defmodule LincolnWeb.SubstrateLive do
 
             <%!-- Right column: Event Timeline + Beliefs + Tiers (1/3 width) --%>
             <div class="lg:col-span-1 space-y-6">
-              <div class="card bg-base-200 border-2 border-secondary/50 hover:border-secondary transition-colors">
+              <div class="card bg-base-200 border-2 border-secondary/50 hover:border-secondary transition-colors shadow-brutal-sm">
                 <div class="card-body p-0">
                   <div class="px-4 py-3 border-b-2 border-secondary/30 bg-base-300">
                     <h2 class="card-title text-sm font-terminal uppercase gap-2">
                       <.icon name="hero-signal" class="size-4 text-secondary" /> Event Stream
                     </h2>
                   </div>
-                  <div class="p-3 max-h-[32rem] overflow-y-auto">
+                  <div class="p-3 max-h-80 overflow-y-auto">
                     <%= if @recent_events == [] do %>
-                      <div class="flex flex-col items-center justify-center py-12 text-base-content/40">
-                        <.icon name="hero-signal" class="size-8 mb-2" />
-                        <p class="text-sm font-terminal">Waiting for events...</p>
-                      </div>
+                      <.empty_state icon="hero-signal" title="Waiting for events..." />
                     <% else %>
                       <ul class="space-y-1.5">
                         <li :for={event <- @recent_events}>
@@ -517,38 +495,33 @@ defmodule LincolnWeb.SubstrateLive do
               </div>
 
               <%!-- Belief Score Ranking --%>
-              <div class="card bg-base-200 border-2 border-accent/50 hover:border-accent transition-colors">
+              <div class="card bg-base-200 border-2 border-accent/50 hover:border-accent transition-colors shadow-brutal-sm">
                 <div class="card-body p-0">
                   <div class="px-4 py-3 border-b-2 border-accent/30 bg-base-300">
                     <h2 class="card-title text-sm font-terminal uppercase gap-2">
                       <.icon name="hero-chart-bar" class="size-4 text-accent" /> Top Scored Beliefs
                     </h2>
                   </div>
-                  <div class="p-3">
+                  <div class="p-3 max-h-80 overflow-y-auto">
                     <%= if @top_beliefs == [] do %>
-                      <div class="flex flex-col items-center justify-center py-8 text-base-content/40">
-                        <.icon name="hero-chart-bar" class="size-6 mb-2" />
-                        <p class="text-xs font-terminal">No scored beliefs yet</p>
-                      </div>
+                      <.empty_state icon="hero-chart-bar" title="No scored beliefs yet" />
                     <% else %>
                       <ul class="space-y-2">
                         <li
                           :for={{belief, score} <- @top_beliefs}
-                          class="p-2 bg-base-300 border border-accent/10 hover:border-accent/30 transition-colors"
+                          class="p-2 bg-base-300 border-2 border-accent/10 hover:border-accent/30 transition-colors"
                         >
                           <div class="flex items-center justify-between mb-1">
                             <span class="text-xs font-terminal font-bold text-accent">
                               {Float.round(score * 100, 1)}
                             </span>
-                            <span class="badge badge-xs bg-accent/20 text-accent border-accent/30 font-terminal">
-                              E:{belief.entrenchment}
-                            </span>
+                            <.badge type={:accent}>E:{belief.entrenchment}</.badge>
                           </div>
                           <p class="text-xs font-terminal text-base-content/70 leading-relaxed line-clamp-2">
                             {belief.statement}
                           </p>
                           <div class="flex items-center gap-2 mt-1">
-                            <span class="text-[10px] font-terminal text-base-content/40">
+                            <span class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
                               C:{Float.round(belief.confidence * 100, 0)}%
                             </span>
                           </div>
@@ -560,7 +533,7 @@ defmodule LincolnWeb.SubstrateLive do
               </div>
 
               <%!-- Skeptic Panel --%>
-              <div class="card bg-base-200 border-2 border-error/50 hover:border-error transition-colors">
+              <div class="card bg-base-200 border-2 border-error/50 hover:border-error transition-colors shadow-brutal-sm">
                 <div class="card-body p-0">
                   <div class="px-4 py-3 border-b-2 border-error/30 bg-base-300">
                     <h2 class="card-title text-sm font-terminal uppercase gap-2">
@@ -568,17 +541,17 @@ defmodule LincolnWeb.SubstrateLive do
                       Skeptic — Contradictions
                     </h2>
                   </div>
-                  <div class="p-3 max-h-[24rem] overflow-y-auto">
+                  <div class="p-3 max-h-80 overflow-y-auto">
                     <%= if @recent_contradictions == [] do %>
-                      <div class="flex flex-col items-center justify-center py-8 text-base-content/40">
-                        <.icon name="hero-shield-exclamation" class="size-6 mb-2" />
-                        <p class="text-xs font-terminal">No contradictions detected yet</p>
-                      </div>
+                      <.empty_state
+                        icon="hero-shield-exclamation"
+                        title="No contradictions detected yet"
+                      />
                     <% else %>
                       <div class="space-y-2">
                         <%= for entry <- @recent_contradictions do %>
-                          <div class="p-2 bg-base-300 border border-error/10 hover:border-error/30 transition-colors">
-                            <div class="text-[10px] text-error/70 font-terminal mb-1">
+                          <div class="p-2 bg-base-300 border-2 border-error/10 hover:border-error/30 transition-colors">
+                            <div class="text-[10px] font-terminal uppercase tracking-widest text-error/70 mb-1">
                               {format_time(entry.detected_at)} · confidence: {Float.round(
                                 entry.relationship.confidence,
                                 2
@@ -602,24 +575,21 @@ defmodule LincolnWeb.SubstrateLive do
               </div>
 
               <%!-- Resonator Panel --%>
-              <div class="card bg-base-200 border-2 border-success/50 hover:border-success transition-colors">
+              <div class="card bg-base-200 border-2 border-success/50 hover:border-success transition-colors shadow-brutal-sm">
                 <div class="card-body p-0">
                   <div class="px-4 py-3 border-b-2 border-success/30 bg-base-300">
                     <h2 class="card-title text-sm font-terminal uppercase gap-2">
                       <.icon name="hero-bolt" class="size-4 text-success" /> Resonator — Cascades
                     </h2>
                   </div>
-                  <div class="p-3 max-h-[24rem] overflow-y-auto">
+                  <div class="p-3 max-h-80 overflow-y-auto">
                     <%= if @recent_cascades == [] do %>
-                      <div class="flex flex-col items-center justify-center py-8 text-base-content/40">
-                        <.icon name="hero-bolt" class="size-6 mb-2" />
-                        <p class="text-xs font-terminal">No cascades detected yet</p>
-                      </div>
+                      <.empty_state icon="hero-bolt" title="No cascades detected yet" />
                     <% else %>
                       <div class="space-y-2">
                         <%= for cascade <- @recent_cascades do %>
-                          <div class="p-2 bg-base-300 border border-success/10 hover:border-success/30 transition-colors">
-                            <div class="text-[10px] text-success/70 font-terminal">
+                          <div class="p-2 bg-base-300 border-2 border-success/10 hover:border-success/30 transition-colors">
+                            <div class="text-[10px] font-terminal uppercase tracking-widest text-success/70">
                               {format_time(cascade.detected_at)}
                             </div>
                             <div class="flex gap-3 text-xs font-terminal text-base-content/70 mt-1">
@@ -638,19 +608,16 @@ defmodule LincolnWeb.SubstrateLive do
           </div>
         <% else %>
           <%!-- Empty State --%>
-          <div class="card bg-base-200 border-2 border-base-300">
+          <div class="card bg-base-200 border-2 border-base-300 shadow-brutal-sm">
             <div class="card-body">
               <div class="text-center py-16">
-                <div class="relative inline-block mb-4">
-                  <.icon name="hero-cpu-chip" class="size-16 text-base-content/20" />
-                </div>
-                <p class="text-base-content/50 text-lg font-terminal">No active substrate</p>
+                <.empty_state icon="hero-cpu-chip" title="No active substrate" />
                 <p class="text-base-content/30 text-sm mt-2 font-terminal mb-6">
                   Start the cognitive substrate to begin processing
                 </p>
                 <button
                   phx-click="start_substrate"
-                  class="btn bg-primary/20 border-primary/50 hover:bg-primary/30 text-primary font-terminal uppercase"
+                  class="btn bg-primary/20 border-2 border-primary/50 hover:bg-primary/30 text-primary font-terminal uppercase"
                 >
                   <.icon name="hero-play" class="size-4" /> Start Substrate
                 </button>
@@ -672,7 +639,7 @@ defmodule LincolnWeb.SubstrateLive do
   defp event_entry(assigns) do
     ~H"""
     <div class={[
-      "flex items-start gap-2 p-2 border transition-colors",
+      "flex items-start gap-2 p-2 border-2 transition-colors",
       event_style(@event.type)
     ]}>
       <div class="mt-0.5">

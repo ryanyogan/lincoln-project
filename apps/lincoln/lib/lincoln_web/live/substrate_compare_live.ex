@@ -131,81 +131,73 @@ defmodule LincolnWeb.SubstrateCompareLive do
     <Layouts.app flash={@flash}>
       <div class="space-y-6">
         <%!-- Header --%>
-        <div class="flex items-center justify-between">
-          <div class="flex items-center gap-3">
-            <div class="relative">
-              <.icon name="hero-arrows-right-left" class="size-8 text-primary" />
-            </div>
-            <div>
-              <h1 class="text-2xl font-black font-terminal uppercase tracking-tight">
-                Divergence Observatory
-              </h1>
-              <p class="text-base-content/50 text-sm font-terminal">
-                Watch two cognitive substrates diverge on identical inputs
-              </p>
-            </div>
-          </div>
-          <.link
-            navigate={~p"/substrate"}
-            class="btn btn-sm bg-base-300 border-base-content/10 font-terminal text-xs uppercase"
-          >
-            <.icon name="hero-cpu-chip" class="size-3.5" /> Single View
-          </.link>
-        </div>
+        <.page_header
+          title="Divergence Observatory"
+          subtitle="Watch two cognitive substrates diverge on identical inputs"
+          icon="hero-arrows-right-left"
+          icon_color="text-primary"
+        >
+          <:actions>
+            <.link
+              navigate={~p"/substrate"}
+              class="btn btn-sm bg-base-300 border-2 border-base-content/20 font-terminal text-xs uppercase shadow-brutal-sm"
+            >
+              <.icon name="hero-cpu-chip" class="size-3.5" /> Single View
+            </.link>
+          </:actions>
+        </.page_header>
 
         <%!-- Agent Selector --%>
-        <div class="card bg-base-200 border-2 border-primary/30">
-          <div class="card-body p-4">
-            <.form for={to_form(%{}, as: :agents)} phx-submit="select_agents" id="agent-selector">
-              <div class="flex items-end gap-4">
-                <div class="flex-1">
-                  <label class="text-xs font-terminal uppercase text-primary/70 mb-1 block">
-                    Agent A
-                  </label>
-                  <select
-                    name="agent_a"
-                    class="select select-bordered w-full bg-base-300 border-primary/20 font-terminal text-sm focus:border-primary focus:outline-none"
-                  >
-                    <option value="">— select agent —</option>
-                    <%= for agent <- @agents do %>
-                      <option value={agent.id} selected={agent.id == @agent_a_id}>
-                        {agent.name}
-                      </option>
-                    <% end %>
-                  </select>
-                </div>
-
-                <div class="flex items-center justify-center pb-2">
-                  <.icon name="hero-arrows-right-left" class="size-5 text-base-content/30" />
-                </div>
-
-                <div class="flex-1">
-                  <label class="text-xs font-terminal uppercase text-secondary/70 mb-1 block">
-                    Agent B
-                  </label>
-                  <select
-                    name="agent_b"
-                    class="select select-bordered w-full bg-base-300 border-secondary/20 font-terminal text-sm focus:border-secondary focus:outline-none"
-                  >
-                    <option value="">— select agent —</option>
-                    <%= for agent <- @agents do %>
-                      <option value={agent.id} selected={agent.id == @agent_b_id}>
-                        {agent.name}
-                      </option>
-                    <% end %>
-                  </select>
-                </div>
-
-                <button
-                  type="submit"
-                  class="btn bg-primary/20 border-primary/50 hover:bg-primary/30 text-primary font-terminal uppercase text-xs"
+        <.card variant={:primary}>
+          <.form for={to_form(%{}, as: :agents)} phx-submit="select_agents" id="agent-selector">
+            <div class="flex items-end gap-4">
+              <div class="flex-1">
+                <label class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40 mb-1 block">
+                  Agent A
+                </label>
+                <select
+                  name="agent_a"
+                  class="select select-bordered w-full bg-base-300 border-2 border-primary/20 font-terminal text-sm focus:border-primary focus:outline-none"
                 >
-                  <.icon name="hero-eye" class="size-4" /> Observe
-                </button>
+                  <option value="">— select agent —</option>
+                  <%= for agent <- @agents do %>
+                    <option value={agent.id} selected={agent.id == @agent_a_id}>
+                      {agent.name}
+                    </option>
+                  <% end %>
+                </select>
               </div>
-            </.form>
-          </div>
-        </div>
+
+              <div class="flex items-center justify-center pb-2">
+                <.icon name="hero-arrows-right-left" class="size-5 text-base-content/30" />
+              </div>
+
+              <div class="flex-1">
+                <label class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40 mb-1 block">
+                  Agent B
+                </label>
+                <select
+                  name="agent_b"
+                  class="select select-bordered w-full bg-base-300 border-2 border-secondary/20 font-terminal text-sm focus:border-secondary focus:outline-none"
+                >
+                  <option value="">— select agent —</option>
+                  <%= for agent <- @agents do %>
+                    <option value={agent.id} selected={agent.id == @agent_b_id}>
+                      {agent.name}
+                    </option>
+                  <% end %>
+                </select>
+              </div>
+
+              <button
+                type="submit"
+                class="btn bg-primary/20 border-2 border-primary/50 hover:bg-primary/30 text-primary font-terminal uppercase text-xs shadow-brutal-sm"
+              >
+                <.icon name="hero-eye" class="size-4" /> Observe
+              </button>
+            </div>
+          </.form>
+        </.card>
 
         <%!-- Comparison Panels --%>
         <%= if @agent_a_id && @agent_b_id do %>
@@ -238,21 +230,13 @@ defmodule LincolnWeb.SubstrateCompareLive do
           </div>
         <% else %>
           <%!-- Empty state --%>
-          <div class="card bg-base-200 border-2 border-base-300">
-            <div class="card-body">
-              <div class="text-center py-16">
-                <div class="relative inline-block mb-4">
-                  <.icon name="hero-arrows-right-left" class="size-16 text-base-content/20" />
-                </div>
-                <p class="text-base-content/50 text-lg font-terminal">
-                  Select two agents to begin observation
-                </p>
-                <p class="text-base-content/30 text-sm mt-2 font-terminal">
-                  Start agents at /substrate first, then compare their trajectories here
-                </p>
-              </div>
-            </div>
-          </div>
+          <.card>
+            <.empty_state
+              icon="hero-arrows-right-left"
+              title="Select two agents to begin observation"
+              description="Start agents at /substrate first, then compare their trajectories here"
+            />
+          </.card>
         <% end %>
       </div>
     </Layouts.app>
@@ -278,108 +262,100 @@ defmodule LincolnWeb.SubstrateCompareLive do
         "flex items-center gap-2 font-terminal text-sm uppercase border-b-2 pb-2",
         panel_border_class(@color)
       ]}>
-        <span class={[
-          "size-6 rounded flex items-center justify-center text-xs font-black",
-          panel_badge_class(@color)
-        ]}>
-          {@label}
-        </span>
+        <.badge type={panel_badge_type(@color)}>{@label}</.badge>
         <span class={panel_text_class(@color)}>{@agent_name}</span>
-        <span class={[
-          "ml-auto size-2 rounded-full",
-          if(@state, do: "bg-success animate-pulse", else: "bg-error")
-        ]}>
+        <span class="ml-auto">
+          <.status_indicator
+            status={if(@state, do: :online, else: :offline)}
+            pulse={@state != nil}
+            size={:sm}
+          />
         </span>
       </div>
 
       <%= if @state do %>
         <%!-- Stats --%>
-        <div class={[
-          "card bg-base-200 border-2 hover:border-opacity-80 transition-colors",
-          panel_card_border(@color)
-        ]}>
-          <div class="card-body p-0">
-            <div class={[
-              "px-4 py-3 border-b-2 bg-base-300",
-              panel_header_border(@color)
-            ]}>
-              <h2 class="card-title text-sm font-terminal uppercase gap-2">
-                <.icon name="hero-cpu-chip" class={["size-4", panel_text_class(@color)]} />
-                Substrate State
-              </h2>
+        <.card variant={panel_variant(@color)} class="shadow-brutal">
+          <:header>
+            <div class="flex items-center gap-2">
+              <.icon name="hero-cpu-chip" class={["size-4", panel_text_class(@color)]} />
+              <span>Substrate State</span>
             </div>
-
-            <div class="p-4">
-              <div class="stats stats-vertical sm:stats-horizontal bg-base-300 w-full border border-base-content/10">
-                <div class="stat">
-                  <div class={["stat-figure", panel_text_class(@color)]}>
-                    <.icon name="hero-arrow-path" class="size-6 neural-pulse" />
-                  </div>
-                  <div class="stat-title font-terminal uppercase text-xs">Tick</div>
-                  <div class={["stat-value font-terminal", panel_text_class(@color)]}>
-                    {@state.tick_count}
-                  </div>
-                  <div class="stat-desc font-terminal">
-                    <%= if @state.last_tick_at do %>
-                      {format_time(@state.last_tick_at)}
-                    <% else %>
-                      Awaiting first tick
-                    <% end %>
-                  </div>
-                </div>
-
-                <div class="stat">
-                  <div class="stat-figure text-warning">
-                    <.icon name="hero-inbox-stack" class="size-6" />
-                  </div>
-                  <div class="stat-title font-terminal uppercase text-xs">Pending</div>
-                  <div class="stat-value text-warning font-terminal">
-                    {length(@state.pending_events)}
-                  </div>
-                  <div class="stat-desc font-terminal">Events queued</div>
-                </div>
-
-                <div class="stat">
-                  <div class="stat-title font-terminal uppercase text-xs">Mode</div>
-                  <div class="stat-value font-terminal text-base-content/70 text-lg">
-                    {if Map.get(@state, :idle_streak, 0) > 0, do: "idle", else: "active"}
-                  </div>
-                  <div class="stat-desc font-terminal">Event-driven</div>
-                </div>
+          </:header>
+          <div class="stats stats-vertical sm:stats-horizontal bg-base-300 w-full border-2 border-base-content/10">
+            <div class="stat">
+              <div class={["stat-figure", panel_text_class(@color)]}>
+                <.icon name="hero-arrow-path" class="size-6 neural-pulse" />
               </div>
-
-              <%!-- Current Focus --%>
-              <div class={[
-                "mt-4 p-3 bg-base-300 border",
-                panel_focus_border(@color)
-              ]}>
-                <div class="flex items-center gap-2 mb-2">
-                  <span class="node-indicator active"></span>
-                  <span class="text-xs font-terminal uppercase text-base-content/60">
-                    Current Focus
-                  </span>
-                </div>
-                <%= if @state.current_focus do %>
-                  <p class={["text-sm font-terminal leading-relaxed", panel_text_class(@color)]}>
-                    {@state.current_focus.statement}
-                  </p>
-                  <div class="flex items-center gap-2 mt-2">
-                    <span class={["badge badge-xs font-terminal", panel_badge_sm(@color)]}>
-                      {Float.round(@state.current_focus.confidence * 100, 0)}%
-                    </span>
-                    <span class="text-[10px] font-terminal text-base-content/40">
-                      E:{@state.current_focus.entrenchment}
-                    </span>
-                  </div>
+              <div class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
+                Tick
+              </div>
+              <div class={["stat-value font-terminal", panel_text_class(@color)]}>
+                {@state.tick_count}
+              </div>
+              <div class="stat-desc font-terminal">
+                <%= if @state.last_tick_at do %>
+                  {format_time(@state.last_tick_at)}
                 <% else %>
-                  <p class="text-sm font-terminal text-base-content/40 italic">
-                    Idle — no belief in focus
-                  </p>
+                  Awaiting first tick
                 <% end %>
               </div>
             </div>
+
+            <div class="stat">
+              <div class="stat-figure text-warning">
+                <.icon name="hero-inbox-stack" class="size-6" />
+              </div>
+              <div class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
+                Pending
+              </div>
+              <div class="stat-value text-warning font-terminal">
+                {length(@state.pending_events)}
+              </div>
+              <div class="stat-desc font-terminal">Events queued</div>
+            </div>
+
+            <div class="stat">
+              <div class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
+                Mode
+              </div>
+              <div class="stat-value font-terminal text-base-content/70 text-lg">
+                {if Map.get(@state, :idle_streak, 0) > 0, do: "idle", else: "active"}
+              </div>
+              <div class="stat-desc font-terminal">Event-driven</div>
+            </div>
           </div>
-        </div>
+
+          <%!-- Current Focus --%>
+          <div class={[
+            "mt-4 p-3 bg-base-300 border-2",
+            panel_focus_border(@color)
+          ]}>
+            <div class="flex items-center gap-2 mb-2">
+              <.status_indicator status={:online} pulse size={:sm} />
+              <span class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
+                Current Focus
+              </span>
+            </div>
+            <%= if @state.current_focus do %>
+              <p class={["text-sm font-terminal leading-relaxed", panel_text_class(@color)]}>
+                {@state.current_focus.statement}
+              </p>
+              <div class="flex items-center gap-2 mt-2">
+                <.badge type={panel_badge_type(@color)}>
+                  {Float.round(@state.current_focus.confidence * 100, 0)}%
+                </.badge>
+                <span class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
+                  E:{@state.current_focus.entrenchment}
+                </span>
+              </div>
+            <% else %>
+              <p class="text-sm font-terminal text-base-content/40 italic">
+                Idle — no belief in focus
+              </p>
+            <% end %>
+          </div>
+        </.card>
 
         <%!-- Scoring Breakdown --%>
         <%= if @scoring do %>
@@ -387,52 +363,36 @@ defmodule LincolnWeb.SubstrateCompareLive do
         <% end %>
 
         <%!-- Event Stream --%>
-        <div class={[
-          "card bg-base-200 border-2 hover:border-opacity-80 transition-colors",
-          panel_card_border(@color)
-        ]}>
-          <div class="card-body p-0">
-            <div class={[
-              "px-4 py-3 border-b-2 bg-base-300",
-              panel_header_border(@color)
-            ]}>
-              <h2 class="card-title text-sm font-terminal uppercase gap-2">
-                <.icon name="hero-signal" class={["size-4", panel_text_class(@color)]} /> Event Stream
-                <span class="ml-auto text-[10px] text-base-content/40 font-terminal normal-case">
-                  {length(@events)} events
-                </span>
-              </h2>
+        <.card variant={panel_variant(@color)} class="shadow-brutal">
+          <:header>
+            <div class="flex items-center gap-2 flex-1">
+              <.icon name="hero-signal" class={["size-4", panel_text_class(@color)]} />
+              <span>Event Stream</span>
+              <span class="ml-auto text-[10px] text-base-content/40 font-terminal normal-case">
+                {length(@events)} events
+              </span>
             </div>
-            <div class="p-3 max-h-72 overflow-y-auto">
-              <%= if @events == [] do %>
-                <div class="flex flex-col items-center justify-center py-8 text-base-content/40">
-                  <.icon name="hero-signal" class="size-6 mb-2" />
-                  <p class="text-xs font-terminal">Waiting for events...</p>
-                </div>
-              <% else %>
-                <ul class="space-y-1">
-                  <li :for={event <- @events}>
-                    <.compare_event_entry event={event} color={@color} />
-                  </li>
-                </ul>
-              <% end %>
-            </div>
+          </:header>
+          <div class="-m-4 p-3 max-h-80 overflow-y-auto">
+            <%= if @events == [] do %>
+              <.empty_state icon="hero-signal" title="Waiting for events..." />
+            <% else %>
+              <ul class="space-y-1">
+                <li :for={event <- @events}>
+                  <.compare_event_entry event={event} color={@color} />
+                </li>
+              </ul>
+            <% end %>
           </div>
-        </div>
+        </.card>
       <% else %>
-        <div class="card bg-base-200 border-2 border-base-300">
-          <div class="card-body">
-            <div class="text-center py-12">
-              <.icon name="hero-cpu-chip" class="size-10 text-base-content/20 mb-2" />
-              <p class="text-base-content/40 text-sm font-terminal">
-                Substrate not running
-              </p>
-              <p class="text-base-content/30 text-xs mt-1 font-terminal">
-                Start this agent at /substrate
-              </p>
-            </div>
-          </div>
-        </div>
+        <.card>
+          <.empty_state
+            icon="hero-cpu-chip"
+            title="Substrate not running"
+            description="Start this agent at /substrate"
+          />
+        </.card>
       <% end %>
     </div>
     """
@@ -447,24 +407,24 @@ defmodule LincolnWeb.SubstrateCompareLive do
 
     ~H"""
     <div class={[
-      "flex items-center gap-3 px-4 py-2 border-2 font-terminal text-xs uppercase transition-all duration-300",
+      "flex items-center gap-3 px-4 py-2 border-2 font-terminal text-xs uppercase transition-all duration-300 shadow-brutal-sm",
       if(@diverged?,
         do: "bg-error/10 border-error/40 text-error",
         else: "bg-success/10 border-success/40 text-success"
       )
     ]}>
-      <span class={[
-        "size-2 rounded-full",
-        if(@diverged?, do: "bg-error animate-pulse", else: "bg-success")
-      ]}>
-      </span>
+      <.status_indicator
+        status={if(@diverged?, do: :error, else: :online)}
+        pulse={@diverged?}
+        size={:sm}
+      />
       <%= if @diverged? do %>
         <span>Diverged — agents focusing on different beliefs</span>
       <% else %>
         <span>Converged — agents share the same focus</span>
       <% end %>
       <div class="flex-1"></div>
-      <span class="text-[10px] text-base-content/40 normal-case">
+      <span class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40 normal-case">
         Focus comparison
       </span>
     </div>
@@ -477,7 +437,7 @@ defmodule LincolnWeb.SubstrateCompareLive do
   defp compare_event_entry(assigns) do
     ~H"""
     <div class={[
-      "flex items-start gap-2 p-2 border transition-colors",
+      "flex items-start gap-2 p-2 border-2 transition-colors",
       event_style(@event.type, @color)
     ]}>
       <div class="mt-0.5">
@@ -519,65 +479,54 @@ defmodule LincolnWeb.SubstrateCompareLive do
     assigns = assign(assigns, :candidate_count, candidate_count)
 
     ~H"""
-    <div class={[
-      "card bg-base-200 border-2 hover:border-opacity-80 transition-colors",
-      panel_card_border(@color)
-    ]}>
-      <div class="card-body p-0">
-        <div class={[
-          "px-4 py-3 border-b-2 bg-base-300",
-          panel_header_border(@color)
-        ]}>
-          <h2 class="card-title text-sm font-terminal uppercase gap-2">
-            <.icon name="hero-chart-bar" class={["size-4", panel_text_class(@color)]} />
-            Attention Scoring
-            <span class="ml-auto text-[10px] text-base-content/40 font-terminal normal-case">
-              {@candidate_count} beliefs scored
-            </span>
-          </h2>
+    <.card variant={panel_variant(@color)} class="shadow-brutal">
+      <:header>
+        <div class="flex items-center gap-2 flex-1">
+          <.icon name="hero-chart-bar" class={["size-4", panel_text_class(@color)]} />
+          <span>Attention Scoring</span>
+          <span class="ml-auto text-[10px] text-base-content/40 font-terminal normal-case">
+            {@candidate_count} beliefs scored
+          </span>
         </div>
-        <div class="p-3 space-y-2">
-          <%= for candidate <- @candidates do %>
-            <div class={[
-              "p-2 border bg-base-300/50 space-y-1",
-              if(candidate.rank == 1,
-                do: panel_focus_border(@color),
-                else: "border-base-content/5"
-              )
-            ]}>
-              <div class="flex items-center gap-2">
-                <span class={[
-                  "text-[10px] font-terminal font-bold w-4 text-center",
-                  if(candidate.rank == 1, do: panel_text_class(@color), else: "text-base-content/40")
-                ]}>
-                  #{candidate.rank}
-                </span>
-                <span class="text-xs font-terminal text-base-content/70 flex-1 line-clamp-1">
-                  {candidate.statement}
-                </span>
-                <span class={[
-                  "text-xs font-terminal font-bold",
-                  panel_text_class(@color)
-                ]}>
-                  {format_score(candidate.components.final_score)}
-                </span>
-              </div>
-              <div class="flex gap-1 ml-6">
-                <.score_bar label="N" value={candidate.components.novelty} color="info" />
-                <.score_bar label="T" value={candidate.components.tension} color="warning" />
-                <.score_bar label="S" value={candidate.components.staleness} color="error" />
-                <.score_bar label="D" value={candidate.components.depth} color="success" />
-                <%= if candidate.components.focus_boost > 0 do %>
-                  <span class="text-[9px] font-terminal text-accent ml-1">
-                    +{format_score(candidate.components.focus_boost)} focus
-                  </span>
-                <% end %>
-              </div>
+      </:header>
+      <div class="space-y-2">
+        <%= for candidate <- @candidates do %>
+          <div class={[
+            "p-2 border-2 bg-base-300/50 space-y-1",
+            if(candidate.rank == 1,
+              do: panel_focus_border(@color),
+              else: "border-base-content/5"
+            )
+          ]}>
+            <div class="flex items-center gap-2">
+              <.badge type={if(candidate.rank == 1, do: panel_badge_type(@color), else: :default)}>
+                #{candidate.rank}
+              </.badge>
+              <span class="text-xs font-terminal text-base-content/70 flex-1 line-clamp-1">
+                {candidate.statement}
+              </span>
+              <span class={[
+                "text-xs font-terminal font-bold",
+                panel_text_class(@color)
+              ]}>
+                {format_score(candidate.components.final_score)}
+              </span>
             </div>
-          <% end %>
-        </div>
+            <div class="flex gap-1 ml-6">
+              <.score_bar label="N" value={candidate.components.novelty} color="info" />
+              <.score_bar label="T" value={candidate.components.tension} color="warning" />
+              <.score_bar label="S" value={candidate.components.staleness} color="error" />
+              <.score_bar label="D" value={candidate.components.depth} color="success" />
+              <%= if candidate.components.focus_boost > 0 do %>
+                <.badge type={:accent} class="ml-1">
+                  +{format_score(candidate.components.focus_boost)} focus
+                </.badge>
+              <% end %>
+            </div>
+          </div>
+        <% end %>
       </div>
-    </div>
+    </.card>
     """
   end
 
@@ -592,7 +541,7 @@ defmodule LincolnWeb.SubstrateCompareLive do
     ~H"""
     <div class="flex items-center gap-0.5" title={"#{@label}: #{format_score(@value)}"}>
       <span class="text-[8px] font-terminal text-base-content/40 w-2">{@label}</span>
-      <div class="w-8 h-1.5 bg-base-100 rounded-full overflow-hidden">
+      <div class="w-8 h-1.5 bg-base-100 border border-base-content/10 overflow-hidden">
         <div
           class={["h-full rounded-full", bar_color(@color)]}
           style={"width: #{@width}%"}
@@ -616,6 +565,14 @@ defmodule LincolnWeb.SubstrateCompareLive do
   # Color Helpers — panel theming
   # ============================================================================
 
+  defp panel_variant("primary"), do: :primary
+  defp panel_variant("secondary"), do: :secondary
+  defp panel_variant(_), do: :default
+
+  defp panel_badge_type("primary"), do: :primary
+  defp panel_badge_type("secondary"), do: :secondary
+  defp panel_badge_type(_), do: :default
+
   defp panel_text_class("primary"), do: "text-primary"
   defp panel_text_class("secondary"), do: "text-secondary"
   defp panel_text_class(_), do: "text-base-content"
@@ -624,25 +581,9 @@ defmodule LincolnWeb.SubstrateCompareLive do
   defp panel_border_class("secondary"), do: "border-secondary/30"
   defp panel_border_class(_), do: "border-base-content/20"
 
-  defp panel_card_border("primary"), do: "border-primary/50"
-  defp panel_card_border("secondary"), do: "border-secondary/50"
-  defp panel_card_border(_), do: "border-base-content/20"
-
-  defp panel_header_border("primary"), do: "border-primary/30"
-  defp panel_header_border("secondary"), do: "border-secondary/30"
-  defp panel_header_border(_), do: "border-base-content/10"
-
   defp panel_focus_border("primary"), do: "border-accent/30"
   defp panel_focus_border("secondary"), do: "border-accent/30"
   defp panel_focus_border(_), do: "border-base-content/20"
-
-  defp panel_badge_class("primary"), do: "bg-primary/20 text-primary"
-  defp panel_badge_class("secondary"), do: "bg-secondary/20 text-secondary"
-  defp panel_badge_class(_), do: "bg-base-300 text-base-content"
-
-  defp panel_badge_sm("primary"), do: "badge-primary"
-  defp panel_badge_sm("secondary"), do: "badge-secondary"
-  defp panel_badge_sm(_), do: "badge-ghost"
 
   defp event_style(:tick, "primary"),
     do: "bg-base-300/50 border-primary/10 hover:border-primary/30"

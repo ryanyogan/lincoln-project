@@ -137,53 +137,33 @@ defmodule LincolnWeb.BeliefsLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <div class="space-y-6">
-        <!-- Page Header -->
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 class="text-2xl font-bold flex items-center gap-2">
-              <.icon name="hero-light-bulb" class="w-6 h-6 text-primary" /> Beliefs
-            </h1>
-            <p class="text-sm text-base-content/60 mt-1">
-              Knowledge structures held by {@agent.name}
-            </p>
-          </div>
-          <a href="/" class="btn btn-outline btn-sm">
-            <.icon name="hero-arrow-left" class="w-4 h-4" /> Dashboard
-          </a>
-        </div>
-        
-    <!-- Filter Tabs -->
-        <div role="tablist" class="tabs tabs-boxed bg-base-200 w-fit">
-          <button
-            :for={{value, label} <- filter_options()}
-            role="tab"
-            class={["tab text-sm", @filter == value && "tab-active"]}
-            phx-click="filter"
-            phx-value-filter={value}
-          >
-            {label}
-          </button>
-        </div>
-        
-    <!-- Main Content -->
+        <.page_header
+          title="Beliefs"
+          subtitle={"Knowledge structures held by #{@agent.name}"}
+          icon="hero-light-bulb"
+          icon_color="text-primary"
+        >
+          <:actions>
+            <.link navigate={~p"/"} class="btn btn-outline btn-sm font-terminal border-2">
+              <.icon name="hero-arrow-left" class="size-4" /> Dashboard
+            </.link>
+          </:actions>
+        </.page_header>
+
+        <.filter_tabs options={filter_options()} active={@filter} />
+
         <div class="flex flex-col lg:flex-row gap-6">
-          <!-- Beliefs List -->
           <div class={["flex-1", @selected_belief && "lg:max-w-md"]}>
             <div
               id="beliefs-list"
               phx-update="stream"
               phx-viewport-bottom={!@end_of_list? && "load-more"}
-              class={[
-                "space-y-3",
-                if(@end_of_list?, do: "pb-10", else: "pb-[calc(100vh)]")
-              ]}
+              class={["space-y-3", if(@end_of_list?, do: "pb-10", else: "pb-[calc(100vh)]")]}
             >
-              <!-- Empty state -->
-              <div class="hidden only:flex flex-col items-center justify-center p-12 border border-dashed border-base-300 rounded-lg">
-                <.icon name="hero-light-bulb" class="w-12 h-12 text-base-content/20 mb-3" />
-                <p class="text-sm text-base-content/40">No beliefs match this filter</p>
+              <div class="hidden only:flex flex-col items-center justify-center p-12 border-2 border-dashed border-base-300">
+                <.icon name="hero-light-bulb" class="size-10 text-base-content/20 mb-3" />
+                <p class="text-sm font-terminal text-base-content/40">No beliefs match this filter</p>
               </div>
-              <!-- Belief cards -->
               <.belief_card
                 :for={{dom_id, belief} <- @streams.beliefs}
                 id={dom_id}
@@ -191,15 +171,9 @@ defmodule LincolnWeb.BeliefsLive do
                 selected={@selected_belief && @selected_belief.id == belief.id}
               />
             </div>
-            <div
-              :if={@end_of_list? && @page > 1}
-              class="text-center py-4 text-base-content/60 text-sm"
-            >
-              No more beliefs to load
-            </div>
+            <.load_more end_of_list?={@end_of_list?} />
           </div>
-          
-    <!-- Detail Panel -->
+
           <%= if @selected_belief do %>
             <.belief_detail belief={@selected_belief} />
           <% end %>
@@ -233,27 +207,21 @@ defmodule LincolnWeb.BeliefsLive do
       id={@id}
       patch={~p"/beliefs/#{@belief.id}"}
       class={[
-        "block bg-base-200 border rounded-lg p-4 hover:bg-base-300/50 transition-colors",
-        @selected && "border-primary bg-base-300",
-        !@selected && "border-base-300 hover:border-primary/30"
+        "block bg-base-200 border-2 p-4 hover-lift transition-all",
+        @selected && "border-primary bg-base-300 shadow-brutal-sm",
+        !@selected && "border-base-300 hover:border-primary/40"
       ]}
     >
       <div class="flex items-start justify-between gap-3">
-        <p class="text-sm line-clamp-2 flex-1">{@belief.statement}</p>
-        <div class="tooltip tooltip-left" data-tip="Confidence level">
-          <span class={["badge font-medium", confidence_badge_class(@belief.confidence)]}>
-            {Float.round(@belief.confidence * 100, 0)}%
-          </span>
-        </div>
+        <p class="text-sm font-terminal line-clamp-2 flex-1">{@belief.statement}</p>
+        <.badge type={confidence_badge_type(@belief.confidence)}>
+          {Float.round(@belief.confidence * 100, 0)}%
+        </.badge>
       </div>
       <div class="flex items-center gap-2 mt-3">
-        <span class={["badge badge-sm uppercase", source_badge_class(@belief.source_type)]}>
-          {@belief.source_type}
-        </span>
-        <span class={["badge badge-sm uppercase", status_badge_class(@belief.status)]}>
-          {@belief.status}
-        </span>
-        <span class="badge badge-ghost badge-sm">E:{@belief.entrenchment}</span>
+        <.badge type={source_badge_type(@belief.source_type)}>{@belief.source_type}</.badge>
+        <.badge type={status_badge_type(@belief.status)}>{@belief.status}</.badge>
+        <span class="text-[10px] font-terminal text-base-content/40">E:{@belief.entrenchment}</span>
       </div>
     </.link>
     """
@@ -264,89 +232,96 @@ defmodule LincolnWeb.BeliefsLive do
   defp belief_detail(assigns) do
     ~H"""
     <div class="flex-1 lg:max-w-lg">
-      <div class="bg-base-200 border border-base-300 rounded-lg sticky top-20">
-        <!-- Header -->
-        <div class="flex items-center justify-between px-4 py-3 border-b border-base-300">
-          <h3 class="font-semibold text-sm flex items-center gap-2">
-            <.icon name="hero-beaker" class="w-4 h-4 text-primary" /> Belief Analysis
+      <div class="bg-base-200 border-2 border-primary/40 sticky top-20 shadow-brutal">
+        <div class="flex items-center justify-between px-4 py-2.5 border-b-2 border-primary/30 bg-base-300/50">
+          <h3 class="font-terminal font-bold text-sm uppercase flex items-center gap-2">
+            <.icon name="hero-beaker" class="size-4 text-primary" /> Belief Analysis
           </h3>
-          <button phx-click="close_detail" class="btn btn-ghost btn-sm btn-square hover:btn-error">
-            <.icon name="hero-x-mark" class="w-4 h-4" />
+          <button
+            phx-click="close_detail"
+            class="btn btn-ghost btn-sm btn-square hover:btn-error"
+            aria-label="Close detail"
+          >
+            <.icon name="hero-x-mark" class="size-4" />
           </button>
         </div>
 
         <div class="p-4 space-y-4">
-          <!-- Statement -->
           <div>
-            <label class="text-xs uppercase tracking-wider text-base-content/50">Statement</label>
-            <p class="mt-1">{@belief.statement}</p>
+            <label class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
+              Statement
+            </label>
+            <p class="mt-1 font-terminal text-sm">{@belief.statement}</p>
           </div>
-          
-    <!-- Evidence -->
+
           <%= if @belief.source_evidence do %>
             <div>
-              <label class="text-xs uppercase tracking-wider text-base-content/50">Evidence</label>
-              <p class="mt-1 text-sm text-base-content/80">{@belief.source_evidence}</p>
+              <label class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
+                Evidence
+              </label>
+              <p class="mt-1 text-sm text-base-content/70">{@belief.source_evidence}</p>
             </div>
           <% end %>
-          
-    <!-- Stats -->
-          <div class="grid grid-cols-2 gap-4">
-            <div class="bg-base-300/50 rounded-lg p-3">
-              <div class="text-xs text-base-content/60 uppercase">Confidence</div>
-              <div class={["text-xl font-bold", confidence_text_class(@belief.confidence)]}>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div class="bg-base-300 border-2 border-base-300 p-3">
+              <div class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
+                Confidence
+              </div>
+              <div class={[
+                "text-xl font-bold font-terminal",
+                confidence_text_class(@belief.confidence)
+              ]}>
                 {Float.round(@belief.confidence * 100, 1)}%
               </div>
               <progress
-                class={["progress w-full h-1 mt-1", confidence_progress_class(@belief.confidence)]}
+                class={["progress w-full h-1.5 mt-1", confidence_progress_class(@belief.confidence)]}
                 value={@belief.confidence * 100}
                 max="100"
               />
             </div>
-            <div class="bg-base-300/50 rounded-lg p-3">
-              <div class="text-xs text-base-content/60 uppercase">Entrenchment</div>
-              <div class="text-xl font-bold">{@belief.entrenchment}</div>
+            <div class="bg-base-300 border-2 border-base-300 p-3">
+              <div class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
+                Entrenchment
+              </div>
+              <div class="text-xl font-bold font-terminal">{@belief.entrenchment}</div>
               <progress
-                class="progress progress-secondary w-full h-1 mt-1"
+                class="progress progress-secondary w-full h-1.5 mt-1"
                 value={@belief.entrenchment * 10}
                 max="100"
               />
             </div>
           </div>
-          
-    <!-- Metadata -->
-          <div class="divider text-xs uppercase text-base-content/40">Details</div>
 
-          <div class="space-y-2 text-sm">
+          <div class="divider text-[10px] font-terminal uppercase text-base-content/30 tracking-widest">
+            Details
+          </div>
+
+          <div class="space-y-2 text-sm font-terminal">
             <div class="flex items-center justify-between">
-              <span class="text-base-content/50">Source</span>
-              <span class={["badge badge-sm uppercase", source_badge_class(@belief.source_type)]}>
-                {@belief.source_type}
-              </span>
+              <span class="text-base-content/40">Source</span>
+              <.badge type={source_badge_type(@belief.source_type)}>{@belief.source_type}</.badge>
             </div>
             <div class="flex items-center justify-between">
-              <span class="text-base-content/50">Status</span>
-              <span class={["badge badge-sm uppercase", status_badge_class(@belief.status)]}>
-                {@belief.status}
-              </span>
+              <span class="text-base-content/40">Status</span>
+              <.badge type={status_badge_type(@belief.status)}>{@belief.status}</.badge>
             </div>
             <div class="flex items-center justify-between">
-              <span class="text-base-content/50">Revisions</span>
-              <span>{@belief.revision_count}</span>
+              <span class="text-base-content/40">Revisions</span>
+              <span class="font-bold">{@belief.revision_count}</span>
             </div>
             <div class="flex items-center justify-between">
-              <span class="text-base-content/50">Created</span>
-              <span class="text-xs text-base-content/60">{format_datetime(@belief.inserted_at)}</span>
+              <span class="text-base-content/40">Created</span>
+              <span class="text-xs text-base-content/50">{format_datetime(@belief.inserted_at)}</span>
             </div>
           </div>
-          
-    <!-- Contradicted warning -->
+
           <%= if @belief.contradicted_by_id do %>
-            <div class="alert alert-error">
-              <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
+            <div class="alert alert-error border-2">
+              <.icon name="hero-exclamation-triangle" class="size-5" />
               <div>
-                <div class="text-xs uppercase font-bold">Superseded</div>
-                <div class="text-xs">This belief has been contradicted</div>
+                <div class="text-xs font-terminal uppercase font-bold">Superseded</div>
+                <div class="text-xs font-terminal">This belief has been contradicted</div>
               </div>
             </div>
           <% end %>
@@ -356,22 +331,22 @@ defmodule LincolnWeb.BeliefsLive do
     """
   end
 
-  # Style helpers
-  defp source_badge_class("observation"), do: "badge-info"
-  defp source_badge_class("inference"), do: "badge-secondary"
-  defp source_badge_class("training"), do: "badge-warning"
-  defp source_badge_class("testimony"), do: "badge-accent"
-  defp source_badge_class(_), do: "badge-ghost"
+  # Style helpers — return badge type atoms
+  defp source_badge_type("observation"), do: :info
+  defp source_badge_type("inference"), do: :secondary
+  defp source_badge_type("training"), do: :warning
+  defp source_badge_type("testimony"), do: :accent
+  defp source_badge_type(_), do: :default
 
-  defp status_badge_class("active"), do: "badge-success"
-  defp status_badge_class("revised"), do: "badge-warning"
-  defp status_badge_class("contradicted"), do: "badge-error"
-  defp status_badge_class("retracted"), do: "badge-ghost"
-  defp status_badge_class(_), do: "badge-ghost"
+  defp status_badge_type("active"), do: :success
+  defp status_badge_type("revised"), do: :warning
+  defp status_badge_type("contradicted"), do: :error
+  defp status_badge_type("retracted"), do: :default
+  defp status_badge_type(_), do: :default
 
-  defp confidence_badge_class(conf) when conf >= 0.8, do: "badge-success"
-  defp confidence_badge_class(conf) when conf >= 0.5, do: "badge-warning"
-  defp confidence_badge_class(_), do: "badge-error"
+  defp confidence_badge_type(conf) when conf >= 0.8, do: :success
+  defp confidence_badge_type(conf) when conf >= 0.5, do: :warning
+  defp confidence_badge_type(_), do: :error
 
   defp confidence_text_class(conf) when conf >= 0.8, do: "text-success"
   defp confidence_text_class(conf) when conf >= 0.5, do: "text-warning"

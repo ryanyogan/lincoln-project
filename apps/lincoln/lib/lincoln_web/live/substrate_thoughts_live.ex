@@ -164,48 +164,40 @@ defmodule LincolnWeb.SubstrateThoughtsLive do
     <Layouts.app flash={@flash}>
       <div class="container mx-auto p-4 max-w-5xl">
         <%!-- Header --%>
-        <div class="flex items-center justify-between mb-6">
-          <div>
-            <h1 class="font-terminal text-xl text-primary uppercase tracking-tight">
-              Thought Tree
-            </h1>
-            <p class="text-base-content/40 text-xs mt-1 font-terminal">
-              Each row is a supervised OTP process with its own lifecycle
-            </p>
-          </div>
-          <div class="flex items-center gap-3">
-            <div class={[
-              "w-2 h-2 rounded-full",
-              if(@substrate_running, do: "bg-success animate-pulse", else: "bg-error")
-            ]}>
-            </div>
-            <span class="font-terminal text-xs text-base-content/50 uppercase">
-              <%= if @substrate_running do %>
-                Substrate Running
-              <% else %>
-                Substrate Offline
-              <% end %>
-            </span>
-          </div>
-        </div>
+        <.page_header
+          title="Thought Tree"
+          subtitle="Each row is a supervised OTP process with its own lifecycle"
+          icon="hero-cpu-chip"
+          icon_color="text-primary"
+        >
+          <:actions>
+            <.status_indicator
+              status={if @substrate_running, do: :online, else: :offline}
+              label={if @substrate_running, do: "Substrate Running", else: "Substrate Offline"}
+              pulse={@substrate_running}
+            />
+          </:actions>
+        </.page_header>
 
         <%!-- Active Thoughts --%>
         <div class="mb-6">
           <div class="flex items-center gap-2 mb-3">
-            <span class="font-terminal text-xs text-base-content/50 uppercase">Active</span>
-            <span class="font-terminal text-xs text-primary">{length(@active_thoughts)}</span>
+            <span class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
+              Active
+            </span>
+            <.badge type={:primary}>{length(@active_thoughts)}</.badge>
           </div>
 
           <%= if @active_thoughts == [] do %>
-            <div class="border border-base-content/10 rounded p-6 text-center">
-              <p class="text-base-content/30 font-terminal text-sm">
-                <%= if @substrate_running do %>
-                  Waiting for next tick...
-                <% else %>
-                  Start substrate to see thoughts
-                <% end %>
-              </p>
-            </div>
+            <.empty_state
+              icon="hero-cpu-chip"
+              title={
+                if @substrate_running,
+                  do: "Waiting for next tick...",
+                  else: "Start substrate to see thoughts"
+              }
+              description=""
+            />
           <% else %>
             <% roots = Enum.filter(@active_thoughts, fn t -> is_nil(t.parent_id) end) %>
             <% children_by_parent =
@@ -219,17 +211,15 @@ defmodule LincolnWeb.SubstrateThoughtsLive do
 
             <div class="space-y-2">
               <%= for root <- roots do %>
-                <div class="border border-primary/20 rounded p-3 bg-primary/5 hover:border-primary/40 transition-colors">
+                <div class="border-2 border-primary/20 rounded p-3 bg-primary/5 shadow-brutal-sm hover:border-primary/40 transition-colors">
                   <div class="flex items-start justify-between gap-3">
                     <div class="flex-1 min-w-0">
                       <p class="text-sm text-base-content truncate">
                         {root.belief_statement}
                       </p>
                       <div class="flex items-center gap-3 mt-1">
-                        <span class={["font-terminal text-xs", tier_color(root.tier)]}>
-                          {tier_label(root.tier)}
-                        </span>
-                        <span class="text-base-content/30 text-xs font-terminal">
+                        <.badge type={tier_badge_type(root.tier)}>{tier_label(root.tier)}</.badge>
+                        <span class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
                           {format_duration(root.started_at)}
                         </span>
                         <span class="font-mono text-base-content/20 text-xs">
@@ -238,23 +228,21 @@ defmodule LincolnWeb.SubstrateThoughtsLive do
                       </div>
                     </div>
                     <div>
-                      <.status_badge status={root.status} />
+                      <.thought_status_badge status={root.status} />
                     </div>
                   </div>
                 </div>
 
                 <%= for child <- Map.get(children_by_parent, root.id, []) do %>
-                  <div class="ml-6 border border-base-content/10 rounded p-2 bg-base-200/20 border-l-2 border-l-info/30 hover:border-base-content/20 transition-colors">
+                  <div class="ml-6 border-2 border-base-content/10 rounded p-2 bg-base-200/20 border-l-2 border-l-info/30 shadow-brutal-sm hover:border-base-content/20 transition-colors">
                     <div class="flex items-center justify-between gap-2">
                       <div class="flex-1 min-w-0">
                         <p class="text-xs text-base-content/70 truncate">
                           {child.belief_statement}
                         </p>
                         <div class="flex items-center gap-2 mt-0.5">
-                          <span class={["font-terminal text-[10px]", tier_color(child.tier)]}>
-                            {tier_label(child.tier)}
-                          </span>
-                          <span class="text-base-content/20 text-[10px] font-terminal">
+                          <.badge type={tier_badge_type(child.tier)}>{tier_label(child.tier)}</.badge>
+                          <span class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
                             {format_duration(child.started_at)}
                           </span>
                           <span class="font-mono text-base-content/15 text-[10px]">
@@ -262,29 +250,27 @@ defmodule LincolnWeb.SubstrateThoughtsLive do
                           </span>
                         </div>
                       </div>
-                      <.status_badge status={child.status} />
+                      <.thought_status_badge status={child.status} />
                     </div>
                   </div>
                 <% end %>
               <% end %>
 
               <%= for orphan <- orphans do %>
-                <div class="ml-2 border border-base-content/10 rounded p-2 bg-base-200/20 hover:border-base-content/15 transition-colors opacity-70">
+                <div class="ml-2 border-2 border-base-content/10 rounded p-2 bg-base-200/20 hover:border-base-content/15 transition-colors opacity-70">
                   <div class="flex items-center justify-between gap-2">
                     <div class="flex-1 min-w-0">
                       <p class="text-xs text-base-content/50 truncate">
                         {orphan.belief_statement}
                       </p>
                       <div class="flex items-center gap-2 mt-0.5">
-                        <span class={["font-terminal text-[10px]", tier_color(orphan.tier)]}>
-                          {tier_label(orphan.tier)}
-                        </span>
-                        <span class="text-base-content/20 text-[10px] font-terminal">
+                        <.badge type={tier_badge_type(orphan.tier)}>{tier_label(orphan.tier)}</.badge>
+                        <span class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
                           {format_duration(orphan.started_at)}
                         </span>
                       </div>
                     </div>
-                    <.status_badge status={orphan.status} />
+                    <.thought_status_badge status={orphan.status} />
                   </div>
                 </div>
               <% end %>
@@ -295,33 +281,31 @@ defmodule LincolnWeb.SubstrateThoughtsLive do
         <%!-- Recent History --%>
         <div>
           <div class="flex items-center gap-2 mb-3">
-            <span class="font-terminal text-xs text-base-content/50 uppercase">Recent</span>
-            <span class="font-terminal text-xs text-base-content/30">
-              {length(@thought_history)}
+            <span class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
+              Recent
             </span>
+            <.badge type={:default}>{length(@thought_history)}</.badge>
           </div>
 
           <%= if @thought_history == [] do %>
-            <div class="text-center py-4">
-              <p class="text-base-content/20 text-xs font-terminal uppercase">
-                No completed thoughts yet
-              </p>
-            </div>
+            <.empty_state
+              icon="hero-clock"
+              title="No completed thoughts yet"
+              description=""
+            />
           <% else %>
             <div class="space-y-1">
               <%= for thought <- @thought_history do %>
-                <div class="border border-base-content/5 rounded p-2 bg-base-200/30 hover:border-base-content/10 transition-colors">
+                <div class="border-2 border-base-content/5 rounded p-2 bg-base-200/30 hover:border-base-content/10 transition-colors">
                   <div class="flex items-center gap-3">
                     <div class="flex-1 min-w-0">
                       <p class="text-xs text-base-content/70 truncate">
                         {thought.belief_statement}
                       </p>
                     </div>
-                    <span class={["font-terminal text-xs", tier_color(thought.tier)]}>
-                      {tier_label(thought.tier)}
-                    </span>
-                    <.status_badge status={thought.status} />
-                    <span class="text-base-content/20 text-xs font-terminal">
+                    <.badge type={tier_badge_type(thought.tier)}>{tier_label(thought.tier)}</.badge>
+                    <.thought_status_badge status={thought.status} />
+                    <span class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
                       {format_duration(thought.started_at, thought.completed_at)}
                     </span>
                   </div>
@@ -341,7 +325,7 @@ defmodule LincolnWeb.SubstrateThoughtsLive do
 
   attr(:status, :atom, required: true)
 
-  defp status_badge(assigns) do
+  defp thought_status_badge(assigns) do
     {badge_class, badge_text} = status_badge_attrs(assigns.status)
     assigns = assign(assigns, badge_class: badge_class, badge_text: badge_text)
 
@@ -377,18 +361,8 @@ defmodule LincolnWeb.SubstrateThoughtsLive do
   end
 
   defp load_recent_thought_history(agent_id) do
-    import Ecto.Query
-    alias Lincoln.Repo
-    alias Lincoln.Substrate.SubstrateEvent
-
-    SubstrateEvent
-    |> where(
-      [e],
-      e.agent_id == ^agent_id and e.event_type in ["thought_completed", "thought_failed"]
-    )
-    |> order_by([e], desc: e.inserted_at)
-    |> limit(@max_history)
-    |> Repo.all()
+    agent_id
+    |> Substrate.list_recent_thought_events(@max_history)
     |> Enum.map(fn event ->
       data = event.event_data
 
@@ -403,8 +377,6 @@ defmodule LincolnWeb.SubstrateThoughtsLive do
         parent_id: nil
       }
     end)
-  rescue
-    _ -> []
   end
 
   defp substrate_running?(agent_id) do
@@ -414,10 +386,10 @@ defmodule LincolnWeb.SubstrateThoughtsLive do
     end
   end
 
-  defp tier_color(:local), do: "text-base-content/50"
-  defp tier_color(:ollama), do: "text-info"
-  defp tier_color(:claude), do: "text-warning"
-  defp tier_color(_), do: "text-base-content/50"
+  defp tier_badge_type(:local), do: :default
+  defp tier_badge_type(:ollama), do: :info
+  defp tier_badge_type(:claude), do: :warning
+  defp tier_badge_type(_), do: :default
 
   defp tier_label(:local), do: "L0"
   defp tier_label(:ollama), do: "L1"

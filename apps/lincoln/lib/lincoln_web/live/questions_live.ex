@@ -1,7 +1,7 @@
 defmodule LincolnWeb.QuestionsLive do
   @moduledoc """
   LiveView for the Query Terminal - viewing and managing questions.
-  Uses daisyUI tabs, cards, badges, and modal components.
+  Uses neobrutalist core components (page_header, filter_tabs, badge, etc).
   """
   use LincolnWeb, :live_view
 
@@ -160,32 +160,24 @@ defmodule LincolnWeb.QuestionsLive do
     <Layouts.app flash={@flash}>
       <div class="space-y-6">
         <!-- Page Header -->
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div>
-            <h1 class="text-2xl font-semibold flex items-center gap-2">
-              <.icon name="hero-question-mark-circle" class="w-6 h-6 text-secondary" /> Query Terminal
-            </h1>
-            <p class="text-sm text-base-content/60 mt-1">
-              Active investigations by {@agent.name}
-            </p>
-          </div>
-          <a href="/" class="btn btn-ghost btn-sm">
-            <.icon name="hero-arrow-left" class="w-4 h-4" /> Dashboard
-          </a>
-        </div>
+        <.page_header
+          title="Query Terminal"
+          subtitle={"Active investigations by #{@agent.name}"}
+          icon="hero-question-mark-circle"
+          icon_color="text-secondary"
+        >
+          <:actions>
+            <.link
+              navigate={~p"/"}
+              class="btn btn-ghost btn-sm font-terminal uppercase border-2 border-base-300 hover:border-primary"
+            >
+              <.icon name="hero-arrow-left" class="w-4 h-4" /> Dashboard
+            </.link>
+          </:actions>
+        </.page_header>
         
     <!-- Filter Tabs -->
-        <div role="tablist" class="tabs tabs-boxed bg-base-200 border border-base-300 w-fit">
-          <button
-            :for={{value, label} <- filter_options()}
-            role="tab"
-            class={["tab text-xs", @filter == value && "tab-active"]}
-            phx-click="filter"
-            phx-value-filter={value}
-          >
-            {label}
-          </button>
-        </div>
+        <.filter_tabs options={filter_options()} active={@filter} />
         
     <!-- Main Content -->
         <div class="flex flex-col lg:flex-row gap-6">
@@ -201,11 +193,12 @@ defmodule LincolnWeb.QuestionsLive do
               ]}
             >
               <!-- Empty state -->
-              <div class="hidden only:flex flex-col items-center justify-center p-12 border border-dashed border-base-content/20 rounded-lg">
-                <.icon name="hero-question-mark-circle" class="w-12 h-12 text-base-content/20 mb-3" />
-                <p class="text-sm text-base-content/40">
-                  No queries match this filter
-                </p>
+              <div class="hidden only:flex">
+                <.empty_state
+                  icon="hero-question-mark-circle"
+                  title="No queries"
+                  description="No queries match this filter"
+                />
               </div>
               <!-- Question cards -->
               <.question_card
@@ -215,12 +208,7 @@ defmodule LincolnWeb.QuestionsLive do
                 selected={@selected_question && @selected_question.id == question.id}
               />
             </div>
-            <div
-              :if={@end_of_list? && @page > 1}
-              class="text-center py-4 text-base-content/60 text-sm"
-            >
-              No more queries to load
-            </div>
+            <.load_more end_of_list?={@end_of_list?} />
           </div>
           
     <!-- Detail Panel -->
@@ -256,24 +244,24 @@ defmodule LincolnWeb.QuestionsLive do
       id={@id}
       patch={~p"/questions/#{@question.id}"}
       class={[
-        "block bg-base-200 border rounded-lg p-4 transition-colors cursor-pointer",
-        @selected && "border-secondary bg-base-300",
-        !@selected && "border-base-300 hover:border-secondary/50 hover:bg-base-300/50"
+        "block bg-base-200 border-2 p-4 transition-all cursor-pointer hover-lift",
+        @selected && "border-primary shadow-brutal-sm bg-base-300",
+        !@selected && "border-base-300 hover:border-primary/50 hover:bg-base-300/50"
       ]}
     >
       <div class="flex items-start justify-between gap-3">
-        <p class="text-sm line-clamp-2 flex-1">{@question.question}</p>
-        <span class={["badge", status_badge_class(@question.status)]}>
+        <p class="text-sm font-terminal line-clamp-2 flex-1">{@question.question}</p>
+        <.badge type={status_badge_type(@question.status)}>
           {@question.status}
-        </span>
+        </.badge>
       </div>
       <div class="flex items-center gap-2 mt-3">
         <div class="tooltip" data-tip="Priority level">
-          <span class="badge badge-warning badge-sm">P:{@question.priority}</span>
+          <.badge type={:warning}>P:{@question.priority}</.badge>
         </div>
-        <span class="badge badge-ghost badge-sm">x{@question.times_asked}</span>
+        <.badge type={:default}>x{@question.times_asked}</.badge>
         <%= if @question.cluster_id do %>
-          <span class="badge badge-accent badge-sm">Clustered</span>
+          <.badge type={:accent}>Clustered</.badge>
         <% end %>
       </div>
     </.link>
@@ -286,15 +274,15 @@ defmodule LincolnWeb.QuestionsLive do
   defp question_detail(assigns) do
     ~H"""
     <div class="flex-1 lg:max-w-lg">
-      <div class="bg-base-200 border border-base-300 rounded-lg sticky top-20">
+      <div class="bg-base-200 border-2 border-base-300 shadow-brutal sticky top-20">
         <!-- Header -->
-        <div class="flex items-center justify-between px-4 py-3 border-b border-base-300">
-          <h3 class="text-sm font-semibold flex items-center gap-2">
+        <div class="flex items-center justify-between px-4 py-3 border-b-2 border-base-300">
+          <h3 class="text-sm font-terminal font-bold uppercase tracking-wide flex items-center gap-2">
             <.icon name="hero-magnifying-glass" class="w-4 h-4 text-secondary" /> Query Analysis
           </h3>
           <button
             phx-click="close_detail"
-            class="btn btn-ghost btn-sm btn-square hover:btn-error"
+            class="btn btn-ghost btn-sm btn-square hover:btn-error border-2 border-transparent hover:border-error"
           >
             <.icon name="hero-x-mark" class="w-4 h-4" />
           </button>
@@ -303,63 +291,77 @@ defmodule LincolnWeb.QuestionsLive do
         <div class="p-4 space-y-4">
           <!-- Question Text -->
           <div>
-            <label class="text-xs uppercase tracking-wider text-base-content/50">
+            <label class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
               Query
             </label>
-            <p class="mt-1 text-lg">{@question.question}</p>
+            <p class="mt-1 text-lg font-terminal">{@question.question}</p>
           </div>
           
     <!-- Context -->
           <%= if @question.context do %>
             <div>
-              <label class="text-xs uppercase tracking-wider text-base-content/50">
+              <label class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
                 Context
               </label>
-              <p class="mt-1 text-sm text-base-content/80">{@question.context}</p>
+              <p class="mt-1 text-sm font-terminal text-base-content/80">{@question.context}</p>
             </div>
           <% end %>
           
     <!-- Stats -->
           <div class="grid grid-cols-2 gap-3">
-            <div class="bg-base-300 rounded-lg p-3">
-              <div class="text-xs uppercase text-base-content/60">Priority</div>
-              <div class="text-xl font-semibold text-warning mt-1">
+            <div class="bg-base-300 border-2 border-base-content/10 p-3">
+              <div class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
+                Priority
+              </div>
+              <div class="text-xl font-black font-terminal text-warning mt-1">
                 {@question.priority}<span class="text-base text-base-content/30">/10</span>
               </div>
             </div>
-            <div class="bg-base-300 rounded-lg p-3">
-              <div class="text-xs uppercase text-base-content/60">Times Asked</div>
-              <div class="text-xl font-semibold mt-1">{@question.times_asked}</div>
+            <div class="bg-base-300 border-2 border-base-content/10 p-3">
+              <div class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
+                Times Asked
+              </div>
+              <div class="text-xl font-black font-terminal mt-1">{@question.times_asked}</div>
             </div>
           </div>
           
     <!-- Metadata -->
-          <div class="divider text-xs uppercase text-base-content/40">Details</div>
+          <div class="divider text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
+            Details
+          </div>
 
           <div class="space-y-2">
             <div class="flex items-center justify-between">
-              <span class="text-xs text-base-content/50 uppercase">Status</span>
-              <span class={["badge badge-sm", status_badge_class(@question.status)]}>
-                {@question.status}
+              <span class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
+                Status
               </span>
+              <.badge type={status_badge_type(@question.status)}>
+                {@question.status}
+              </.badge>
             </div>
             <div class="flex items-center justify-between">
-              <span class="text-xs text-base-content/50 uppercase">Last Asked</span>
-              <span class="text-xs text-base-content/60">
+              <span class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
+                Last Asked
+              </span>
+              <span class="text-xs font-terminal text-base-content/60">
                 {format_datetime(@question.last_asked_at)}
               </span>
             </div>
             <%= if @question.resolved_at do %>
               <div class="flex items-center justify-between">
-                <span class="text-xs text-base-content/50 uppercase">Resolved</span>
-                <span class="text-xs text-success">
+                <span class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
+                  Resolved
+                </span>
+                <span class="text-xs font-terminal text-success">
                   {format_datetime(@question.resolved_at)}
                 </span>
               </div>
             <% end %>
             <div class="flex items-center justify-between">
-              <span class="text-xs text-base-content/50 uppercase">Created</span>
-              <span class="text-xs text-base-content/60">
+              <span class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
+                Created
+              </span>
+              <span class="text-xs font-terminal text-base-content/60">
                 {format_datetime(@question.inserted_at)}
               </span>
             </div>
@@ -367,29 +369,29 @@ defmodule LincolnWeb.QuestionsLive do
           
     <!-- Findings -->
           <%= if @findings != [] do %>
-            <div class="divider text-xs uppercase text-base-content/40">
+            <div class="divider text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
               Findings ({length(@findings)})
             </div>
 
             <div class="space-y-2">
               <div
                 :for={finding <- @findings}
-                class="bg-base-300 border border-base-content/10 rounded-lg p-3"
+                class="bg-base-300 border-2 border-base-content/10 p-3 shadow-brutal-sm"
               >
                 <div class="flex items-start justify-between gap-2">
-                  <p class="text-sm line-clamp-3">{truncate(finding.answer, 150)}</p>
-                  <span class={["badge badge-xs shrink-0", finding_badge_class(finding.source_type)]}>
+                  <p class="text-sm font-terminal line-clamp-3">{truncate(finding.answer, 150)}</p>
+                  <.badge type={finding_badge_type(finding.source_type)}>
                     {finding.source_type}
-                  </span>
+                  </.badge>
                 </div>
                 <div class="flex items-center gap-2 mt-2">
-                  <span class="text-xs text-base-content/50">
+                  <span class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
                     Conf: {Float.round(finding.confidence * 100, 0)}%
                   </span>
                   <%= if finding.verified do %>
-                    <span class="badge badge-success badge-xs">
+                    <.badge type={:success}>
                       <.icon name="hero-check" class="w-3 h-3" /> Verified
-                    </span>
+                    </.badge>
                   <% end %>
                 </div>
               </div>
@@ -403,7 +405,7 @@ defmodule LincolnWeb.QuestionsLive do
               phx-click="abandon"
               phx-value-id={@question.id}
               data-confirm="Abandon this query? This cannot be undone."
-              class="btn btn-error btn-outline btn-sm w-full"
+              class="btn btn-error btn-outline btn-sm w-full font-terminal uppercase border-2 hover:shadow-brutal-sm"
             >
               <.icon name="hero-archive-box-x-mark" class="w-4 h-4" /> Abandon Query
             </button>
@@ -415,17 +417,17 @@ defmodule LincolnWeb.QuestionsLive do
   end
 
   # Style helpers
-  defp status_badge_class("open"), do: "badge-secondary"
-  defp status_badge_class("answered"), do: "badge-success"
-  defp status_badge_class("abandoned"), do: "badge-warning"
-  defp status_badge_class("merged"), do: "badge-info"
-  defp status_badge_class(_), do: "badge-ghost"
+  defp status_badge_type("open"), do: :secondary
+  defp status_badge_type("answered"), do: :success
+  defp status_badge_type("abandoned"), do: :warning
+  defp status_badge_type("merged"), do: :info
+  defp status_badge_type(_), do: :default
 
-  defp finding_badge_class("investigation"), do: "badge-info"
-  defp finding_badge_class("serendipity"), do: "badge-accent"
-  defp finding_badge_class("testimony"), do: "badge-secondary"
-  defp finding_badge_class("inference"), do: "badge-warning"
-  defp finding_badge_class(_), do: "badge-ghost"
+  defp finding_badge_type("investigation"), do: :info
+  defp finding_badge_type("serendipity"), do: :accent
+  defp finding_badge_type("testimony"), do: :secondary
+  defp finding_badge_type("inference"), do: :warning
+  defp finding_badge_type(_), do: :default
 
   defp truncate(text, max_length) when is_binary(text) do
     if String.length(text) > max_length do

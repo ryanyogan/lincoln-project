@@ -10,8 +10,11 @@ defmodule Lincoln.Substrate do
   - **Resonator** — reflects on experiences and extracts insights
   """
 
+  import Ecto.Query
+
   alias Lincoln.Agents
-  alias Lincoln.Substrate.{AgentSupervisor, Substrate}
+  alias Lincoln.Repo
+  alias Lincoln.Substrate.{AgentSupervisor, SubstrateEvent, Substrate}
 
   @doc """
   Start all substrate processes for an agent.
@@ -105,5 +108,22 @@ defmodule Lincoln.Substrate do
       [{pid, _}] -> {:ok, pid}
       [] -> {:error, :not_running}
     end
+  end
+
+  @doc """
+  List recent thought completion/failure events for an agent.
+  Used by SubstrateThoughtsLive for the thought history view.
+  """
+  def list_recent_thought_events(agent_id, limit \\ 20) do
+    SubstrateEvent
+    |> where(
+      [e],
+      e.agent_id == ^agent_id and e.event_type in ["thought_completed", "thought_failed"]
+    )
+    |> order_by([e], desc: e.inserted_at)
+    |> limit(^limit)
+    |> Repo.all()
+  rescue
+    _ -> []
   end
 end

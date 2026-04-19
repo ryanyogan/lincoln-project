@@ -564,15 +564,17 @@ defmodule LincolnWeb.ChatLive do
             <div id="messages-stream" phx-update="stream" class="space-y-4 p-4">
               <!-- Empty state -->
               <div class="hidden only:flex flex-col items-center justify-center h-full text-center p-8">
-                <div class="w-16 h-16 rounded-lg bg-primary flex items-center justify-center mb-4">
-                  <span class="text-2xl font-bold text-primary-content">L</span>
+                <div class="w-16 h-16 rounded-none border-2 border-base-content/20 bg-primary flex items-center justify-center mb-4">
+                  <span class="text-2xl font-bold font-terminal text-primary-content">L</span>
                 </div>
-                <h2 class="font-semibold text-lg mb-2">Start a Conversation</h2>
+                <h2 class="font-terminal font-semibold text-lg mb-2 uppercase tracking-wide">
+                  Start a Conversation
+                </h2>
                 <p class="text-sm text-base-content/60 max-w-sm">
                   Talk to Lincoln and watch him learn. He remembers conversations, forms beliefs, and
                   can revise his understanding based on new evidence.
                 </p>
-                <div class="mt-4 text-xs text-base-content/40 space-y-1">
+                <div class="mt-4 text-[10px] font-terminal uppercase tracking-widest text-base-content/40 space-y-1">
                   <p>Try: "research [topic]" to queue autonomous learning</p>
                   <p>Try: "improve yourself" to trigger self-modification</p>
                   <p>Try: "show me belief_formation.ex" to view code</p>
@@ -621,14 +623,19 @@ defmodule LincolnWeb.ChatLive do
   defp conversation_sidebar(assigns) do
     ~H"""
     <aside class={[
-      "w-64 bg-base-200 border-r border-base-300 flex flex-col",
+      "w-64 bg-base-200 border-r-2 border-base-300 flex flex-col",
       "fixed inset-y-0 left-0 z-40 transition-transform duration-200",
       "lg:relative lg:translate-x-0",
       if(@show, do: "translate-x-0", else: "-translate-x-full")
     ]}>
-      <div class="p-4 border-b border-base-300 flex items-center justify-between shrink-0">
-        <h2 class="font-semibold text-sm">History</h2>
-        <button phx-click="new_conversation" class="btn btn-primary btn-xs gap-1">
+      <div class="p-4 border-b-2 border-base-300 flex items-center justify-between shrink-0">
+        <h2 class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
+          History
+        </h2>
+        <button
+          phx-click="new_conversation"
+          class="btn btn-primary btn-xs gap-1 border-2 border-primary-content/20"
+        >
           <.icon name="hero-plus" class="w-3 h-3" /> New
         </button>
       </div>
@@ -636,7 +643,7 @@ defmodule LincolnWeb.ChatLive do
       <div class="flex-1 overflow-y-auto min-h-0">
         <ul class="menu p-2 gap-1">
           <%= if @conversations == [] do %>
-            <li class="text-xs text-base-content/40 p-4 text-center">
+            <li class="text-xs font-terminal text-base-content/40 p-4 text-center">
               No conversations yet
             </li>
           <% else %>
@@ -645,13 +652,13 @@ defmodule LincolnWeb.ChatLive do
                 phx-click="load_conversation"
                 phx-value-id={conv.id}
                 class={[
-                  "text-sm justify-start",
-                  @current && @current.id == conv.id && "active"
+                  "text-sm justify-start border-2 border-transparent hover:border-base-300 hover:-translate-y-0.5 transition-all",
+                  @current && @current.id == conv.id && "active border-primary/30"
                 ]}
               >
                 <.icon name="hero-chat-bubble-left-right" class="w-4 h-4 shrink-0" />
                 <span class="truncate flex-1 text-left">{conv.title || "Untitled"}</span>
-                <span class="badge badge-xs badge-ghost">{conv.message_count}</span>
+                <.badge type={:default}>{conv.message_count}</.badge>
               </button>
             </li>
           <% end %>
@@ -660,8 +667,8 @@ defmodule LincolnWeb.ChatLive do
 
       <%= if @user_model do %>
         <div class="px-3 pb-3 shrink-0">
-          <div class="border border-base-content/10 rounded-lg p-3 text-xs bg-base-100/50">
-            <div class="font-mono text-[10px] tracking-widest text-base-content/30 uppercase mb-2">
+          <div class="border-2 border-base-content/10 rounded-lg p-3 text-xs bg-base-100/50 shadow-brutal-sm">
+            <div class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40 mb-2">
               Theory of Mind
             </div>
             <div class="space-y-1.5">
@@ -690,9 +697,9 @@ defmodule LincolnWeb.ChatLive do
         </div>
       <% end %>
 
-      <div class="p-4 border-t border-base-300 text-xs text-base-content/40 shrink-0">
-        <div class="flex items-center gap-2">
-          <span class="w-2 h-2 rounded-full bg-success"></span> Learning Active
+      <div class="p-4 border-t-2 border-base-300 text-xs text-base-content/40 shrink-0">
+        <div class="flex items-center gap-2 font-terminal">
+          <.status_indicator status={:online} label="Learning Active" pulse={true} />
         </div>
       </div>
     </aside>
@@ -706,19 +713,19 @@ defmodule LincolnWeb.ChatLive do
 
   defp chat_header(assigns) do
     ~H"""
-    <header class="h-14 flex items-center justify-between px-4 border-b border-base-300 bg-base-200 shrink-0">
+    <header class="h-14 flex items-center justify-between px-4 border-b-2 border-base-300 bg-base-200 shrink-0">
       <div class="flex items-center gap-3">
         <!-- Mobile sidebar toggle -->
         <button phx-click="toggle_sidebar" class="btn btn-ghost btn-sm btn-square lg:hidden">
           <.icon name="hero-bars-3" class="w-5 h-5" />
         </button>
 
-        <div class="w-10 h-10 rounded-lg bg-primary flex items-center justify-center">
-          <span class="font-bold text-primary-content">L</span>
+        <div class="w-10 h-10 rounded-none border-2 border-base-content/20 bg-primary flex items-center justify-center">
+          <span class="font-bold font-terminal text-primary-content">L</span>
         </div>
         <div>
-          <h1 class="font-semibold">Lincoln</h1>
-          <p class="text-xs text-base-content/60">
+          <h1 class="font-terminal font-semibold uppercase tracking-wide">Lincoln</h1>
+          <p class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
             {if @conversation, do: @conversation.title || "New conversation", else: "Start chatting"}
           </p>
         </div>
@@ -729,24 +736,27 @@ defmodule LincolnWeb.ChatLive do
         <button
           phx-click="toggle_worker_sidebar"
           class={[
-            "btn btn-sm gap-1 relative",
-            if(@show_worker_sidebar, do: "btn-secondary", else: "btn-ghost")
+            "btn btn-sm gap-1 relative border-2 font-terminal",
+            if(@show_worker_sidebar, do: "btn-secondary", else: "btn-ghost border-base-300")
           ]}
           title="Worker Lincoln Activity"
         >
           <.icon name="hero-cpu-chip" class="w-4 h-4" />
           <span class="hidden sm:inline">Worker</span>
           <%= if @has_active_session do %>
-            <span class="absolute -top-1 -right-1 w-3 h-3 bg-success rounded-full animate-pulse">
+            <span class="absolute -top-1 -right-1 status-dot status-dot-online status-dot-pulse">
             </span>
           <% end %>
           <%= if @worker_event_count > 0 and not @show_worker_sidebar do %>
-            <span class="badge badge-xs badge-secondary">{@worker_event_count}</span>
+            <.badge type={:secondary}>{@worker_event_count}</.badge>
           <% end %>
         </button>
         
     <!-- New chat button -->
-        <button phx-click="new_conversation" class="btn btn-outline btn-primary btn-sm gap-1">
+        <button
+          phx-click="new_conversation"
+          class="btn btn-outline btn-primary btn-sm gap-1 border-2 font-terminal"
+        >
           <.icon name="hero-plus" class="w-4 h-4" />
           <span class="hidden sm:inline">New</span>
         </button>
@@ -764,10 +774,10 @@ defmodule LincolnWeb.ChatLive do
     <%= if @message.role == "user" do %>
       <!-- User message -->
       <div id={@id} class="chat chat-end">
-        <div class="chat-bubble bg-primary text-primary-content">
+        <div class="chat-bubble bg-primary text-primary-content border-2 border-primary-content/20 rounded-none shadow-brutal-sm">
           {@message.content}
         </div>
-        <div class="chat-footer text-xs opacity-50 mt-1">
+        <div class="chat-footer text-[10px] font-terminal uppercase tracking-widest text-base-content/40 mt-1">
           {format_time(@message.inserted_at)}
         </div>
       </div>
@@ -775,20 +785,20 @@ defmodule LincolnWeb.ChatLive do
       <!-- Lincoln message -->
       <div id={@id} class="chat chat-start">
         <div class="chat-image avatar">
-          <div class="w-10 rounded-lg bg-secondary flex items-center justify-center">
-            <span class="font-bold text-secondary-content">L</span>
+          <div class="w-10 rounded-none border-2 border-base-content/20 bg-secondary flex items-center justify-center">
+            <span class="font-bold font-terminal text-secondary-content">L</span>
           </div>
         </div>
-        <div class="chat-bubble bg-base-200 text-base-content border border-base-300">
+        <div class="chat-bubble bg-base-200 text-base-content border-2 border-base-300 rounded-none shadow-brutal-sm">
           <div class="whitespace-pre-wrap">{@message.content}</div>
           
     <!-- Thinking panel (minimal) -->
           <div
-            class="mt-3 pt-2 border-t border-base-300 cursor-pointer hover:bg-base-300/50 -mx-3 -mb-2 px-3 pb-2 rounded-b-lg transition-colors"
+            class="mt-3 pt-2 border-t-2 border-base-300 cursor-pointer hover:bg-base-300/50 -mx-3 -mb-2 px-3 pb-2 transition-colors"
             phx-click="expand_thinking"
             phx-value-id={@message.id}
           >
-            <div class="flex items-center gap-2 text-xs text-base-content/60">
+            <div class="flex items-center gap-2 text-xs font-terminal text-base-content/60">
               <span title="Memories retrieved">
                 <.icon name="hero-archive-box" class="w-3 h-3 inline" /> {@message.memories_retrieved}
               </span>
@@ -816,7 +826,7 @@ defmodule LincolnWeb.ChatLive do
             </div>
             
     <!-- Expanded details -->
-            <div :if={@expanded} class="mt-2 text-xs space-y-1 text-base-content/70">
+            <div :if={@expanded} class="mt-2 text-xs space-y-1 text-base-content/70 font-terminal">
               <p :if={@message.thinking_summary} class="italic">
                 {@message.thinking_summary}
               </p>
@@ -832,7 +842,7 @@ defmodule LincolnWeb.ChatLive do
             </div>
           </div>
         </div>
-        <div class="chat-footer text-xs opacity-50 mt-1">
+        <div class="chat-footer text-[10px] font-terminal uppercase tracking-widest text-base-content/40 mt-1">
           {format_time(@message.inserted_at)}
         </div>
       </div>
@@ -846,12 +856,12 @@ defmodule LincolnWeb.ChatLive do
     ~H"""
     <div class="chat chat-start p-4">
       <div class="chat-image avatar">
-        <div class="w-10 rounded-lg bg-secondary/50 flex items-center justify-center animate-pulse">
-          <span class="font-bold text-secondary-content">L</span>
+        <div class="w-10 rounded-none border-2 border-base-content/20 bg-secondary/50 flex items-center justify-center animate-pulse">
+          <span class="font-bold font-terminal text-secondary-content">L</span>
         </div>
       </div>
-      <div class="chat-bubble bg-base-200 border border-base-300">
-        <div class="flex items-center gap-2 text-sm">
+      <div class="chat-bubble bg-base-200 border-2 border-base-300 rounded-none">
+        <div class="flex items-center gap-2 text-sm font-terminal">
           <span class="loading loading-dots loading-sm"></span>
           <span class="text-base-content/60">{@step || "Thinking..."}</span>
         </div>
@@ -865,7 +875,7 @@ defmodule LincolnWeb.ChatLive do
 
   defp chat_input(assigns) do
     ~H"""
-    <footer class="border-t border-base-300 p-4 bg-base-200 shrink-0">
+    <footer class="border-t-2 border-base-300 p-4 bg-base-200 shrink-0">
       <form id="chat-form" phx-submit="send_message" phx-change="input_change">
         <div class="flex gap-2">
           <input
@@ -876,11 +886,11 @@ defmodule LincolnWeb.ChatLive do
             disabled={@disabled}
             autocomplete="off"
             phx-debounce="100"
-            class="input input-bordered flex-1 bg-base-100"
+            class="input flex-1 bg-base-100 border-2 border-base-300 rounded-none font-terminal focus:border-primary focus:outline-none"
           />
           <button
             type="submit"
-            class="btn btn-primary"
+            class="btn btn-primary border-2 border-primary-content/20 rounded-none font-terminal"
             disabled={@disabled || @value == ""}
             phx-disable-with="..."
           >
@@ -913,13 +923,13 @@ defmodule LincolnWeb.ChatLive do
 
     ~H"""
     <aside class={[
-      "w-72 bg-base-200 border-l border-base-300 flex flex-col",
+      "w-72 bg-base-200 border-l-2 border-base-300 flex flex-col",
       "fixed inset-y-0 right-0 z-40 transition-transform duration-200",
       "lg:relative lg:translate-x-0",
       if(@show, do: "translate-x-0", else: "translate-x-full lg:hidden")
     ]}>
-      <div class="p-4 border-b border-base-300 flex items-center justify-between shrink-0">
-        <h2 class="font-semibold text-sm flex items-center gap-2">
+      <div class="p-4 border-b-2 border-base-300 flex items-center justify-between shrink-0">
+        <h2 class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40 flex items-center gap-2">
           <.icon name="hero-cpu-chip" class="w-4 h-4" /> Activity Feed
         </h2>
         <button phx-click="toggle_worker_sidebar" class="btn btn-ghost btn-xs btn-square lg:hidden">
@@ -928,15 +938,17 @@ defmodule LincolnWeb.ChatLive do
       </div>
       
     <!-- Active Session Status -->
-      <div :if={@active_session} class="p-3 bg-success/10 border-b border-base-300 shrink-0">
-        <div class="flex items-center gap-2 text-xs">
-          <span class="w-2 h-2 rounded-full bg-success animate-pulse"></span>
-          <span class="uppercase text-success font-medium">Learning Active</span>
+      <div :if={@active_session} class="p-3 bg-success/10 border-b-2 border-base-300 shrink-0">
+        <div class="flex items-center gap-2 text-xs font-terminal">
+          <.status_indicator status={:online} label="Learning Active" pulse={true} />
         </div>
-        <p :if={@active_session.current_topic} class="text-xs mt-1 text-base-content/70 truncate">
+        <p
+          :if={@active_session.current_topic}
+          class="text-xs mt-1 text-base-content/70 truncate font-terminal"
+        >
           Exploring: {@active_session.current_topic}
         </p>
-        <div class="flex gap-3 mt-2 text-xs text-base-content/50">
+        <div class="flex gap-3 mt-2 text-xs text-base-content/50 font-terminal">
           <span title="Topics completed">
             <.icon name="hero-check-circle" class="w-3 h-3 inline" />
             {@active_session.topics_completed}/{@active_session.topics_total}
@@ -948,18 +960,17 @@ defmodule LincolnWeb.ChatLive do
         </div>
       </div>
 
-      <div :if={@active_session == nil} class="p-3 bg-base-300/30 border-b border-base-300 shrink-0">
-        <div class="flex items-center gap-2 text-xs text-base-content/50">
-          <span class="w-2 h-2 rounded-full bg-warning"></span>
-          <span class="uppercase">Idle</span>
+      <div :if={@active_session == nil} class="p-3 bg-base-300/30 border-b-2 border-base-300 shrink-0">
+        <div class="flex items-center gap-2 text-xs text-base-content/50 font-terminal">
+          <.status_indicator status={:idle} label="Idle" />
         </div>
-        <p class="text-xs mt-1 text-base-content/40">
+        <p class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40 mt-1">
           Say "research [topic]" to start learning
         </p>
       </div>
       
     <!-- Event Filters -->
-      <div class="p-2 border-b border-base-300 shrink-0">
+      <div class="p-2 border-b-2 border-base-300 shrink-0">
         <div class="flex flex-wrap gap-1">
           <.filter_button filter="all" current={@event_filter} count={length(@all_events)} />
           <.filter_button filter="struggles" current={@event_filter} />
@@ -974,7 +985,7 @@ defmodule LincolnWeb.ChatLive do
       <div class="flex-1 overflow-y-auto min-h-0">
         <div class="p-2 space-y-2">
           <%= if @filtered_events == [] do %>
-            <div class="text-center text-xs text-base-content/40 py-8">
+            <div class="text-center text-xs text-base-content/40 py-8 font-terminal">
               <.icon name="hero-clock" class="w-6 h-6 mx-auto mb-2 opacity-50" />
               <p>No recent activity</p>
               <p class="mt-1">Events will appear here</p>
@@ -985,7 +996,7 @@ defmodule LincolnWeb.ChatLive do
         </div>
       </div>
 
-      <div class="p-3 border-t border-base-300 text-xs text-base-content/40 shrink-0">
+      <div class="p-3 border-t-2 border-base-300 text-[10px] font-terminal uppercase tracking-widest text-base-content/40 shrink-0">
         <p>{length(@filtered_events)} of {length(@all_events)} events shown</p>
       </div>
     </aside>
@@ -1002,12 +1013,12 @@ defmodule LincolnWeb.ChatLive do
       phx-click="filter_events"
       phx-value-filter={@filter}
       class={[
-        "btn btn-xs",
-        if(@current == @filter, do: "btn-primary", else: "btn-ghost")
+        "btn btn-xs border-2 rounded-none font-terminal",
+        if(@current == @filter, do: "btn-primary", else: "btn-ghost border-base-300")
       ]}
     >
       {filter_label(@filter)}
-      <span :if={@count} class="badge badge-xs">{@count}</span>
+      <.badge :if={@count} type={:default}>{@count}</.badge>
     </button>
     """
   end
@@ -1059,16 +1070,19 @@ defmodule LincolnWeb.ChatLive do
 
   defp combined_event(assigns) do
     ~H"""
-    <div class={["p-2 rounded-lg border text-xs", event_style(@event.type)]}>
+    <div class={[
+      "p-2 rounded-none border-2 text-xs font-terminal shadow-brutal-sm",
+      event_style(@event.type)
+    ]}>
       <div class="flex items-start gap-2">
         <.icon name={@event.icon} class="w-4 h-4 shrink-0 mt-0.5" />
         <div class="flex-1 min-w-0">
           <p class="font-medium truncate">{@event.message}</p>
           <p :if={@event.detail} class="text-base-content/60 truncate">{@event.detail}</p>
           <div class="flex items-center gap-2 mt-1">
-            <span :if={@event[:severity]} class={["badge badge-xs", severity_badge(@event.severity)]}>
+            <.badge :if={@event[:severity]} type={severity_badge_type(@event.severity)}>
               {@event.severity}
-            </span>
+            </.badge>
             <span class="text-base-content/40">{format_event_time(@event.timestamp)}</span>
           </div>
         </div>
@@ -1098,15 +1112,15 @@ defmodule LincolnWeb.ChatLive do
   defp event_style("improvement_opportunity"), do: "bg-primary/10 border-primary/30"
   defp event_style("code_change_applied"), do: "bg-secondary/10 border-secondary/30"
   defp event_style("improvement_observed"), do: "bg-success/10 border-success/30"
-  defp event_style(_), do: "bg-base-300 border-base-content/10"
+  defp event_style(_), do: "bg-base-300 border-base-content/20"
 
-  defp severity_badge(severity) do
+  defp severity_badge_type(severity) do
     case severity do
-      "critical" -> "badge-error"
-      "high" -> "badge-warning"
-      "medium" -> "badge-info"
-      "low" -> "badge-ghost"
-      _ -> "badge-ghost"
+      "critical" -> :error
+      "high" -> :warning
+      "medium" -> :info
+      "low" -> :default
+      _ -> :default
     end
   end
 

@@ -62,47 +62,54 @@ defmodule LincolnWeb.NarrativeLive do
     <Layouts.app flash={@flash}>
       <div class="container mx-auto max-w-2xl p-6">
         <%!-- Header --%>
-        <div class="mb-8">
-          <h1 class="font-terminal text-xl text-primary">LINCOLN'S AUTOBIOGRAPHY</h1>
-          <p class="text-base-content/30 text-xs mt-1">
-            Self-generated reflections · every 50 substrate ticks (~1 min)
-          </p>
-          <%= if @reflection_count > 0 do %>
-            <div class="font-terminal text-xs text-base-content/40 mt-2">
-              {@reflection_count} {if @reflection_count == 1, do: "entry", else: "entries"}
-            </div>
-          <% end %>
-        </div>
+        <.page_header
+          title="Lincoln's Autobiography"
+          subtitle="Self-generated reflections · every 50 substrate ticks (~1 min)"
+          icon="hero-book-open"
+          icon_color="text-primary"
+        >
+          <:actions>
+            <%= if @reflection_count > 0 do %>
+              <.badge type={:default}>
+                {@reflection_count} {if @reflection_count == 1, do: "entry", else: "entries"}
+              </.badge>
+            <% end %>
+          </:actions>
+        </.page_header>
 
         <%!-- Reflections feed --%>
         <%= if @reflections == [] do %>
-          <div class="text-center py-20">
-            <div class="font-terminal text-base-content/20 text-sm mb-3">NO ENTRIES YET</div>
-            <p class="text-base-content/20 text-xs max-w-sm mx-auto leading-relaxed">
-              Lincoln writes after every 50 substrate ticks. Start the substrate and
-              the first entry will appear within ~1 minute.
-            </p>
-            <div class="mt-6">
-              <.link
-                navigate={~p"/substrate"}
-                class="font-terminal text-xs text-primary/50 hover:text-primary transition-colors"
-              >
-                {if @substrate_running, do: "→ View substrate", else: "→ Start substrate"}
-              </.link>
-            </div>
+          <.empty_state
+            icon="hero-book-open"
+            title="No entries yet"
+            description="Lincoln writes after every 50 substrate ticks. Start the substrate and the first entry will appear within ~1 minute."
+          />
+          <div class="text-center mt-6">
+            <.link
+              navigate={~p"/substrate"}
+              class="font-terminal text-xs text-primary/50 hover:text-primary transition-colors"
+            >
+              {if @substrate_running, do: "→ View substrate", else: "→ Start substrate"}
+            </.link>
           </div>
         <% else %>
           <div class="space-y-8">
             <%= for reflection <- @reflections do %>
-              <article class="border-l-2 border-primary/20 pl-5 hover:border-primary/40 transition-colors">
+              <article class="border-l-2 border-2 border-primary/20 pl-5 p-4 shadow-brutal-sm hover:border-primary/40 transition-colors">
                 <%!-- Entry metadata --%>
-                <div class="flex items-center gap-3 mb-3 font-terminal text-xs text-base-content/30">
-                  <time>{Calendar.strftime(reflection.inserted_at, "%Y-%m-%d %H:%M")}</time>
-                  <span>·</span>
-                  <span>tick {reflection.tick_number}</span>
+                <div class="flex items-center gap-3 mb-3">
+                  <span class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
+                    {Calendar.strftime(reflection.inserted_at, "%Y-%m-%d %H:%M")}
+                  </span>
+                  <span class="text-base-content/20">·</span>
+                  <span class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
+                    tick {reflection.tick_number}
+                  </span>
                   <%= if reflection.thought_count > 0 do %>
-                    <span>·</span>
-                    <span>{reflection.thought_count} thoughts completed</span>
+                    <span class="text-base-content/20">·</span>
+                    <span class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
+                      {reflection.thought_count} thoughts completed
+                    </span>
                   <% end %>
                 </div>
                 <%!-- The reflection itself — Lincoln's own words --%>
@@ -113,9 +120,7 @@ defmodule LincolnWeb.NarrativeLive do
                 <%= if reflection.dominant_topics != [] do %>
                   <div class="mt-3 flex flex-wrap gap-1">
                     <%= for topic <- Enum.take(reflection.dominant_topics, 5) do %>
-                      <span class="text-base-content/25 font-terminal text-xs px-1.5 py-0.5 border border-base-content/10 rounded">
-                        {topic}
-                      </span>
+                      <.badge type={:default}>{topic}</.badge>
                     <% end %>
                   </div>
                 <% end %>

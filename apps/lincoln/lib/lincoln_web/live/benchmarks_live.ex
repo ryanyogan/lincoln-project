@@ -20,22 +20,19 @@ defmodule LincolnWeb.BenchmarksLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <div class="container mx-auto max-w-3xl p-6">
-        <div class="mb-8">
-          <h1 class="font-terminal text-xl text-primary">BENCHMARKS</h1>
-          <p class="text-base-content/30 text-xs mt-1">
-            Quantitative performance tracking ·
-            run with <code class="font-mono">mix lincoln.benchmark.run</code>
-          </p>
-        </div>
+        <.page_header
+          title="Benchmarks"
+          subtitle="Quantitative performance tracking · run with mix lincoln.benchmark.run"
+          icon="hero-chart-bar"
+          icon_color="text-primary"
+        />
 
         <%= if @runs == [] do %>
-          <div class="text-center py-20">
-            <p class="font-terminal text-base-content/20 text-sm mb-3">NO BENCHMARK RUNS YET</p>
-            <p class="text-base-content/20 text-xs max-w-sm mx-auto leading-relaxed">
-              Run <code class="font-mono">mix lincoln.benchmark.run</code>
-              to evaluate contradiction detection accuracy.
-            </p>
-          </div>
+          <.empty_state
+            icon="hero-chart-bar"
+            title="No benchmark runs yet"
+            description="Run mix lincoln.benchmark.run to evaluate contradiction detection accuracy."
+          />
         <% else %>
           <div class="space-y-4">
             <%= for run <- @runs do %>
@@ -48,6 +45,11 @@ defmodule LincolnWeb.BenchmarksLive do
     """
   end
 
+  defp status_badge_type("completed"), do: :success
+  defp status_badge_type("running"), do: :info
+  defp status_badge_type("failed"), do: :error
+  defp status_badge_type(_), do: :default
+
   defp run_card(assigns) do
     accuracy =
       if assigns.run.total_tasks > 0,
@@ -57,32 +59,27 @@ defmodule LincolnWeb.BenchmarksLive do
     assigns = assign(assigns, :accuracy, accuracy)
 
     ~H"""
-    <div class="border border-base-content/10 rounded p-4">
+    <div class="border-2 border-base-content/10 rounded p-4 shadow-brutal-sm">
       <div class="flex items-start justify-between">
         <div>
           <div class="font-terminal text-sm text-base-content/70">{@run.domain}</div>
-          <div class="font-terminal text-xs text-base-content/30 mt-1">
+          <div class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40 mt-1">
             {Calendar.strftime(@run.inserted_at, "%Y-%m-%d %H:%M")}
           </div>
         </div>
         <div class="text-right">
           <div class="font-terminal text-2xl text-primary">{@accuracy}%</div>
-          <div class="font-terminal text-xs text-base-content/30">
+          <div class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
             {@run.correct_tasks}/{@run.total_tasks} correct
           </div>
         </div>
       </div>
       <div class="mt-3 flex items-center gap-3">
-        <span class={[
-          "px-2 py-0.5 rounded font-terminal text-xs",
-          @run.status == "completed" && "bg-success/20 text-success",
-          @run.status == "running" && "bg-info/20 text-info animate-pulse",
-          @run.status == "failed" && "bg-error/20 text-error"
-        ]}>
+        <.badge type={status_badge_type(@run.status)}>
           {@run.status}
-        </span>
+        </.badge>
         <%= if @run.notes do %>
-          <span class="text-base-content/30 text-xs">{@run.notes}</span>
+          <span class="text-base-content/30 text-xs font-terminal">{@run.notes}</span>
         <% end %>
       </div>
     </div>

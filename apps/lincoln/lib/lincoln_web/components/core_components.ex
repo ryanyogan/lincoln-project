@@ -1,30 +1,9 @@
 defmodule LincolnWeb.CoreComponents do
   @moduledoc """
-  Provides core UI components.
+  Core UI components — West World Neobrutalism design system.
 
-  At first glance, this module may seem daunting, but its goal is to provide
-  core building blocks for your application, such as tables, forms, and
-  inputs. The components consist mostly of markup and are well-documented
-  with doc strings and declarative assigns. You may customize and style
-  them in any way you want, based on your application growth and needs.
-
-  The foundation for styling is Tailwind CSS, a utility-first CSS framework,
-  augmented with daisyUI, a Tailwind CSS plugin that provides UI components
-  and themes. Here are useful references:
-
-    * [daisyUI](https://daisyui.com/docs/intro/) - a good place to get
-      started and see the available components.
-
-    * [Tailwind CSS](https://tailwindcss.com) - the foundational framework
-      we build on. You will use it for layout, sizing, flexbox, grid, and
-      spacing.
-
-    * [Heroicons](https://heroicons.com) - see `icon/1` for usage.
-
-    * [Phoenix.Component](https://hexdocs.pm/phoenix_live_view/Phoenix.Component.html) -
-      the component system used by Phoenix. Some components, such as `<.link>`
-      and `<.form>`, are defined there.
-
+  Thick borders, offset shadows, terminal fonts, high contrast.
+  Built on Tailwind CSS + daisyUI.
   """
   use Phoenix.Component
   use Gettext, backend: LincolnWeb.Gettext
@@ -32,20 +11,15 @@ defmodule LincolnWeb.CoreComponents do
   alias Phoenix.HTML.Form, as: HTMLForm
   alias Phoenix.LiveView.JS
 
-  @doc """
-  Renders flash notices.
+  # ============================================================================
+  # Flash
+  # ============================================================================
 
-  ## Examples
-
-      <.flash kind={:info} flash={@flash} />
-      <.flash kind={:info} phx-mounted={show("#flash")}>Welcome Back!</.flash>
-  """
   attr(:id, :string, doc: "the optional id of flash container")
   attr(:flash, :map, default: %{}, doc: "the map of flash messages to display")
   attr(:title, :string, default: nil)
   attr(:kind, :atom, values: [:info, :error], doc: "used for styling and flash lookup")
   attr(:rest, :global, doc: "the arbitrary HTML attributes to add to the flash container")
-
   slot(:inner_block, doc: "the optional inner block that renders the flash message")
 
   def flash(assigns) do
@@ -61,15 +35,15 @@ defmodule LincolnWeb.CoreComponents do
       {@rest}
     >
       <div class={[
-        "alert w-80 sm:w-96 max-w-80 sm:max-w-96 text-wrap",
+        "alert w-80 sm:w-96 max-w-80 sm:max-w-96 text-wrap border-2 shadow-brutal-sm font-terminal",
         @kind == :info && "alert-info",
         @kind == :error && "alert-error"
       ]}>
         <.icon :if={@kind == :info} name="hero-information-circle" class="size-5 shrink-0" />
         <.icon :if={@kind == :error} name="hero-exclamation-circle" class="size-5 shrink-0" />
         <div>
-          <p :if={@title} class="font-semibold">{@title}</p>
-          <p>{msg}</p>
+          <p :if={@title} class="font-bold uppercase text-sm">{@title}</p>
+          <p class="text-sm">{msg}</p>
         </div>
         <div class="flex-1" />
         <button type="button" class="group self-start cursor-pointer" aria-label={gettext("close")}>
@@ -80,15 +54,10 @@ defmodule LincolnWeb.CoreComponents do
     """
   end
 
-  @doc """
-  Renders a button with navigation support.
+  # ============================================================================
+  # Button
+  # ============================================================================
 
-  ## Examples
-
-      <.button>Send!</.button>
-      <.button phx-click="go" variant="primary">Send!</.button>
-      <.button navigate={~p"/"}>Home</.button>
-  """
   attr(:rest, :global, include: ~w(href navigate patch method download name value disabled))
   attr(:class, :any)
   attr(:variant, :string, values: ~w(primary))
@@ -99,7 +68,7 @@ defmodule LincolnWeb.CoreComponents do
 
     assigns =
       assign_new(assigns, :class, fn ->
-        ["btn", Map.fetch!(variants, assigns[:variant])]
+        ["btn font-terminal", Map.fetch!(variants, assigns[:variant])]
       end)
 
     if rest[:href] || rest[:navigate] || rest[:patch] do
@@ -117,46 +86,10 @@ defmodule LincolnWeb.CoreComponents do
     end
   end
 
-  @doc """
-  Renders an input with label and error messages.
+  # ============================================================================
+  # Input
+  # ============================================================================
 
-  A `Phoenix.HTML.FormField` may be passed as argument,
-  which is used to retrieve the input name, id, and values.
-  Otherwise all attributes may be passed explicitly.
-
-  ## Types
-
-  This function accepts all HTML input types, considering that:
-
-    * You may also set `type="select"` to render a `<select>` tag
-
-    * `type="checkbox"` is used exclusively to render boolean values
-
-    * For live file uploads, see `Phoenix.Component.live_file_input/1`
-
-  See https://developer.mozilla.org/en-US/docs/Web/HTML/Element/input
-  for more information. Unsupported types, such as radio, are best
-  written directly in your templates.
-
-  ## Examples
-
-  ```heex
-  <.input field={@form[:email]} type="email" />
-  <.input name="my-input" errors={["oh no!"]} />
-  ```
-
-  ## Select type
-
-  When using `type="select"`, you must pass the `options` and optionally
-  a `value` to mark which option should be preselected.
-
-  ```heex
-  <.input field={@form[:user_type]} type="select" options={["Admin": "admin", "User": "user"]} />
-  ```
-
-  For more information on what kind of data can be passed to `options` see
-  [`options_for_select`](https://hexdocs.pm/phoenix_html/Phoenix.HTML.Form.html#options_for_select/2).
-  """
   attr(:id, :any, default: nil)
   attr(:name, :any)
   attr(:label, :string, default: nil)
@@ -218,7 +151,7 @@ defmodule LincolnWeb.CoreComponents do
           disabled={@rest[:disabled]}
           form={@rest[:form]}
         />
-        <span class="label">
+        <span class="label font-terminal text-sm">
           <input
             type="checkbox"
             id={@id}
@@ -239,11 +172,14 @@ defmodule LincolnWeb.CoreComponents do
     ~H"""
     <div class="fieldset mb-2">
       <label>
-        <span :if={@label} class="label mb-1">{@label}</span>
+        <span :if={@label} class="label mb-1 font-terminal text-sm uppercase">{@label}</span>
         <select
           id={@id}
           name={@name}
-          class={[@class || "w-full select", @errors != [] && (@error_class || "select-error")]}
+          class={[
+            @class || "w-full select font-terminal",
+            @errors != [] && (@error_class || "select-error")
+          ]}
           multiple={@multiple}
           {@rest}
         >
@@ -260,12 +196,12 @@ defmodule LincolnWeb.CoreComponents do
     ~H"""
     <div class="fieldset mb-2">
       <label>
-        <span :if={@label} class="label mb-1">{@label}</span>
+        <span :if={@label} class="label mb-1 font-terminal text-sm uppercase">{@label}</span>
         <textarea
           id={@id}
           name={@name}
           class={[
-            @class || "w-full textarea",
+            @class || "w-full textarea font-terminal",
             @errors != [] && (@error_class || "textarea-error")
           ]}
           {@rest}
@@ -276,19 +212,18 @@ defmodule LincolnWeb.CoreComponents do
     """
   end
 
-  # All other inputs text, datetime-local, url, password, etc. are handled here...
   def input(assigns) do
     ~H"""
     <div class="fieldset mb-2">
       <label>
-        <span :if={@label} class="label mb-1">{@label}</span>
+        <span :if={@label} class="label mb-1 font-terminal text-sm uppercase">{@label}</span>
         <input
           type={@type}
           name={@name}
           id={@id}
           value={Phoenix.HTML.Form.normalize_value(@type, @value)}
           class={[
-            @class || "w-full input",
+            @class || "w-full input font-terminal",
             @errors != [] && (@error_class || "input-error")
           ]}
           {@rest}
@@ -299,19 +234,19 @@ defmodule LincolnWeb.CoreComponents do
     """
   end
 
-  # Helper used by inputs to generate form errors
   defp error(assigns) do
     ~H"""
-    <p class="mt-1.5 flex gap-2 items-center text-sm text-error">
-      <.icon name="hero-exclamation-circle" class="size-5" />
+    <p class="mt-1.5 flex gap-2 items-center text-sm text-error font-terminal">
+      <.icon name="hero-exclamation-circle" class="size-4" />
       {render_slot(@inner_block)}
     </p>
     """
   end
 
-  @doc """
-  Renders a header with title.
-  """
+  # ============================================================================
+  # Header
+  # ============================================================================
+
   slot(:inner_block, required: true)
   slot(:subtitle)
   slot(:actions)
@@ -320,10 +255,10 @@ defmodule LincolnWeb.CoreComponents do
     ~H"""
     <header class={[@actions != [] && "flex items-center justify-between gap-6", "pb-4"]}>
       <div>
-        <h1 class="text-lg font-semibold leading-8">
+        <h1 class="text-lg font-terminal font-bold uppercase tracking-tight">
           {render_slot(@inner_block)}
         </h1>
-        <p :if={@subtitle != []} class="text-sm text-base-content/70">
+        <p :if={@subtitle != []} class="text-sm font-terminal text-base-content/60">
           {render_slot(@subtitle)}
         </p>
       </div>
@@ -332,31 +267,60 @@ defmodule LincolnWeb.CoreComponents do
     """
   end
 
-  @doc """
-  Renders a table with generic styling.
+  # ============================================================================
+  # Page Header — standardized across all pages
+  # ============================================================================
 
-  ## Examples
+  attr(:title, :string, required: true)
+  attr(:subtitle, :string, default: nil)
+  attr(:icon, :string, default: nil)
+  attr(:icon_color, :string, default: "text-primary")
+  slot(:actions)
 
-      <.table id="users" rows={@users}>
-        <:col :let={user} label="id">{user.id}</:col>
-        <:col :let={user} label="username">{user.username}</:col>
-      </.table>
-  """
+  def page_header(assigns) do
+    ~H"""
+    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
+      <div class="flex items-center gap-3">
+        <div
+          :if={@icon}
+          class={["p-2 border-2 border-base-300 bg-base-200 shadow-brutal-sm", @icon_color]}
+        >
+          <.icon name={@icon} class="size-6" />
+        </div>
+        <div>
+          <h1 class="text-xl sm:text-2xl font-black font-terminal uppercase tracking-tight">
+            {@title}
+          </h1>
+          <p
+            :if={@subtitle}
+            class="text-xs font-terminal text-base-content/50 uppercase tracking-wide mt-0.5"
+          >
+            {@subtitle}
+          </p>
+        </div>
+      </div>
+      <div :if={@actions != []} class="flex items-center gap-2">
+        {render_slot(@actions)}
+      </div>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # Table
+  # ============================================================================
+
   attr(:id, :string, required: true)
   attr(:rows, :list, required: true)
-  attr(:row_id, :any, default: nil, doc: "the function for generating the row id")
-  attr(:row_click, :any, default: nil, doc: "the function for handling phx-click on each row")
-
-  attr(:row_item, :any,
-    default: &Function.identity/1,
-    doc: "the function for mapping each row before calling the :col and :action slots"
-  )
+  attr(:row_id, :any, default: nil)
+  attr(:row_click, :any, default: nil)
+  attr(:row_item, :any, default: &Function.identity/1)
 
   slot :col, required: true do
     attr(:label, :string)
   end
 
-  slot(:action, doc: "the slot for showing user actions in the last table column")
+  slot(:action)
 
   def table(assigns) do
     assigns =
@@ -365,17 +329,19 @@ defmodule LincolnWeb.CoreComponents do
       end
 
     ~H"""
-    <table class="table table-zebra">
+    <table class="table table-zebra font-terminal text-sm">
       <thead>
-        <tr>
-          <th :for={col <- @col}>{col[:label]}</th>
+        <tr class="border-b-2 border-base-300">
+          <th :for={col <- @col} class="font-terminal uppercase text-xs tracking-wide">
+            {col[:label]}
+          </th>
           <th :if={@action != []}>
             <span class="sr-only">{gettext("Actions")}</span>
           </th>
         </tr>
       </thead>
       <tbody id={@id} phx-update={is_struct(@rows, Phoenix.LiveView.LiveStream) && "stream"}>
-        <tr :for={row <- @rows} id={@row_id && @row_id.(row)}>
+        <tr :for={row <- @rows} id={@row_id && @row_id.(row)} class="border-b border-base-300/50">
           <td
             :for={col <- @col}
             phx-click={@row_click && @row_click.(row)}
@@ -396,16 +362,10 @@ defmodule LincolnWeb.CoreComponents do
     """
   end
 
-  @doc """
-  Renders a data list.
+  # ============================================================================
+  # List
+  # ============================================================================
 
-  ## Examples
-
-      <.list>
-        <:item title="Title">{@post.title}</:item>
-        <:item title="Views">{@post.views}</:item>
-      </.list>
-  """
   slot :item, required: true do
     attr(:title, :string, required: true)
   end
@@ -415,32 +375,18 @@ defmodule LincolnWeb.CoreComponents do
     <ul class="list">
       <li :for={item <- @item} class="list-row">
         <div class="list-col-grow">
-          <div class="font-bold">{item.title}</div>
-          <div>{render_slot(item)}</div>
+          <div class="font-terminal font-bold text-sm">{item.title}</div>
+          <div class="text-sm">{render_slot(item)}</div>
         </div>
       </li>
     </ul>
     """
   end
 
-  @doc """
-  Renders a [Heroicon](https://heroicons.com).
+  # ============================================================================
+  # Icon
+  # ============================================================================
 
-  Heroicons come in three styles – outline, solid, and mini.
-  By default, the outline style is used, but solid and mini may
-  be applied by using the `-solid` and `-mini` suffix.
-
-  You can customize the size and colors of the icons by setting
-  width, height, and background color classes.
-
-  Icons are extracted from the `deps/heroicons` directory and bundled within
-  your compiled app.css by the plugin in `assets/vendor/heroicons.js`.
-
-  ## Examples
-
-      <.icon name="hero-x-mark" />
-      <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
-  """
   attr(:name, :string, required: true)
   attr(:class, :any, default: "size-4")
 
@@ -450,77 +396,63 @@ defmodule LincolnWeb.CoreComponents do
     """
   end
 
-  ## JS Commands
+  # ============================================================================
+  # Card — neobrutalist with variant borders
+  # ============================================================================
 
-  def show(js \\ %JS{}, selector) do
-    JS.show(js,
-      to: selector,
-      time: 300,
-      transition:
-        {"transition-all ease-out duration-300",
-         "opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95",
-         "opacity-100 translate-y-0 sm:scale-100"}
-    )
-  end
-
-  def hide(js \\ %JS{}, selector) do
-    JS.hide(js,
-      to: selector,
-      time: 200,
-      transition:
-        {"transition-all ease-in duration-200", "opacity-100 translate-y-0 sm:scale-100",
-         "opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"}
-    )
-  end
-
-  @doc """
-  Translates an error message using gettext.
-  """
-  def translate_error({msg, opts}) do
-    # When using gettext, we typically pass the strings we want
-    # to translate as a static argument:
-    #
-    #     # Translate the number of files with plural rules
-    #     dngettext("errors", "1 file", "%{count} files", count)
-    #
-    # However the error messages in our forms and APIs are generated
-    # dynamically, so we need to translate them by calling Gettext
-    # with our gettext backend as first argument. Translations are
-    # available in the errors.po file (as we use the "errors" domain).
-    if count = opts[:count] do
-      Gettext.dngettext(LincolnWeb.Gettext, "errors", msg, msg, count, opts)
-    else
-      Gettext.dgettext(LincolnWeb.Gettext, "errors", msg, opts)
-    end
-  end
-
-  @doc """
-  Translates the errors for a field from a keyword list of errors.
-  """
-  def translate_errors(errors, field) when is_list(errors) do
-    for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
-  end
-
-  @doc """
-  Renders a card container.
-  """
   attr(:class, :string, default: nil)
+
+  attr(:variant, :atom,
+    default: :default,
+    values: [:default, :primary, :secondary, :accent, :warning, :error, :info]
+  )
+
+  slot(:header)
   slot(:inner_block, required: true)
 
   def card(assigns) do
     ~H"""
     <div class={[
-      "bg-base-200 border border-base-300 rounded-lg p-6",
+      "bg-base-200 border-2 shadow-brutal-sm",
+      variant_border(@variant),
       @class
     ]}>
-      {render_slot(@inner_block)}
+      <div
+        :if={@header != []}
+        class={[
+          "px-4 py-2.5 border-b-2 bg-base-300/50 font-terminal text-sm uppercase tracking-wide flex items-center justify-between",
+          variant_border_b(@variant)
+        ]}
+      >
+        {render_slot(@header)}
+      </div>
+      <div class="p-4">
+        {render_slot(@inner_block)}
+      </div>
     </div>
     """
   end
 
-  @doc """
-  Renders a stat card for dashboards.
-  """
+  defp variant_border(:default), do: "border-base-300"
+  defp variant_border(:primary), do: "border-primary/40"
+  defp variant_border(:secondary), do: "border-secondary/40"
+  defp variant_border(:accent), do: "border-accent/40"
+  defp variant_border(:warning), do: "border-warning/40"
+  defp variant_border(:error), do: "border-error/40"
+  defp variant_border(:info), do: "border-info/40"
+
+  defp variant_border_b(:default), do: "border-base-300"
+  defp variant_border_b(:primary), do: "border-primary/30"
+  defp variant_border_b(:secondary), do: "border-secondary/30"
+  defp variant_border_b(:accent), do: "border-accent/30"
+  defp variant_border_b(:warning), do: "border-warning/30"
+  defp variant_border_b(:error), do: "border-error/30"
+  defp variant_border_b(:info), do: "border-info/30"
+
+  # ============================================================================
+  # Stat Card — neobrutalist dashboard stats
+  # ============================================================================
+
   attr(:title, :string, required: true)
   attr(:value, :string, required: true)
   attr(:icon, :string, default: nil)
@@ -529,24 +461,66 @@ defmodule LincolnWeb.CoreComponents do
 
   def stat_card(assigns) do
     ~H"""
-    <div class={["bg-base-200 border border-base-300 rounded-lg p-4", @class]}>
+    <div class={["bg-base-200 border-2 border-base-300 p-4 shadow-brutal-sm", @class]}>
       <div class="flex items-start justify-between">
         <div>
-          <p class="text-sm text-base-content/60">{@title}</p>
-          <p class="text-2xl font-bold mt-1">{@value}</p>
-          <p :if={@description} class="text-xs text-base-content/50 mt-1">{@description}</p>
+          <p class="text-[10px] font-terminal uppercase tracking-widest text-base-content/50">
+            {@title}
+          </p>
+          <p class="text-2xl font-bold font-terminal mt-1">{@value}</p>
+          <p :if={@description} class="text-xs font-terminal text-base-content/40 mt-1">
+            {@description}
+          </p>
         </div>
-        <div :if={@icon} class="text-primary/60">
-          <.icon name={@icon} class="w-6 h-6" />
+        <div :if={@icon} class="text-primary/50">
+          <.icon name={@icon} class="size-6" />
         </div>
       </div>
     </div>
     """
   end
 
-  @doc """
-  Renders an empty state message.
-  """
+  # ============================================================================
+  # Data Card — dashboard panels with header, icon, optional view-all link
+  # ============================================================================
+
+  attr(:title, :string, required: true)
+  attr(:icon, :string, required: true)
+  attr(:icon_color, :string, default: "text-primary")
+  attr(:border_color, :string, default: "border-primary/40")
+  attr(:view_all_path, :string, default: nil)
+  attr(:max_height, :string, default: "max-h-80")
+  slot(:inner_block, required: true)
+
+  def data_card(assigns) do
+    ~H"""
+    <div class={["bg-base-200 border-2 shadow-brutal-sm", @border_color]}>
+      <div class={[
+        "flex items-center justify-between px-4 py-2.5 border-b-2 bg-base-300/50",
+        @border_color
+      ]}>
+        <h2 class="text-sm font-terminal font-bold uppercase tracking-wide flex items-center gap-2">
+          <.icon name={@icon} class={["size-4", @icon_color]} /> {@title}
+        </h2>
+        <.link
+          :if={@view_all_path}
+          navigate={@view_all_path}
+          class="text-xs font-terminal text-base-content/40 hover:text-primary transition-colors uppercase tracking-wide"
+        >
+          View All <.icon name="hero-arrow-right" class="size-3 inline" />
+        </.link>
+      </div>
+      <div class={["p-4 overflow-y-auto", @max_height]}>
+        {render_slot(@inner_block)}
+      </div>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # Empty State
+  # ============================================================================
+
   attr(:icon, :string, default: "hero-inbox")
   attr(:title, :string, required: true)
   attr(:description, :string, default: nil)
@@ -554,12 +528,12 @@ defmodule LincolnWeb.CoreComponents do
 
   def empty_state(assigns) do
     ~H"""
-    <div class="flex flex-col items-center justify-center py-12 text-center">
-      <div class="text-base-content/30 mb-4">
-        <.icon name={@icon} class="w-12 h-12" />
+    <div class="flex flex-col items-center justify-center py-10 text-center">
+      <div class="text-base-content/20 mb-3">
+        <.icon name={@icon} class="size-10" />
       </div>
-      <h3 class="text-lg font-medium text-base-content/70">{@title}</h3>
-      <p :if={@description} class="text-sm text-base-content/50 mt-1 max-w-sm">
+      <h3 class="text-sm font-terminal font-bold uppercase text-base-content/50">{@title}</h3>
+      <p :if={@description} class="text-xs font-terminal text-base-content/40 mt-1 max-w-sm">
         {@description}
       </p>
       <div :if={@action != []} class="mt-4">
@@ -569,19 +543,20 @@ defmodule LincolnWeb.CoreComponents do
     """
   end
 
-  @doc """
-  Renders a section header.
-  """
+  # ============================================================================
+  # Section Header
+  # ============================================================================
+
   attr(:title, :string, required: true)
   attr(:subtitle, :string, default: nil)
   slot(:actions)
 
   def section_header(assigns) do
     ~H"""
-    <div class="flex items-center justify-between mb-4">
+    <div class="flex items-center justify-between mb-4 pb-2 border-b-2 border-base-300">
       <div>
-        <h2 class="text-lg font-semibold">{@title}</h2>
-        <p :if={@subtitle} class="text-sm text-base-content/60">{@subtitle}</p>
+        <h2 class="text-base font-terminal font-bold uppercase tracking-tight">{@title}</h2>
+        <p :if={@subtitle} class="text-xs font-terminal text-base-content/50 mt-0.5">{@subtitle}</p>
       </div>
       <div :if={@actions != []} class="flex items-center gap-2">
         {render_slot(@actions)}
@@ -590,12 +565,101 @@ defmodule LincolnWeb.CoreComponents do
     """
   end
 
-  @doc """
-  Renders a badge with neural styling.
-  """
+  # ============================================================================
+  # Status Indicator — replaces 3 different implementations
+  # ============================================================================
+
+  attr(:status, :atom, required: true, values: [:online, :offline, :warning, :error, :idle])
+  attr(:label, :string, default: nil)
+  attr(:pulse, :boolean, default: false)
+  attr(:size, :atom, default: :md, values: [:sm, :md, :lg])
+
+  def status_indicator(assigns) do
+    ~H"""
+    <span class="inline-flex items-center gap-1.5">
+      <span class={[
+        "status-dot",
+        status_dot_class(@status),
+        @pulse && "neural-pulse",
+        status_size(@size)
+      ]} />
+      <span :if={@label} class="text-xs font-terminal uppercase">{@label}</span>
+    </span>
+    """
+  end
+
+  defp status_dot_class(:online), do: "status-dot-online"
+  defp status_dot_class(:offline), do: "status-dot-offline"
+  defp status_dot_class(:warning), do: "status-dot-warning"
+  defp status_dot_class(:error), do: "status-dot-error"
+  defp status_dot_class(:idle), do: "status-dot-idle"
+
+  defp status_size(:sm), do: "!w-1.5 !h-1.5"
+  defp status_size(:md), do: nil
+  defp status_size(:lg), do: "!w-3 !h-3"
+
+  # ============================================================================
+  # Filter Tabs — standardized filter UI
+  # ============================================================================
+
+  attr(:options, :list, required: true, doc: "list of {value, label} tuples")
+  attr(:active, :string, required: true)
+  attr(:event, :string, default: "filter")
+
+  def filter_tabs(assigns) do
+    ~H"""
+    <div class="flex flex-wrap gap-1">
+      <button
+        :for={{value, label} <- @options}
+        phx-click={@event}
+        phx-value-filter={value}
+        class={[
+          "px-3 py-1.5 text-xs font-terminal font-bold uppercase border-2 transition-all cursor-pointer",
+          if(value == @active,
+            do: "bg-primary text-primary-content border-primary shadow-brutal-sm",
+            else:
+              "bg-base-200 text-base-content/60 border-base-300 hover:border-base-content/30 hover:text-base-content"
+          )
+        ]}
+      >
+        {label}
+      </button>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # Pagination
+  # ============================================================================
+
+  attr(:end_of_list?, :boolean, default: false)
+  attr(:loading?, :boolean, default: false)
+
+  def load_more(assigns) do
+    ~H"""
+    <div :if={!@end_of_list?} class="flex justify-center mt-4 py-2">
+      <button
+        :if={!@loading?}
+        phx-click="load-more"
+        class="btn btn-ghost btn-sm font-terminal uppercase tracking-wide text-xs border-2 border-base-300 hover:border-primary"
+      >
+        <.icon name="hero-arrow-down" class="size-3" /> Load More
+      </button>
+      <span :if={@loading?} class="loading loading-spinner loading-sm text-primary"></span>
+    </div>
+    <div :if={@end_of_list?} class="flex justify-center mt-4 py-2">
+      <span class="text-xs font-terminal text-base-content/30 uppercase">End of list</span>
+    </div>
+    """
+  end
+
+  # ============================================================================
+  # Badge — neobrutalist with thick borders
+  # ============================================================================
+
   attr(:type, :atom,
     default: :default,
-    values: [:default, :primary, :secondary, :success, :warning, :error]
+    values: [:default, :primary, :secondary, :success, :warning, :error, :info, :accent]
   )
 
   attr(:class, :string, default: nil)
@@ -604,7 +668,7 @@ defmodule LincolnWeb.CoreComponents do
   def badge(assigns) do
     ~H"""
     <span class={[
-      "inline-flex items-center px-2 py-0.5 rounded text-xs font-medium",
+      "inline-flex items-center px-2 py-0.5 text-[10px] font-terminal font-bold uppercase border tracking-wide",
       badge_class(@type),
       @class
     ]}>
@@ -613,31 +677,69 @@ defmodule LincolnWeb.CoreComponents do
     """
   end
 
-  defp badge_class(:default), do: "bg-base-300 text-base-content"
-  defp badge_class(:primary), do: "bg-primary/20 text-primary"
-  defp badge_class(:secondary), do: "bg-secondary/20 text-secondary"
-  defp badge_class(:success), do: "bg-success/20 text-success"
-  defp badge_class(:warning), do: "bg-warning/20 text-warning"
-  defp badge_class(:error), do: "bg-error/20 text-error"
+  defp badge_class(:default), do: "bg-base-300 text-base-content border-base-content/20"
+  defp badge_class(:primary), do: "bg-primary/15 text-primary border-primary/30"
+  defp badge_class(:secondary), do: "bg-secondary/15 text-secondary border-secondary/30"
+  defp badge_class(:success), do: "bg-success/15 text-success border-success/30"
+  defp badge_class(:warning), do: "bg-warning/15 text-warning border-warning/30"
+  defp badge_class(:error), do: "bg-error/15 text-error border-error/30"
+  defp badge_class(:info), do: "bg-info/15 text-info border-info/30"
+  defp badge_class(:accent), do: "bg-accent/15 text-accent border-accent/30"
 
-  @doc """
-  Renders a loading skeleton.
-  """
+  # ============================================================================
+  # Skeleton
+  # ============================================================================
+
   attr(:class, :string, default: nil)
   attr(:type, :atom, default: :text, values: [:text, :circle, :card])
 
   def skeleton(assigns) do
     ~H"""
-    <div class={[
-      "animate-pulse bg-base-300 rounded",
-      skeleton_class(@type),
-      @class
-    ]}>
-    </div>
+    <div class={["animate-pulse bg-base-300", skeleton_class(@type), @class]} />
     """
   end
 
   defp skeleton_class(:text), do: "h-4 w-full"
   defp skeleton_class(:circle), do: "h-10 w-10 rounded-full"
   defp skeleton_class(:card), do: "h-24 w-full"
+
+  # ============================================================================
+  # JS Commands
+  # ============================================================================
+
+  def show(js \\ %JS{}, selector) do
+    JS.show(js,
+      to: selector,
+      time: 150,
+      transition:
+        {"transition-all ease-out duration-150", "opacity-0 translate-y-2",
+         "opacity-100 translate-y-0"}
+    )
+  end
+
+  def hide(js \\ %JS{}, selector) do
+    JS.hide(js,
+      to: selector,
+      time: 100,
+      transition:
+        {"transition-all ease-in duration-100", "opacity-100 translate-y-0",
+         "opacity-0 translate-y-2"}
+    )
+  end
+
+  # ============================================================================
+  # Gettext helpers
+  # ============================================================================
+
+  def translate_error({msg, opts}) do
+    if count = opts[:count] do
+      Gettext.dngettext(LincolnWeb.Gettext, "errors", msg, msg, count, opts)
+    else
+      Gettext.dgettext(LincolnWeb.Gettext, "errors", msg, opts)
+    end
+  end
+
+  def translate_errors(errors, field) when is_list(errors) do
+    for {^field, {msg, opts}} <- errors, do: translate_error({msg, opts})
+  end
 end

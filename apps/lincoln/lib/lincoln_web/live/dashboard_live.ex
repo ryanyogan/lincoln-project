@@ -243,281 +243,162 @@ defmodule LincolnWeb.DashboardLive do
     ~H"""
     <Layouts.app flash={@flash}>
       <div class="space-y-6">
-        <!-- Agent Header Card -->
-        <div class="card bg-base-200 border-2 border-primary">
-          <div class="card-body p-4 sm:p-6">
-            <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <!-- Agent Avatar -->
-              <div class="avatar placeholder">
-                <div class="bg-primary text-primary-content w-16 sm:w-20 border-2 border-primary shadow-brutal">
-                  <span class="text-3xl sm:text-4xl font-black font-terminal">L</span>
-                </div>
+        <%!-- Agent Header --%>
+        <div class="bg-base-200 border-2 border-primary p-4 sm:p-6 shadow-brutal scan-lines">
+          <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <div class="w-16 sm:w-20 h-16 sm:h-20 bg-primary text-primary-content flex items-center justify-center border-2 border-primary shadow-brutal">
+              <span class="text-3xl sm:text-4xl font-black font-terminal">L</span>
+            </div>
+            <div class="flex-1">
+              <h1 class="text-2xl sm:text-3xl font-black font-terminal uppercase tracking-tight">
+                {@agent.name}
+              </h1>
+              <p class="text-base-content/50 font-terminal text-sm mt-1">
+                {@agent.description || "Persistent Learning Agent"}
+              </p>
+              <div class="flex items-center gap-2 mt-2">
+                <.badge type={:success}>{@agent.status}</.badge>
+                <.badge type={:accent}>Learning Mode</.badge>
               </div>
-              
-    <!-- Agent Info -->
-              <div class="flex-1">
-                <h1 class="text-2xl sm:text-3xl font-black font-terminal uppercase tracking-tight">
-                  {@agent.name}
-                </h1>
-                <p class="text-base-content/60 font-terminal text-sm mt-1">
-                  {@agent.description || "Persistent Learning Agent"}
-                </p>
-                <div class="flex items-center gap-2 mt-2">
-                  <span class="badge badge-accent gap-1">
-                    <span class="status status-success"></span>
-                    {@agent.status}
-                  </span>
-                  <span class="badge badge-outline badge-sm font-terminal">Learning Mode</span>
-                </div>
-              </div>
-              
-    <!-- Quick Stats (desktop) -->
-              <div class="hidden lg:flex gap-2">
-                <div class="stat bg-base-300 border border-primary/30 p-3">
-                  <div class="stat-title text-xs font-terminal">Uptime</div>
-                  <div class="stat-value text-primary text-lg font-terminal">Active</div>
-                </div>
-                <div class="stat bg-base-300 border border-primary/30 p-3">
-                  <div class="stat-title text-xs font-terminal">Mode</div>
-                  <div class="stat-value text-accent text-lg font-terminal">Learning</div>
-                </div>
-              </div>
+            </div>
+            <div class="hidden lg:flex gap-3">
+              <.stat_card title="Uptime" value="Active" class="min-w-24" />
+              <.stat_card title="Mode" value="Learning" class="min-w-24" />
             </div>
           </div>
         </div>
-        
-    <!-- Stats Grid using daisyUI stats component -->
-        <div class="stats stats-vertical sm:stats-horizontal shadow-brutal-primary bg-base-200 w-full border-2 border-primary">
+
+        <%!-- Stats Grid --%>
+        <div class="stats stats-vertical sm:stats-horizontal bg-base-200 w-full border-2 border-primary shadow-brutal-primary">
           <div class="stat">
             <div class="stat-figure text-primary">
-              <.icon name="hero-light-bulb" class="size-8" />
+              <.icon name="hero-light-bulb" class="size-6" />
             </div>
-            <div class="stat-title font-terminal uppercase text-xs">Beliefs</div>
+            <div class="stat-title font-terminal uppercase text-[10px] tracking-widest">Beliefs</div>
             <div class="stat-value text-primary font-terminal">{@stats.beliefs_count}</div>
-            <div class="stat-desc font-terminal">Knowledge structures</div>
+            <div class="stat-desc font-terminal text-xs">Knowledge structures</div>
           </div>
-
           <div class="stat">
             <div class="stat-figure text-secondary">
-              <.icon name="hero-archive-box" class="size-8" />
+              <.icon name="hero-archive-box" class="size-6" />
             </div>
-            <div class="stat-title font-terminal uppercase text-xs">Memories</div>
+            <div class="stat-title font-terminal uppercase text-[10px] tracking-widest">Memories</div>
             <div class="stat-value text-secondary font-terminal">{@stats.memories_count}</div>
-            <div class="stat-desc font-terminal">Experience stored</div>
+            <div class="stat-desc font-terminal text-xs">Experience stored</div>
           </div>
-
           <div class="stat">
             <div class="stat-figure text-accent">
-              <.icon name="hero-question-mark-circle" class="size-8" />
+              <.icon name="hero-question-mark-circle" class="size-6" />
             </div>
-            <div class="stat-title font-terminal uppercase text-xs">Questions</div>
+            <div class="stat-title font-terminal uppercase text-[10px] tracking-widest">
+              Questions
+            </div>
             <div class="stat-value text-accent font-terminal">{@stats.questions_count}</div>
-            <div class="stat-desc font-terminal">Total asked</div>
+            <div class="stat-desc font-terminal text-xs">Total asked</div>
           </div>
-
           <div class="stat">
             <div class="stat-figure text-warning">
-              <.icon name="hero-magnifying-glass" class="size-8" />
+              <.icon name="hero-magnifying-glass" class="size-6" />
             </div>
-            <div class="stat-title font-terminal uppercase text-xs">Open</div>
+            <div class="stat-title font-terminal uppercase text-[10px] tracking-widest">Open</div>
             <div class="stat-value text-warning font-terminal">{@stats.open_questions}</div>
-            <div class="stat-desc font-terminal">Under investigation</div>
+            <div class="stat-desc font-terminal text-xs">Under investigation</div>
           </div>
         </div>
-        
-    <!-- System Status Card -->
-        <div class="card bg-base-200 border-2 border-info">
-          <div class="card-body p-4">
-            <h2 class="card-title text-sm font-terminal uppercase gap-2 mb-3">
+
+        <%!-- System Status --%>
+        <.card variant={:info}>
+          <:header>
+            <span class="flex items-center gap-2">
               <.icon name="hero-server-stack" class="size-4 text-info" /> System Status
-            </h2>
-            <div class="grid sm:grid-cols-2 gap-4">
-              <!-- LLM Status -->
-              <div class="flex items-center justify-between p-3 bg-base-300 border border-primary/30">
-                <div class="flex items-center gap-3">
-                  <div class={[
-                    "w-3 h-3 rounded-full",
-                    @llm_status == :connected && "bg-success animate-pulse",
-                    @llm_status == :error && "bg-error",
-                    @llm_status == :unknown && "bg-base-content/30"
-                  ]}>
-                  </div>
-                  <div>
-                    <p class="font-terminal text-sm font-bold">Claude API</p>
-                    <p class="font-terminal text-xs text-base-content/60">
-                      <%= cond do %>
-                        <% @llm_testing -> %>
-                          Testing...
-                        <% @llm_status == :connected -> %>
-                          Connected ({@llm_latency}ms)
-                        <% @llm_status == :error -> %>
-                          <span class="text-error">{@llm_error}</span>
-                        <% true -> %>
-                          Not tested
-                      <% end %>
-                    </p>
-                  </div>
-                </div>
-                <button
-                  phx-click="test_llm"
-                  disabled={@llm_testing}
-                  class={[
-                    "btn btn-sm btn-outline btn-primary font-terminal",
-                    @llm_testing && "loading"
-                  ]}
-                >
-                  <%= if @llm_testing do %>
-                    <span class="loading loading-spinner loading-xs"></span>
-                  <% else %>
-                    Test
-                  <% end %>
-                </button>
-              </div>
-              
-    <!-- Embeddings Status -->
-              <div class="flex items-center justify-between p-3 bg-base-300 border border-secondary/30">
-                <div class="flex items-center gap-3">
-                  <div class={[
-                    "w-3 h-3 rounded-full",
-                    @embeddings_status == :connected && "bg-success animate-pulse",
-                    @embeddings_status == :error && "bg-error",
-                    @embeddings_status == :unknown && "bg-base-content/30"
-                  ]}>
-                  </div>
-                  <div>
-                    <p class="font-terminal text-sm font-bold">ML Service</p>
-                    <p class="font-terminal text-xs text-base-content/60">
-                      <%= cond do %>
-                        <% @embeddings_testing -> %>
-                          Testing...
-                        <% @embeddings_status == :connected -> %>
-                          Connected ({@embeddings_latency}ms)
-                        <% @embeddings_status == :error -> %>
-                          <span class="text-error">{@embeddings_error}</span>
-                        <% true -> %>
-                          Not tested
-                      <% end %>
-                    </p>
-                  </div>
-                </div>
-                <button
-                  phx-click="test_embeddings"
-                  disabled={@embeddings_testing}
-                  class={[
-                    "btn btn-sm btn-outline btn-secondary font-terminal",
-                    @embeddings_testing && "loading"
-                  ]}
-                >
-                  <%= if @embeddings_testing do %>
-                    <span class="loading loading-spinner loading-xs"></span>
-                  <% else %>
-                    Test
-                  <% end %>
-                </button>
-              </div>
-            </div>
+            </span>
+          </:header>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <.system_status_row
+              name="Claude API"
+              status={@llm_status}
+              testing={@llm_testing}
+              latency={@llm_latency}
+              error={@llm_error}
+              test_event="test_llm"
+              border_color="border-primary/30"
+            />
+            <.system_status_row
+              name="ML Service"
+              status={@embeddings_status}
+              testing={@embeddings_testing}
+              latency={@embeddings_latency}
+              error={@embeddings_error}
+              test_event="test_embeddings"
+              border_color="border-secondary/30"
+            />
           </div>
-        </div>
-        
-    <!-- Main Content Grid -->
+        </.card>
+
+        <%!-- Main Content Grid --%>
         <div class="grid lg:grid-cols-2 gap-6">
-          <!-- Beliefs Panel -->
-          <div class="card bg-base-200 border-2 border-primary/50 hover:border-primary transition-colors">
-            <div class="card-body p-0">
-              <div class="flex items-center justify-between px-4 py-3 border-b-2 border-primary/30 bg-base-300">
-                <h2 class="card-title text-sm font-terminal uppercase gap-2">
-                  <.icon name="hero-light-bulb" class="size-4 text-primary" /> Belief Matrix
-                </h2>
-                <a href="/beliefs" class="btn btn-ghost btn-xs font-terminal">
-                  View All <.icon name="hero-arrow-right" class="size-3" />
-                </a>
-              </div>
-              <div class="p-4 max-h-80 overflow-y-auto">
-                <%= if @beliefs == [] do %>
-                  <.dashboard_empty_state icon="hero-light-bulb" title="No beliefs formed yet" />
-                <% else %>
-                  <ul class="space-y-2">
-                    <li :for={belief <- @beliefs}>
-                      <.belief_row belief={belief} />
-                    </li>
-                  </ul>
-                <% end %>
-              </div>
-            </div>
-          </div>
-          
-    <!-- Questions Panel -->
-          <div class="card bg-base-200 border-2 border-secondary/50 hover:border-secondary transition-colors">
-            <div class="card-body p-0">
-              <div class="flex items-center justify-between px-4 py-3 border-b-2 border-secondary/30 bg-base-300">
-                <h2 class="card-title text-sm font-terminal uppercase gap-2">
-                  <.icon name="hero-question-mark-circle" class="size-4 text-secondary" />
-                  Active Queries
-                </h2>
-                <a href="/questions" class="btn btn-ghost btn-xs font-terminal">
-                  View All <.icon name="hero-arrow-right" class="size-3" />
-                </a>
-              </div>
-              <div class="p-4 max-h-80 overflow-y-auto">
-                <%= if @open_questions == [] do %>
-                  <.dashboard_empty_state icon="hero-question-mark-circle" title="No open questions" />
-                <% else %>
-                  <ul class="space-y-2">
-                    <li :for={question <- @open_questions}>
-                      <.question_row question={question} />
-                    </li>
-                  </ul>
-                <% end %>
-              </div>
-            </div>
-          </div>
-          
-    <!-- Memories Panel -->
-          <div class="card bg-base-200 border-2 border-accent/50 hover:border-accent transition-colors">
-            <div class="card-body p-0">
-              <div class="flex items-center justify-between px-4 py-3 border-b-2 border-accent/30 bg-base-300">
-                <h2 class="card-title text-sm font-terminal uppercase gap-2">
-                  <.icon name="hero-archive-box" class="size-4 text-accent" /> Memory Bank
-                </h2>
-                <a href="/memories" class="btn btn-ghost btn-xs font-terminal">
-                  View All <.icon name="hero-arrow-right" class="size-3" />
-                </a>
-              </div>
-              <div class="p-4 max-h-80 overflow-y-auto">
-                <%= if @recent_memories == [] do %>
-                  <.dashboard_empty_state icon="hero-archive-box" title="No memories recorded" />
-                <% else %>
-                  <ul class="space-y-2">
-                    <li :for={memory <- @recent_memories}>
-                      <.memory_row memory={memory} />
-                    </li>
-                  </ul>
-                <% end %>
-              </div>
-            </div>
-          </div>
-          
-    <!-- Activity Timeline -->
-          <div class="card bg-base-200 border-2 border-info/50 hover:border-info transition-colors">
-            <div class="card-body p-0">
-              <div class="flex items-center justify-between px-4 py-3 border-b-2 border-info/30 bg-base-300">
-                <h2 class="card-title text-sm font-terminal uppercase gap-2">
-                  <.icon name="hero-clock" class="size-4 text-info" /> Activity Log
-                </h2>
-              </div>
-              <div class="p-4 max-h-80 overflow-y-auto">
-                <%= if @recent_actions == [] do %>
-                  <.dashboard_empty_state icon="hero-clock" title="No recent activity" />
-                <% else %>
-                  <ul class="timeline timeline-vertical timeline-compact">
-                    <li :for={action <- @recent_actions}>
-                      <.timeline_item action={action} />
-                    </li>
-                  </ul>
-                <% end %>
-              </div>
-            </div>
-          </div>
+          <.data_card
+            title="Belief Matrix"
+            icon="hero-light-bulb"
+            icon_color="text-primary"
+            border_color="border-primary/40"
+            view_all_path={~p"/beliefs"}
+          >
+            <%= if @beliefs == [] do %>
+              <.empty_state icon="hero-light-bulb" title="No beliefs formed yet" />
+            <% else %>
+              <ul class="space-y-2">
+                <li :for={belief <- @beliefs}><.belief_row belief={belief} /></li>
+              </ul>
+            <% end %>
+          </.data_card>
+
+          <.data_card
+            title="Active Queries"
+            icon="hero-question-mark-circle"
+            icon_color="text-secondary"
+            border_color="border-secondary/40"
+            view_all_path={~p"/questions"}
+          >
+            <%= if @open_questions == [] do %>
+              <.empty_state icon="hero-question-mark-circle" title="No open questions" />
+            <% else %>
+              <ul class="space-y-2">
+                <li :for={question <- @open_questions}><.question_row question={question} /></li>
+              </ul>
+            <% end %>
+          </.data_card>
+
+          <.data_card
+            title="Memory Bank"
+            icon="hero-archive-box"
+            icon_color="text-accent"
+            border_color="border-accent/40"
+            view_all_path={~p"/memories"}
+          >
+            <%= if @recent_memories == [] do %>
+              <.empty_state icon="hero-archive-box" title="No memories recorded" />
+            <% else %>
+              <ul class="space-y-2">
+                <li :for={memory <- @recent_memories}><.memory_row memory={memory} /></li>
+              </ul>
+            <% end %>
+          </.data_card>
+
+          <.data_card
+            title="Activity Log"
+            icon="hero-clock"
+            icon_color="text-info"
+            border_color="border-info/40"
+          >
+            <%= if @recent_actions == [] do %>
+              <.empty_state icon="hero-clock" title="No recent activity" />
+            <% else %>
+              <ul class="timeline timeline-vertical timeline-compact">
+                <li :for={action <- @recent_actions}><.timeline_item action={action} /></li>
+              </ul>
+            <% end %>
+          </.data_card>
         </div>
       </div>
     </Layouts.app>
@@ -528,44 +409,77 @@ defmodule LincolnWeb.DashboardLive do
   # Component Functions
   # ============================================================================
 
-  attr(:icon, :string, required: true)
-  attr(:title, :string, required: true)
+  attr(:name, :string, required: true)
+  attr(:status, :atom, required: true)
+  attr(:testing, :boolean, required: true)
+  attr(:latency, :any, default: nil)
+  attr(:error, :string, default: nil)
+  attr(:test_event, :string, required: true)
+  attr(:border_color, :string, default: "border-base-300")
 
-  defp dashboard_empty_state(assigns) do
+  defp system_status_row(assigns) do
     ~H"""
-    <div class="flex flex-col items-center justify-center py-8 text-base-content/40">
-      <.icon name={@icon} class="w-10 h-10 mb-2" />
-      <p class="text-sm">{@title}</p>
+    <div class={["flex items-center justify-between p-3 bg-base-300 border-2", @border_color]}>
+      <div class="flex items-center gap-3">
+        <.status_indicator
+          status={status_to_indicator(@status)}
+          pulse={@status == :connected}
+          size={:lg}
+        />
+        <div>
+          <p class="font-terminal text-sm font-bold">{@name}</p>
+          <p class="font-terminal text-xs text-base-content/50">
+            <%= cond do %>
+              <% @testing -> %>
+                Testing...
+              <% @status == :connected -> %>
+                Connected ({@latency}ms)
+              <% @status == :error -> %>
+                <span class="text-error">{@error}</span>
+              <% true -> %>
+                Not tested
+            <% end %>
+          </p>
+        </div>
+      </div>
+      <button
+        phx-click={@test_event}
+        disabled={@testing}
+        class="btn btn-sm btn-outline font-terminal border-2"
+      >
+        <%= if @testing do %>
+          <span class="loading loading-spinner loading-xs"></span>
+        <% else %>
+          Test
+        <% end %>
+      </button>
     </div>
     """
   end
+
+  defp status_to_indicator(:connected), do: :online
+  defp status_to_indicator(:error), do: :error
+  defp status_to_indicator(_), do: :idle
 
   attr(:belief, :map, required: true)
 
   defp belief_row(assigns) do
     ~H"""
-    <a
-      href={~p"/beliefs/#{@belief.id}"}
-      class="block p-3 bg-base-300 border border-primary/20 hover:border-primary hover-lift transition-all"
+    <.link
+      navigate={~p"/beliefs/#{@belief.id}"}
+      class="block p-3 bg-base-300 border-2 border-primary/20 hover:border-primary hover-lift transition-all"
     >
       <div class="flex items-start justify-between gap-2">
         <p class="text-sm font-terminal line-clamp-2">{@belief.statement}</p>
-        <div class="tooltip" data-tip="Confidence">
-          <span class={["badge font-terminal font-bold", confidence_badge_class(@belief.confidence)]}>
-            {Float.round(@belief.confidence * 100, 0)}%
-          </span>
-        </div>
+        <.badge type={confidence_badge_type(@belief.confidence)}>
+          {Float.round(@belief.confidence * 100, 0)}%
+        </.badge>
       </div>
       <div class="flex items-center gap-2 mt-2">
-        <span class={[
-          "badge badge-xs font-terminal uppercase",
-          source_badge_class(@belief.source_type)
-        ]}>
-          {@belief.source_type}
-        </span>
-        <span class="text-[10px] font-terminal text-base-content/50">E:{@belief.entrenchment}</span>
+        <.badge type={source_badge_type(@belief.source_type)}>{@belief.source_type}</.badge>
+        <span class="text-[10px] font-terminal text-base-content/40">E:{@belief.entrenchment}</span>
       </div>
-    </a>
+    </.link>
     """
   end
 
@@ -573,16 +487,16 @@ defmodule LincolnWeb.DashboardLive do
 
   defp question_row(assigns) do
     ~H"""
-    <a
-      href={~p"/questions/#{@question.id}"}
-      class="block p-3 bg-base-300 border border-secondary/20 hover:border-secondary hover-lift transition-all"
+    <.link
+      navigate={~p"/questions/#{@question.id}"}
+      class="block p-3 bg-base-300 border-2 border-secondary/20 hover:border-secondary hover-lift transition-all"
     >
       <p class="text-sm font-terminal line-clamp-2">{@question.question}</p>
       <div class="flex items-center gap-2 mt-2">
-        <span class="badge badge-warning badge-xs font-terminal">P:{@question.priority}</span>
-        <span class="text-[10px] font-terminal text-base-content/50">x{@question.times_asked}</span>
+        <.badge type={:warning}>P:{@question.priority}</.badge>
+        <span class="text-[10px] font-terminal text-base-content/40">x{@question.times_asked}</span>
       </div>
-    </a>
+    </.link>
     """
   end
 
@@ -590,21 +504,16 @@ defmodule LincolnWeb.DashboardLive do
 
   defp memory_row(assigns) do
     ~H"""
-    <a
-      href={~p"/memories/#{@memory.id}"}
-      class="block p-3 bg-base-300 border border-accent/20 hover:border-accent hover-lift transition-all"
+    <.link
+      navigate={~p"/memories/#{@memory.id}"}
+      class="block p-3 bg-base-300 border-2 border-accent/20 hover:border-accent hover-lift transition-all"
     >
       <p class="text-sm font-terminal line-clamp-2">{truncate(@memory.content, 100)}</p>
       <div class="flex items-center gap-2 mt-2">
-        <span class={[
-          "badge badge-xs font-terminal uppercase",
-          memory_badge_class(@memory.memory_type)
-        ]}>
-          {@memory.memory_type}
-        </span>
+        <.badge type={memory_badge_type(@memory.memory_type)}>{@memory.memory_type}</.badge>
         <.importance_dots importance={@memory.importance} />
       </div>
-    </a>
+    </.link>
     """
   end
 
@@ -612,21 +521,19 @@ defmodule LincolnWeb.DashboardLive do
 
   defp timeline_item(assigns) do
     ~H"""
-    <div class="timeline-start timeline-box bg-base-300 border border-info/20 p-2">
+    <div class="timeline-start timeline-box bg-base-300 border-2 border-info/20 p-2">
       <div class="flex items-center gap-2">
-        <span class="badge badge-info badge-xs font-terminal uppercase">{@action.action_type}</span>
-        <span class={["badge badge-xs font-terminal uppercase", outcome_badge_class(@action.outcome)]}>
-          {@action.outcome || "pending"}
-        </span>
+        <.badge type={:info}>{@action.action_type}</.badge>
+        <.badge type={outcome_badge_type(@action.outcome)}>{@action.outcome || "pending"}</.badge>
       </div>
       <%= if @action.description do %>
-        <p class="text-xs font-terminal text-base-content/60 mt-1 line-clamp-1">
+        <p class="text-xs font-terminal text-base-content/50 mt-1 line-clamp-1">
           {truncate(@action.description, 60)}
         </p>
       <% end %>
     </div>
     <div class="timeline-middle">
-      <span class="status status-info"></span>
+      <span class="status-dot status-dot-online"></span>
     </div>
     <hr class="bg-info/30" />
     """
@@ -649,26 +556,26 @@ defmodule LincolnWeb.DashboardLive do
     """
   end
 
-  # Style helpers
-  defp confidence_badge_class(conf) when conf >= 0.8, do: "badge-success"
-  defp confidence_badge_class(conf) when conf >= 0.5, do: "badge-warning"
-  defp confidence_badge_class(_), do: "badge-error"
+  # Style helpers — return badge type atoms for <.badge> component
+  defp confidence_badge_type(conf) when conf >= 0.8, do: :success
+  defp confidence_badge_type(conf) when conf >= 0.5, do: :warning
+  defp confidence_badge_type(_), do: :error
 
-  defp source_badge_class("observation"), do: "badge-info"
-  defp source_badge_class("inference"), do: "badge-secondary"
-  defp source_badge_class("training"), do: "badge-warning"
-  defp source_badge_class("testimony"), do: "badge-accent"
-  defp source_badge_class(_), do: "badge-ghost"
+  defp source_badge_type("observation"), do: :info
+  defp source_badge_type("inference"), do: :secondary
+  defp source_badge_type("training"), do: :warning
+  defp source_badge_type("testimony"), do: :accent
+  defp source_badge_type(_), do: :default
 
-  defp memory_badge_class("observation"), do: "badge-info"
-  defp memory_badge_class("reflection"), do: "badge-secondary"
-  defp memory_badge_class("conversation"), do: "badge-accent"
-  defp memory_badge_class("plan"), do: "badge-primary"
-  defp memory_badge_class(_), do: "badge-ghost"
+  defp memory_badge_type("observation"), do: :info
+  defp memory_badge_type("reflection"), do: :secondary
+  defp memory_badge_type("conversation"), do: :accent
+  defp memory_badge_type("plan"), do: :primary
+  defp memory_badge_type(_), do: :default
 
-  defp outcome_badge_class("success"), do: "badge-success"
-  defp outcome_badge_class("failure"), do: "badge-error"
-  defp outcome_badge_class(_), do: "badge-ghost"
+  defp outcome_badge_type("success"), do: :success
+  defp outcome_badge_type("failure"), do: :error
+  defp outcome_badge_type(_), do: :default
 
   defp truncate(text, max_length) when is_binary(text) do
     if String.length(text) > max_length do
