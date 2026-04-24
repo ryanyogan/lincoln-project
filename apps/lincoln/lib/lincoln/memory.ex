@@ -265,6 +265,78 @@ defmodule Lincoln.Memory do
   end
 
   # ============================================================================
+  # Perception — unprocessed observation queries
+  # ============================================================================
+
+  @doc """
+  Counts observation memories that have not yet been routed through a
+  perception thought (i.e. `source_context.processed_at` is null).
+
+  Options:
+    * `:hours` — recency window (default 24)
+  """
+  def count_unprocessed_observations(%Agent{id: agent_id}, opts \\ []) do
+    cutoff = DateTime.add(DateTime.utc_now(), -Keyword.get(opts, :hours, 24) * 3600, :second)
+
+    Repo.one(
+      from(m in Memory,
+        where: m.agent_id == ^agent_id,
+        where: m.memory_type == "observation",
+        where: m.inserted_at >= ^cutoff,
+        where: fragment("(?->>'processed_at') IS NULL", m.source_context),
+        select: count(m.id)
+      )
+    ) || 0
+  end
+
+  @doc """
+  Returns observation memories that have not yet been processed by a
+  perception thought, ordered by importance desc then recency desc.
+
+  Options:
+    * `:hours` — recency window (default 24)
+    * `:limit` — max rows (default 5)
+  """
+  def list_unprocessed_observations(%Agent{id: agent_id}, opts \\ []) do
+    cutoff = DateTime.add(DateTime.utc_now(), -Keyword.get(opts, :hours, 24) * 3600, :second)
+    limit = Keyword.get(opts, :limit, 5)
+
+    Memory
+    |> where([m], m.agent_id == ^agent_id)
+    |> where([m], m.memory_type == "observation")
+    |> where([m], m.inserted_at >= ^cutoff)
+    |> where([m], fragment("(?->>'processed_at') IS NULL", m.source_context))
+    |> order_by([m], desc: m.importance, desc: m.inserted_at)
+    |> limit(^limit)
+    |> Repo.all()
+  end
+
+  @doc """
+  Marks an observation memory as processed by a perception thought, optionally
+  recording the resulting belief id in `related_belief_ids`.
+
+  Setting `processed_at` is idempotent — calling this twice is fine.
+  """
+  def mark_processed(%Memory{} = memory, opts \\ []) do
+    now_iso = DateTime.utc_now() |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+    belief_id = Keyword.get(opts, :belief_id)
+
+    new_context =
+      memory.source_context
+      |> Kernel.||(%{})
+      |> Map.put("processed_at", now_iso)
+
+    related =
+      if belief_id,
+        do: Enum.uniq([belief_id | memory.related_belief_ids || []]),
+        else: memory.related_belief_ids
+
+    memory
+    |> Ecto.Changeset.change(source_context: new_context, related_belief_ids: related)
+    |> Repo.update()
+  end
+
+  # ============================================================================
   # Memory Access Tracking
   # ============================================================================
 

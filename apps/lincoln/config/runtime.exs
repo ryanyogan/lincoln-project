@@ -60,14 +60,19 @@ end
 
 # Select the frontier LLM adapter based on LLM_PROVIDER env var
 # Defaults to :anthropic. Set LLM_PROVIDER=openai to use OpenAI.
-llm_provider = env!("LLM_PROVIDER", :string, "anthropic")
+# In :test we leave the adapter set by test.exs (Lincoln.LLMMock) — runtime.exs
+# runs after test.exs and would otherwise clobber the mock with a real adapter
+# whenever a developer's .env includes LLM_PROVIDER.
+unless config_env() == :test do
+  llm_provider = env!("LLM_PROVIDER", :string, "anthropic")
 
-case llm_provider do
-  "openai" ->
-    config :lincoln, :llm_adapter, Lincoln.Adapters.LLM.OpenAI
+  case llm_provider do
+    "openai" ->
+      config :lincoln, :llm_adapter, Lincoln.Adapters.LLM.OpenAI
 
-  _ ->
-    config :lincoln, :llm_adapter, Lincoln.Adapters.LLM.Anthropic
+    _ ->
+      config :lincoln, :llm_adapter, Lincoln.Adapters.LLM.Anthropic
+  end
 end
 
 # Python ML Service URL
