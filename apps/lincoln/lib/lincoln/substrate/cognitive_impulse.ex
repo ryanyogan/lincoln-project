@@ -14,7 +14,7 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
   Each impulse has a cooldown to prevent runaway execution.
   """
 
-  alias Lincoln.{Autonomy, Questions}
+  alias Lincoln.{Autonomy, Memory, Questions}
   alias Lincoln.Events.ImprovementQueue
 
   @curiosity_cooldown_seconds 1800
@@ -22,6 +22,7 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
   @learning_cooldown_seconds 300
   @investigation_cooldown_seconds 120
   @self_improve_cooldown_seconds 300
+  @perception_cooldown_seconds 60
 
   @doc """
   Returns a list of impulse candidates with computed scores.
@@ -38,7 +39,8 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
       reflection_impulse(cached_beliefs, impulse_state, now),
       learning_impulse(agent, impulse_state, now),
       investigation_impulse(agent, impulse_state, now),
-      self_improve_impulse(agent, impulse_state, now)
+      self_improve_impulse(agent, impulse_state, now),
+      perception_impulse(agent, impulse_state, now)
     ]
     |> Enum.reject(&is_nil/1)
   end
@@ -52,7 +54,8 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
     "reflection" => :reflection,
     "learning" => :learning,
     "investigation" => :investigation,
-    "self_improve" => :self_improve
+    "self_improve" => :self_improve,
+    "perception" => :perception
   }
 
   @doc "Extract the impulse type from an impulse ID."
@@ -65,7 +68,8 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
       last_reflection_at: nil,
       last_learning_at: nil,
       last_investigation_at: nil,
-      last_self_improve_at: nil
+      last_self_improve_at: nil,
+      last_perception_at: nil
     }
   end
 
@@ -165,6 +169,32 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
     end
   end
 
+  defp perception_impulse(agent, impulse_state, now) do
+    if on_cooldown?(impulse_state.last_perception_at, now, @perception_cooldown_seconds) do
+      nil
+    else
+      score = perception_score(agent)
+
+      if score > 0.0 do
+        %{
+          id: "impulse:perception",
+          statement: "I have unprocessed observations from the world to consider",
+          confidence: score,
+          entrenchment: 1,
+          source_type: "introspection",
+          revision_count: 0,
+          inserted_at: now,
+          updated_at: now,
+          last_challenged_at: nil,
+          last_reinforced_at: nil,
+          status: "active"
+        }
+      else
+        nil
+      end
+    end
+  end
+
   defp learning_impulse(agent, impulse_state, now) do
     if on_cooldown?(impulse_state.last_learning_at, now, @learning_cooldown_seconds) do
       nil
@@ -230,6 +260,15 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
     case length(questions) do
       0 -> 0.0
       n -> min(0.95, 0.5 + n * 0.1)
+    end
+  rescue
+    _ -> 0.0
+  end
+
+  defp perception_score(agent) do
+    case Memory.count_unprocessed_observations(agent, hours: 24) do
+      0 -> 0.0
+      n -> min(0.95, 0.4 + n * 0.08)
     end
   rescue
     _ -> 0.0
