@@ -20,6 +20,9 @@ defmodule Lincoln.Application do
       {Oban, Application.fetch_env!(:lincoln, Oban)},
       # Events cache for fast pattern analysis
       Lincoln.Events.Cache,
+      # Perception layer: file watchers, RSS pollers, etc. — sources are
+      # configured under :lincoln, :perception. Empty list = no children.
+      Lincoln.Perception.Supervisor,
       # Start to serve requests, typically the last entry
       LincolnWeb.Endpoint
     ]
