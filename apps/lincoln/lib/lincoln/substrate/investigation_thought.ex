@@ -58,7 +58,28 @@ defmodule Lincoln.Substrate.InvestigationThought do
     beliefs =
       if embedding, do: Beliefs.find_similar_beliefs(agent, embedding, limit: 5), else: []
 
-    %{relevant_memories: memories, relevant_beliefs: beliefs}
+    search_results = web_search_results(question.question)
+
+    %{
+      relevant_memories: memories,
+      relevant_beliefs: beliefs,
+      search_results: search_results
+    }
+  end
+
+  defp web_search_results(query) do
+    case search_adapter().search(query, limit: 5) do
+      {:ok, results} when is_list(results) ->
+        Enum.take(results, 5)
+
+      {:error, reason} ->
+        Logger.debug("[InvestigationThought] Search adapter returned error: #{inspect(reason)}")
+        []
+    end
+  rescue
+    e ->
+      Logger.debug("[InvestigationThought] Search adapter crashed: #{Exception.message(e)}")
+      []
   end
 
   defp generate_answer(question, context) do
@@ -187,33 +208,38 @@ defmodule Lincoln.Substrate.InvestigationThought do
     end)
   end
 
-  defp format_context(%{relevant_memories: memories, relevant_beliefs: beliefs}) do
-    parts = []
-
+  defp format_context(%{
+         relevant_memories: memories,
+         relevant_beliefs: beliefs,
+         search_results: search_results
+       }) do
     parts =
-      if memories != [] do
-        mem_text = Enum.map_join(memories, "\n", fn m -> "- #{m[:content] || m.content}" end)
-        ["Relevant memories:\n#{mem_text}" | parts]
-      else
-        parts
-      end
-
-    parts =
-      if beliefs != [] do
-        bel_text =
-          Enum.map_join(beliefs, "\n", fn b ->
-            "- #{b[:statement] || b.statement} (confidence: #{b[:confidence] || b.confidence})"
-          end)
-
-        ["Relevant beliefs:\n#{bel_text}" | parts]
-      else
-        parts
-      end
+      []
+      |> add_section("Relevant memories", memories, fn m -> "- #{m[:content] || m.content}" end)
+      |> add_section("Relevant beliefs", beliefs, fn b ->
+        "- #{b[:statement] || b.statement} (confidence: #{b[:confidence] || b.confidence})"
+      end)
+      |> add_section("Web search results", search_results, fn r ->
+        "- #{r.title}#{maybe_url(r.url)}#{maybe_snippet(r.snippet)}"
+      end)
 
     if parts == [],
       do: "No relevant context found.",
       else: parts |> Enum.reverse() |> Enum.join("\n\n")
   end
+
+  defp add_section(parts, _label, [], _formatter), do: parts
+
+  defp add_section(parts, label, items, formatter) do
+    section = "#{label}:\n" <> Enum.map_join(items, "\n", formatter)
+    [section | parts]
+  end
+
+  defp maybe_url(nil), do: ""
+  defp maybe_url(url), do: " (#{url})"
+  defp maybe_snippet(nil), do: ""
+  defp maybe_snippet(""), do: ""
+  defp maybe_snippet(text), do: " — #{String.slice(text, 0, 200)}"
 
   defp llm_adapter do
     Application.get_env(:lincoln, :llm_adapter, Lincoln.Adapters.LLM.Anthropic)
@@ -221,5 +247,9 @@ defmodule Lincoln.Substrate.InvestigationThought do
 
   defp embeddings_adapter do
     Application.get_env(:lincoln, :embeddings_adapter, Lincoln.Adapters.Embeddings.PythonService)
+  end
+
+  defp search_adapter do
+    Application.get_env(:lincoln, :search_adapter, Lincoln.MCP.SearchClient.NoOp)
   end
 end

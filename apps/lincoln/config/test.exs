@@ -35,6 +35,7 @@ config :lincoln, Oban, testing: :manual
 # Use Mox mocks for adapters in tests
 config :lincoln, :llm_adapter, Lincoln.LLMMock
 config :lincoln, :embeddings_adapter, Lincoln.EmbeddingsMock
+config :lincoln, :search_adapter, Lincoln.SearchClientMock
 
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime
