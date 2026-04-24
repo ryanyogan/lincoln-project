@@ -94,6 +94,12 @@ config :lincoln, :ollama,
   service_url: "http://localhost:11434",
   model: "qwen2.5:7b"
 
+# Perception layer — sensory sources that ingest external signals into Lincoln's
+# memory. Each source spec is `{module, keyword_opts}` and the module must
+# implement `Lincoln.Perception.Source`. Default is empty (no sources active).
+# See dev.exs / runtime.exs for environment-specific source configuration.
+config :lincoln, :perception, sources: []
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

@@ -73,6 +73,9 @@ defmodule Lincoln.MixProject do
       # Vector similarity for embeddings
       {:pgvector, "~> 0.3.0"},
 
+      # File-system event watcher (perception layer — file inbox source)
+      {:file_system, "~> 1.0"},
+
       # Code quality
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
 
