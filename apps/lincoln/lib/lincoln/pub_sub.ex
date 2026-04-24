@@ -75,6 +75,20 @@ defmodule Lincoln.PubSubBroadcaster do
   end
 
   # ============================================================================
+  # Goals
+  # ============================================================================
+
+  def broadcast_goal_created(agent_id, goal) do
+    broadcast(agent_topic(agent_id, :goals), {:goal_created, goal})
+    broadcast(agent_topic(agent_id), {:goal_created, goal})
+  end
+
+  def broadcast_goal_updated(agent_id, goal) do
+    broadcast(agent_topic(agent_id, :goals), {:goal_updated, goal})
+    broadcast(agent_topic(agent_id), {:goal_updated, goal})
+  end
+
+  # ============================================================================
   # Actions
   # ============================================================================
 
@@ -140,6 +154,7 @@ defmodule Lincoln.PubSubBroadcaster do
   defp agent_topic(agent_id, :questions), do: "agent:#{agent_id}:questions"
   defp agent_topic(agent_id, :memories), do: "agent:#{agent_id}:memories"
   defp agent_topic(agent_id, :autonomy), do: "agent:#{agent_id}:autonomy"
+  defp agent_topic(agent_id, :goals), do: "agent:#{agent_id}:goals"
 
   def substrate_topic(agent_id), do: "agent:#{agent_id}:substrate"
   def attention_topic(agent_id), do: "agent:#{agent_id}:attention"
