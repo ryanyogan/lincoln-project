@@ -100,6 +100,15 @@ config :lincoln, :ollama,
 # See dev.exs / runtime.exs for environment-specific source configuration.
 config :lincoln, :perception, sources: []
 
+# Outbound MCP search adapter — Investigation uses this to ground questions
+# against the live web. Default NoOp keeps investigation LLM-only.
+config :lincoln, :search_adapter, Lincoln.MCP.SearchClient.NoOp
+
+# Outbound MCP servers Lincoln may call out to. Keyed by atom; each value
+# is a keyword list with at least `:url` (the MCP server's JSON-RPC HTTP
+# endpoint). Default empty.
+config :lincoln, :mcp_servers, []
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"
