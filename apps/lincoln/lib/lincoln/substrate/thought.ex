@@ -370,6 +370,18 @@ defmodule Lincoln.Substrate.Thought do
     end
   end
 
+  defp run_impulse(agent, :goal_pursuit) do
+    alias Lincoln.Substrate.GoalThought
+
+    case GoalThought.execute(agent) do
+      {:ok, summary} ->
+        {:ok, "Goal pursuit: #{summary}"}
+
+      {:error, reason} ->
+        {:ok, "Goal pursuit failed: #{inspect(reason)}"}
+    end
+  end
+
   defp run_impulse(agent, :resolve_contradiction) do
     alias Lincoln.Cognition.BeliefRevision
 

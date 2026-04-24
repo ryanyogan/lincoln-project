@@ -38,6 +38,9 @@ defmodule LincolnWeb.Router do
       live("/memories", MemoriesLive, :index)
       live("/memories/:id", MemoriesLive, :show)
 
+      # Goals — explicit pursuits Lincoln tracks and reasons about
+      live("/goals", GoalsLive, :index)
+
       # Substrate - Real-time cognitive state
       live("/substrate", SubstrateLive, :index)
       live("/substrate/compare", SubstrateCompareLive, :index)
