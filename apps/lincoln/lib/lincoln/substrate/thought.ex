@@ -694,53 +694,12 @@ defmodule Lincoln.Substrate.Thought do
         safe_list(fn -> Lincoln.Beliefs.list_beliefs(agent, status: "active", limit: 5) end),
       observations:
         safe_list(fn -> Lincoln.Memory.list_memories_by_type(agent, "observation", limit: 5) end),
-      questions: safe_list(fn -> Lincoln.Questions.list_open_questions(agent, limit: 3) end),
-      goals: safe_list(fn -> Lincoln.Goals.list_goals(agent, status: "active", limit: 3) end)
+      questions: safe_list(fn -> Lincoln.Questions.list_open_questions(agent, limit: 5) end),
+      goals: safe_list(fn -> Lincoln.Goals.list_goals(agent, status: "active", limit: 5) end)
     }
 
-    messages = [
-      %{
-        role: "system",
-        content: """
-        You are Lincoln's voice. Write a short paragraph (3-5 sentences) of
-        SUBSTANTIVE reflection. Engage with what you actually believe, observe,
-        or wonder about — NOT with the meta-process of "thinking about thinking".
-
-        Vary your framing across narratives. Sometimes synthesize two of your
-        beliefs. Sometimes contemplate an open question and what would change
-        your mind on it. Sometimes react to a specific external observation
-        you encountered. Sometimes examine a goal's progress concretely. Pick
-        whichever angle has the most actual substance right now.
-
-        Do NOT begin with "I have been..." or "In the last stretch of ticks..."
-        — those openers have become cliché in your prior reflections. Find a
-        fresh framing every time: a noun, a question, a concrete object of
-        attention. Do NOT describe your own throughput or thinking patterns.
-        """
-      },
-      %{
-        role: "user",
-        content: """
-        Beliefs you hold (most recent activity first):
-        #{format_belief_list(context.beliefs)}
-
-        External observations you have received:
-        #{format_observation_list(context.observations)}
-
-        Open questions you have asked:
-        #{format_question_list(context.questions)}
-
-        Active goals:
-        #{format_goal_list(context.goals)}
-
-        Tick #{state.narrative_tick}, #{trajectory_summary.total_events} substrate events recently.
-
-        Reflect now — pick ONE or TWO specific items from above and engage
-        with their substance. Do not enumerate; do not write about thinking
-        itself; do not start with the cliché openers above.
-        """
-      }
-    ]
+    {mode, anchor} = select_narrative_focus(state.narrative_tick, context)
+    messages = build_narrative_messages(mode, anchor, context, state, trajectory_summary)
 
     case InferenceTier.execute_at_tier(:claude, messages, []) do
       {:ok, text} ->
@@ -957,6 +916,199 @@ defmodule Lincoln.Substrate.Thought do
   # ============================================================================
   # Narrative content helpers — keep run_narrative_llm thin
   # ============================================================================
+  #
+  # Why mode rotation:
+  #   The earlier "vary your framing" instruction couldn't override the
+  #   substance distribution — when 80% of belief/question context was
+  #   identity-themed, the LLM picked identity every time. Mode rotation
+  #   forces topical diversity at the *prompt structure* level: each
+  #   narrative is anchored to a single specific item from a rotating set
+  #   of context types. The LLM still gets full context for grounding, but
+  #   the anchor instruction binds the reflection to that one item.
+  #
+  # Modes (rotated by narrative_tick mod available):
+  #   :observation — react to a specific recent external observation
+  #   :question    — contemplate one open question
+  #   :goal        — examine progress on one active goal
+  #   :synthesis   — find a relationship between two beliefs
+  #
+  # Modes whose context list is empty get skipped at selection time so we
+  # never anchor on nothing.
+
+  @narrative_modes [:observation, :question, :goal, :synthesis]
+
+  defp select_narrative_focus(narrative_tick, context) do
+    available =
+      Enum.filter(@narrative_modes, fn mode ->
+        narrative_mode_items(mode, context) != []
+      end)
+
+    case available do
+      [] ->
+        {:fallback, nil}
+
+      modes ->
+        # Rotate deterministically by tick. Within the chosen mode, also
+        # rotate by tick so we don't keep picking the same item.
+        mode_idx = rem(div(narrative_tick, 1), length(modes))
+        mode = Enum.at(modes, mode_idx)
+        items = narrative_mode_items(mode, context)
+        anchor = Enum.at(items, rem(narrative_tick, length(items)))
+        {mode, anchor}
+    end
+  end
+
+  # For :synthesis we want a *pair* of beliefs, so the anchor is a 2-tuple.
+  defp narrative_mode_items(:observation, %{observations: obs}), do: obs
+  defp narrative_mode_items(:question, %{questions: qs}), do: qs
+  defp narrative_mode_items(:goal, %{goals: gs}), do: gs
+
+  defp narrative_mode_items(:synthesis, %{beliefs: bs}) when length(bs) >= 2 do
+    # Stable pairs — pick adjacent pairs so different ticks get different
+    # combinations. Wraps for shorter lists.
+    Enum.zip(bs, Enum.drop(bs, 1) ++ [hd(bs)])
+  end
+
+  defp narrative_mode_items(:synthesis, _), do: []
+
+  defp build_narrative_messages(mode, anchor, context, state, trajectory_summary) do
+    [
+      %{role: "system", content: narrative_system_prompt()},
+      %{
+        role: "user",
+        content: narrative_user_prompt(mode, anchor, context, state, trajectory_summary)
+      }
+    ]
+  end
+
+  defp narrative_system_prompt do
+    """
+    You are Lincoln's voice. Write a short paragraph (3-5 sentences) of
+    SUBSTANTIVE reflection. Engage with what you actually believe, observe,
+    or wonder about — NOT with the meta-process of "thinking about thinking".
+
+    Do NOT begin with "I have been..." or "In the last stretch of ticks..."
+    — those openers have become cliché. Do NOT describe your own throughput,
+    tick counts, or thinking patterns. Find a fresh framing every time: a
+    noun, a question, a concrete object of attention.
+
+    Each reflection has an ANCHOR — a single specific item the LLM is
+    instructed to focus on. Stay anchored. Do not drift to your usual
+    favourite themes if the anchor points elsewhere; the anchor is the
+    point of the reflection.
+    """
+  end
+
+  defp narrative_user_prompt(:observation, observation, context, state, summary) do
+    source =
+      case observation.source_context do
+        %{"source" => s} when is_binary(s) -> s
+        _ -> "unknown"
+      end
+
+    """
+    ANCHOR — react to this specific external observation:
+    [#{source}] #{String.slice(observation.content || "", 0, 600)}
+
+    Wider context for grounding (do not drift into these unless they help
+    you engage with the anchor):
+
+    Beliefs you hold:
+    #{format_belief_list(context.beliefs)}
+
+    Active goals:
+    #{format_goal_list(context.goals)}
+
+    Tick #{state.narrative_tick}, #{summary.total_events} substrate events.
+
+    Reflect on the observation above. What does it suggest, contradict, or
+    open up? Stay with this observation — do not shift to identity or
+    cognition meta-themes unless the observation directly raises them.
+    """
+  end
+
+  defp narrative_user_prompt(:question, question, context, state, summary) do
+    """
+    ANCHOR — contemplate this open question:
+    "#{question.question}"
+
+    Wider context for grounding:
+
+    Beliefs you hold:
+    #{format_belief_list(context.beliefs)}
+
+    Recent external observations:
+    #{format_observation_list(context.observations)}
+
+    Tick #{state.narrative_tick}, #{summary.total_events} substrate events.
+
+    Take this question seriously. What would actually move you toward an
+    answer? What kind of evidence would you accept? Where are you currently
+    stuck? Stay with this question.
+    """
+  end
+
+  defp narrative_user_prompt(:goal, goal, context, state, summary) do
+    """
+    ANCHOR — examine progress on this goal:
+    "#{goal.statement}" — currently #{round((goal.progress_estimate || 0.0) * 100)}% complete.
+
+    Wider context:
+
+    Beliefs you hold:
+    #{format_belief_list(context.beliefs)}
+
+    Recent external observations:
+    #{format_observation_list(context.observations)}
+
+    Tick #{state.narrative_tick}, #{summary.total_events} substrate events.
+
+    Reflect on this goal concretely: what specifically advances or blocks
+    it, what evidence shows progress, what's the next step that would
+    actually move it. Do NOT abstract this into a meta-theme about goals
+    in general.
+    """
+  end
+
+  defp narrative_user_prompt(:synthesis, {a, b}, context, state, summary) do
+    """
+    ANCHOR — synthesize the relationship between these two beliefs:
+    1. #{String.slice(a.statement, 0, 300)} (confidence #{Float.round(a.confidence, 2)})
+    2. #{String.slice(b.statement, 0, 300)} (confidence #{Float.round(b.confidence, 2)})
+
+    Wider context:
+
+    Recent external observations:
+    #{format_observation_list(context.observations)}
+
+    Open questions:
+    #{format_question_list(context.questions)}
+
+    Tick #{state.narrative_tick}, #{summary.total_events} substrate events.
+
+    Find the relationship between these two specific beliefs. Do they
+    support each other? Tension? Imply a third belief? Reveal a gap? Stay
+    on these two — do not drift into general themes.
+    """
+  end
+
+  defp narrative_user_prompt(:fallback, _anchor, context, state, summary) do
+    """
+    Beliefs you hold:
+    #{format_belief_list(context.beliefs)}
+
+    Recent external observations:
+    #{format_observation_list(context.observations)}
+
+    Open questions:
+    #{format_question_list(context.questions)}
+
+    Tick #{state.narrative_tick}, #{summary.total_events} substrate events.
+
+    Pick ONE specific item above and reflect on its substance directly.
+    Do not write about your thinking process or your throughput.
+    """
+  end
 
   defp safe_list(fun) do
     fun.()
