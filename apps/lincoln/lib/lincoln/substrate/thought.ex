@@ -382,6 +382,18 @@ defmodule Lincoln.Substrate.Thought do
     end
   end
 
+  defp run_impulse(agent, :action) do
+    alias Lincoln.Substrate.ActionThought
+
+    case ActionThought.execute(agent) do
+      {:ok, summary} ->
+        {:ok, "Action: #{summary}"}
+
+      {:error, reason} ->
+        {:ok, "Action failed: #{inspect(reason)}"}
+    end
+  end
+
   defp run_impulse(agent, :resolve_contradiction) do
     alias Lincoln.Cognition.BeliefRevision
 
