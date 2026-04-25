@@ -804,9 +804,24 @@ defmodule Lincoln.Substrate.Thought do
         agent = Agents.get_agent!(agent_id)
         belief_id = belief && Map.get(belief, :id)
 
-        # Only store memories for LLM-tier thoughts — local thoughts produce
-        # repetitive observations that flood the memory table
-        if tier != :local do
+        # Write a "Reflection on X: Y" memory only for substantive belief
+        # reflections — skip three kinds of thoughts that already record
+        # their work elsewhere or are pure noise:
+        #
+        #   * local-tier thoughts (cheap, repetitive belief-graph reads)
+        #   * narrative thoughts — they have their own narrative_reflections
+        #     table; the duplicate memory just floods the trajectory feed
+        #   * impulse thoughts — each impulse handler (Investigation,
+        #     Perception, Goal, Learning) writes its own purpose-shaped
+        #     memory with the right type and importance; the generic
+        #     "Reflection on 'I have unprocessed observations': no
+        #     extractable claim" memory is duplicate noise.
+        should_record_memory? =
+          tier != :local and
+            is_binary(belief_id) and
+            not CognitiveImpulse.impulse?(belief_id)
+
+        if should_record_memory? do
           Lincoln.Memory.create_memory(agent, %{
             content: "Reflection on '#{get_statement(belief)}': #{result}",
             memory_type: "reflection",
@@ -814,7 +829,8 @@ defmodule Lincoln.Substrate.Thought do
           })
         end
 
-        # Feed back into beliefs based on tier
+        # Feed back into beliefs — same exclusion: impulses don't have a
+        # belief row to revise.
         if belief_id && is_binary(belief_id) && not CognitiveImpulse.impulse?(belief_id) do
           feed_back_to_beliefs(agent, belief, result, tier)
         end
