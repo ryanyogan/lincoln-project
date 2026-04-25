@@ -50,7 +50,11 @@ defmodule Lincoln.Goals do
   def get_goal(id), do: Repo.get(Goal, id)
 
   @doc """
-  Counts active goals for an agent. Used to score the `:goal_pursuit` impulse.
+  Counts active goals for an agent. Includes goals that were just evaluated —
+  useful for badges, dashboards, and "how many active goals do I have" callers.
+
+  See `count_pursuable_goals/2` for the count that drives the `:goal_pursuit`
+  impulse — that one respects the staleness window.
   """
   def count_active_goals(%Agent{id: agent_id}) do
     Repo.one(
@@ -62,12 +66,40 @@ defmodule Lincoln.Goals do
   end
 
   @doc """
+  Counts goals that are *pursuable right now* — active AND not just evaluated.
+
+  Mirrors the filter in `next_pursuable_goal/2` so the `:goal_pursuit` impulse
+  only fires when there is actual work to do. Without this filter the impulse
+  fires on cooldown for any active goal, but `next_pursuable_goal/2` returns
+  nil because the goal is still in its post-evaluation window — producing the
+  "I have an active goal that needs progress / No active goals to pursue"
+  contradiction in the trajectory.
+  """
+  def count_pursuable_goals(%Agent{id: agent_id}, opts \\ []) do
+    stale_seconds = Keyword.get(opts, :stale_seconds, 120)
+    cutoff = DateTime.add(DateTime.utc_now(), -stale_seconds, :second)
+
+    Repo.one(
+      from(g in Goal,
+        where: g.agent_id == ^agent_id and g.status == "active",
+        where: is_nil(g.last_evaluated_at) or g.last_evaluated_at <= ^cutoff,
+        select: count(g.id)
+      )
+    ) || 0
+  end
+
+  @doc """
   Returns the next goal to think about for the agent — highest priority active
   goal that has not been evaluated recently. Stale-evaluation drives rotation
   so attention doesn't fixate on one goal.
+
+  Default `stale_seconds: 120` — re-evaluate goals every 2 minutes. Each
+  evaluation is one LLM call, so this trades off responsiveness vs cost; the
+  prior default of 300 left long stretches where the only active goal was
+  invisible to the impulse pipeline.
   """
   def next_pursuable_goal(%Agent{id: agent_id}, opts \\ []) do
-    stale_seconds = Keyword.get(opts, :stale_seconds, 300)
+    stale_seconds = Keyword.get(opts, :stale_seconds, 120)
     cutoff = DateTime.add(DateTime.utc_now(), -stale_seconds, :second)
 
     Goal

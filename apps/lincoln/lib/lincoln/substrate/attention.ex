@@ -528,18 +528,21 @@ defmodule Lincoln.Substrate.Attention do
   end
 
   # Monotony penalty: how many of the last N thoughts were about this belief?
-  # After 5 consecutive same-belief thoughts, penalty starts.
-  # After 10, it's significant. After 15+, it's overwhelming.
+  # Front-loaded curve — small penalty starts at the *second* consecutive pick
+  # so L0 thoughts (which complete in 1-2ms with identical output for the same
+  # belief) can't run away with attention. By 3 consecutive (0.3) the penalty
+  # overcomes typical focus_momentum (0.15), so the next candidate wins.
   defp monotony_penalty(_belief_id, []), do: 0.0
 
   defp monotony_penalty(belief_id, recent_focus_ids) do
     consecutive = count_consecutive(belief_id, recent_focus_ids)
 
     cond do
-      consecutive >= 15 -> 0.8
-      consecutive >= 10 -> 0.5
-      consecutive >= 5 -> 0.3
-      consecutive >= 3 -> 0.1
+      consecutive >= 15 -> 0.95
+      consecutive >= 10 -> 0.8
+      consecutive >= 5 -> 0.5
+      consecutive >= 3 -> 0.3
+      consecutive >= 2 -> 0.15
       true -> 0.0
     end
   end

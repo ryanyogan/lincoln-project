@@ -75,6 +75,40 @@ defmodule Lincoln.GoalsTest do
     end
   end
 
+  describe "count_pursuable_goals/2" do
+    test "matches count_active_goals when no goals have been evaluated yet", %{agent: agent} do
+      {:ok, _} = Goals.create_goal(agent, %{statement: "a"})
+      {:ok, _} = Goals.create_goal(agent, %{statement: "b"})
+
+      assert Goals.count_pursuable_goals(agent) == 2
+      assert Goals.count_active_goals(agent) == 2
+    end
+
+    test "excludes goals that were just evaluated (within staleness window)", %{agent: agent} do
+      {:ok, fresh} = Goals.create_goal(agent, %{statement: "fresh"})
+      {:ok, _untouched} = Goals.create_goal(agent, %{statement: "untouched"})
+      {:ok, _} = Goals.record_progress(fresh, 0.1)
+
+      # count_active stays at 2 (both are active); pursuable drops to 1.
+      assert Goals.count_active_goals(agent) == 2
+      assert Goals.count_pursuable_goals(agent, stale_seconds: 300) == 1
+    end
+
+    test "stale_seconds: 0 brings just-evaluated goals back immediately", %{agent: agent} do
+      {:ok, goal} = Goals.create_goal(agent, %{statement: "x"})
+      {:ok, _} = Goals.record_progress(goal, 0.1)
+
+      assert Goals.count_pursuable_goals(agent, stale_seconds: 0) == 1
+    end
+
+    test "ignores non-active statuses", %{agent: agent} do
+      {:ok, _} = Goals.create_goal(agent, %{statement: "achieved", status: "achieved"})
+      {:ok, _} = Goals.create_goal(agent, %{statement: "abandoned", status: "abandoned"})
+
+      assert Goals.count_pursuable_goals(agent) == 0
+    end
+  end
+
   describe "next_pursuable_goal/2" do
     test "returns nil when no active goals exist", %{agent: agent} do
       assert is_nil(Goals.next_pursuable_goal(agent))
