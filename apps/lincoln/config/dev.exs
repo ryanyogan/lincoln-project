@@ -90,3 +90,13 @@ config :phoenix_live_view,
 
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false
+
+# Perception sources — both file inbox and Hacker News are enabled in dev.
+# Drop files into ~/lincoln-inbox to feed Lincoln directly. HN polls every
+# 30 minutes for front-page stories.
+config :lincoln, :perception,
+  sources: [
+    {Lincoln.Perception.Sources.FileInbox, [path: "~/lincoln-inbox", trust_weight: 0.9]},
+    {Lincoln.Perception.Sources.HackerNews,
+     [interval_ms: 30 * 60_000, trust_weight: 0.5, hits: 15]}
+  ]

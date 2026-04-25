@@ -3,15 +3,7 @@ defmodule Lincoln.MCP.SearchClient.HttpTest do
 
   alias Lincoln.MCP.SearchClient.Http
 
-  setup do
-    prior = Application.get_env(:lincoln, :mcp_servers, [])
-
-    Application.put_env(:lincoln, :mcp_servers, web_search: [url: "https://example.test/mcp"])
-
-    on_exit(fn -> Application.put_env(:lincoln, :mcp_servers, prior) end)
-
-    :ok
-  end
+  @url "https://example.test/mcp"
 
   describe "search/2 — canonical results" do
     test "extracts a list of {title,url,snippet} entries" do
@@ -31,7 +23,7 @@ defmodule Lincoln.MCP.SearchClient.HttpTest do
          }}
       end
 
-      assert {:ok, [first, second]} = Http.search("beam", http: http)
+      assert {:ok, [first, second]} = Http.search("beam", http: http, url: @url)
       assert first.title == "BEAM internals"
       assert first.url == "https://example.com/beam"
       assert first.snippet == "How the BEAM scheduler works"
@@ -53,7 +45,7 @@ defmodule Lincoln.MCP.SearchClient.HttpTest do
         {:ok, %{"result" => %{"content" => [%{"type" => "text", "text" => inner}]}}}
       end
 
-      assert {:ok, [%{title: "Wrapped result"}]} = Http.search("anything", http: http)
+      assert {:ok, [%{title: "Wrapped result"}]} = Http.search("anything", http: http, url: @url)
     end
   end
 
@@ -65,7 +57,7 @@ defmodule Lincoln.MCP.SearchClient.HttpTest do
 
     test "transport error returns empty results" do
       http = fn _url, _body -> {:error, :timeout} end
-      assert {:ok, []} = Http.search("anything", http: http)
+      assert {:ok, []} = Http.search("anything", http: http, url: @url)
     end
 
     test "RPC error returns empty results" do
@@ -73,12 +65,12 @@ defmodule Lincoln.MCP.SearchClient.HttpTest do
         {:ok, %{"error" => %{"code" => -32_000, "message" => "boom"}}}
       end
 
-      assert {:ok, []} = Http.search("anything", http: http)
+      assert {:ok, []} = Http.search("anything", http: http, url: @url)
     end
 
     test "garbage shape returns empty results" do
       http = fn _url, _body -> {:ok, %{"result" => "totally garbage"}} end
-      assert {:ok, []} = Http.search("anything", http: http)
+      assert {:ok, []} = Http.search("anything", http: http, url: @url)
     end
   end
 end

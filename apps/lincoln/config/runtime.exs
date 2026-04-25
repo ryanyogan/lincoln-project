@@ -75,6 +75,20 @@ unless config_env() == :test do
   end
 end
 
+# Tavily web search — pick up the API key from env. When present we switch
+# the search adapter to the Tavily impl so investigation grounds against
+# the live web; otherwise the NoOp adapter keeps investigation LLM-only.
+tavily_api_key = env!("TAVILY_API_KEY", :string, nil)
+
+if tavily_api_key && config_env() != :test do
+  config :lincoln, :tavily,
+    api_key: tavily_api_key,
+    search_depth: env!("TAVILY_SEARCH_DEPTH", :string, "basic"),
+    max_results: env!("TAVILY_MAX_RESULTS", :integer, 5)
+
+  config :lincoln, :search_adapter, Lincoln.MCP.SearchClient.Tavily
+end
+
 # Python ML Service URL
 ml_service_url = env!("ML_SERVICE_URL", :string, nil)
 

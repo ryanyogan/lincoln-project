@@ -48,7 +48,7 @@ defmodule Lincoln.MCP.Client do
   end
 
   defp request(server, method, params, opts) do
-    case server_url(server) do
+    case Keyword.get(opts, :url) || server_url(server) do
       nil ->
         {:error, :server_not_configured}
 
