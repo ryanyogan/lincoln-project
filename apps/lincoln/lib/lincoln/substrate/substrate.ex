@@ -25,7 +25,12 @@ defmodule Lincoln.Substrate.Substrate do
   }
 
   @default_timeout 5_000
-  @narrative_interval 50
+  # Narrative spawns an LLM-tier thought that synthesizes recent activity.
+  # 50-tick interval was ~50s in active operation, producing ~70 narrative
+  # LLM calls per hour and flooding the trajectory + memory table with
+  # near-duplicate "in the last stretch of ticks I have been thinking about..."
+  # entries. 300 ticks ≈ 5 minutes — narrative as deep breath, not heartbeat.
+  @narrative_interval 300
   @self_model_interval 50
   @belief_maintenance_interval 1000
   @consolidation_interval 20
