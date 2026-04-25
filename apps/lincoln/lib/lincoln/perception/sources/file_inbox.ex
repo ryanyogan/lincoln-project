@@ -111,7 +111,19 @@ defmodule Lincoln.Perception.Sources.FileInbox do
 
           {:error, reason} ->
             Logger.warning(
-              "[Perception.FileInbox] Could not start file_system watcher for #{state.path}: #{inspect(reason)}"
+              "[Perception.FileInbox] Could not start file_system watcher for #{state.path}: #{inspect(reason)}. " <>
+                "If on Linux, install inotify-tools (sudo pacman -S inotify-tools / apt install inotify-tools)."
+            )
+
+            {:noreply, state}
+
+          # FileSystem returns :ignore when the platform backend (inotify on
+          # Linux, fsevents on macOS) cannot bootstrap. Don't crash the
+          # supervisor — log and stay alive with no watcher.
+          other ->
+            Logger.warning(
+              "[Perception.FileInbox] file_system unavailable for #{state.path} " <>
+                "(returned #{inspect(other)}). On Linux, install inotify-tools."
             )
 
             {:noreply, state}
