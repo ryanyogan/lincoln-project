@@ -41,6 +41,9 @@ defmodule LincolnWeb.Router do
       # Goals — explicit pursuits Lincoln tracks and reasons about
       live("/goals", GoalsLive, :index)
 
+      # Actions — pending tier-2 approvals + execution history
+      live("/actions", ActionsLive, :index)
+
       # Substrate - Real-time cognitive state
       live("/substrate", SubstrateLive, :index)
       live("/substrate/compare", SubstrateCompareLive, :index)

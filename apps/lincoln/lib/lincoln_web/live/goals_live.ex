@@ -81,6 +81,41 @@ defmodule LincolnWeb.GoalsLive do
     end
   end
 
+  def handle_event("approve", %{"id" => id}, socket) do
+    goal = Goals.get_goal!(id)
+
+    case Lincoln.Goals.SelfProposer.approve(goal) do
+      {:ok, updated} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Approved self-proposed goal.")
+         |> stream_delete(:goals, updated)
+         |> then(fn s ->
+           if s.assigns.filter in ["all", "active"],
+             do: stream_insert(s, :goals, updated, at: 0),
+             else: s
+         end)}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Could not approve goal.")}
+    end
+  end
+
+  def handle_event("reject", %{"id" => id}, socket) do
+    goal = Goals.get_goal!(id)
+
+    case Lincoln.Goals.SelfProposer.reject(goal) do
+      {:ok, updated} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Rejected self-proposed goal.")
+         |> stream_delete(:goals, updated)}
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Could not reject goal.")}
+    end
+  end
+
   @impl true
   def handle_info({:goal_created, goal}, socket) do
     if socket.assigns.filter in ["all", goal.status] do
@@ -166,9 +201,9 @@ defmodule LincolnWeb.GoalsLive do
           </.form>
         </section>
 
-        <nav class="flex gap-2 text-xs uppercase font-terminal">
+        <nav class="flex gap-2 text-xs uppercase font-terminal flex-wrap">
           <button
-            :for={f <- ~w(active blocked achieved abandoned all)}
+            :for={f <- ~w(active blocked pending_user_approval achieved abandoned all)}
             phx-click="filter"
             phx-value-status={f}
             class={[
@@ -204,6 +239,22 @@ defmodule LincolnWeb.GoalsLive do
                 </div>
               </div>
               <div class="flex gap-1">
+                <button
+                  :if={goal.status == "pending_user_approval"}
+                  phx-click="approve"
+                  phx-value-id={goal.id}
+                  class="text-xs uppercase border-2 border-primary px-2 py-1 hover:bg-primary hover:text-primary-content"
+                >
+                  approve
+                </button>
+                <button
+                  :if={goal.status == "pending_user_approval"}
+                  phx-click="reject"
+                  phx-value-id={goal.id}
+                  class="text-xs uppercase border-2 border-error px-2 py-1 hover:bg-error hover:text-error-content"
+                >
+                  reject
+                </button>
                 <button
                   :if={goal.status in ~w(active blocked)}
                   phx-click="status:achieved"
