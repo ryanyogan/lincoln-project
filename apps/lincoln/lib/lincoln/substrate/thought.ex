@@ -503,7 +503,11 @@ defmodule Lincoln.Substrate.Thought do
   defp analyze_contradictions(belief, [_ | _] = contradictions) do
     count = length(contradictions)
 
-    if belief.confidence > 0.3 do
+    # Lowered from > 0.3 → > 0.05 so beliefs sitting at the persistent
+    # 0.2-confidence floor can still be weakened by local reasoning when
+    # contradictions exist. The previous gate left low-confidence beliefs
+    # frozen at their floor regardless of evidence found.
+    if belief.confidence > 0.05 do
       Lincoln.Beliefs.weaken_belief(belief, "#{count} contradiction(s) by local reasoning")
     end
 
@@ -519,13 +523,43 @@ defmodule Lincoln.Substrate.Thought do
   defp analyze_support([]), do: ["isolated — no supporting beliefs"]
   defp analyze_support(_), do: []
 
-  defp analyze_confidence(%{confidence: c, entrenchment: e, revision_count: r}) do
+  # analyze_confidence/1 used to only return tags. It now also *acts* on
+  # detected mismatches — specifically, low-confidence (c<0.3) but
+  # high-entrenchment (e>=5) beliefs are over-grounded relative to the
+  # evidence supporting them. Each L0 visit decrements entrenchment by 1
+  # so the mismatch resolves over a few visits instead of cycling forever.
+  # Without this hook, the substrate kept picking these beliefs (because
+  # the c/e mismatch produces high tension_score), L0 reasoning printed
+  # "low confidence — needs evidence", and nothing ever changed.
+  defp analyze_confidence(%{confidence: c, entrenchment: e, revision_count: r} = belief) do
     cond do
-      c > 0.8 and e < 3 -> ["confident but untested"]
-      c < 0.4 -> ["low confidence — needs evidence"]
-      e >= 8 and r < 3 -> ["entrenched but rarely examined"]
-      true -> []
+      c > 0.8 and e < 3 ->
+        ["confident but untested"]
+
+      c < 0.3 and e >= 5 ->
+        # The actionable case. Disentrench so future scoring sees lower
+        # mismatch and the belief eventually drops out of high-tension
+        # competition. Stays as a belief at the same confidence — we're
+        # only correcting the entrenchment dimension.
+        case Lincoln.Beliefs.disentrench_belief(belief, 1) do
+          {:ok, _} ->
+            ["mismatch: c=#{Float.round(c, 2)}, e=#{e} — disentrenched to #{e - 1}"]
+
+          _ ->
+            ["mismatch: c=#{Float.round(c, 2)}, e=#{e}"]
+        end
+
+      c < 0.4 ->
+        ["low confidence — needs evidence"]
+
+      e >= 8 and r < 3 ->
+        ["entrenched but rarely examined"]
+
+      true ->
+        []
     end
+  rescue
+    _ -> []
   end
 
   defp format_local_reasoning(belief, []) do

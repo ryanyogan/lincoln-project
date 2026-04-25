@@ -527,16 +527,28 @@ defmodule Lincoln.Substrate.Attention do
     max(0.0, raw - settled_penalty - revision_penalty)
   end
 
-  # Monotony penalty: how many of the last N thoughts were about this belief?
-  # Front-loaded curve — small penalty starts at the *second* consecutive pick
-  # so L0 thoughts (which complete in 1-2ms with identical output for the same
-  # belief) can't run away with attention. By 3 consecutive (0.3) the penalty
-  # overcomes typical focus_momentum (0.15), so the next candidate wins.
+  # Monotony penalty combines two signals:
+  #
+  #   consecutive — strict run of same-belief picks (the original signal)
+  #   recurrence  — how many of the last 8 picks were this belief regardless
+  #                 of order (catches A,B,A,B alternation that was invisible
+  #                 to the consecutive-only check)
+  #
+  # We take the larger of the two penalties. Front-loaded so the second pick
+  # already costs 0.15, by the third 0.3 — enough to overcome typical
+  # focus_momentum (~0.15) and let the next-best candidate win.
+  @monotony_window 8
+
   defp monotony_penalty(_belief_id, []), do: 0.0
 
   defp monotony_penalty(belief_id, recent_focus_ids) do
     consecutive = count_consecutive(belief_id, recent_focus_ids)
+    recurrence = count_recurrence(belief_id, recent_focus_ids, @monotony_window)
 
+    max(penalty_for_consecutive(consecutive), penalty_for_recurrence(recurrence))
+  end
+
+  defp penalty_for_consecutive(consecutive) do
     cond do
       consecutive >= 15 -> 0.95
       consecutive >= 10 -> 0.8
@@ -547,10 +559,28 @@ defmodule Lincoln.Substrate.Attention do
     end
   end
 
+  # Recurrence: of the last @monotony_window picks, how many were this belief?
+  # 5/8 same belief (alternating A,B with A winning 5 times) → 0.45 penalty,
+  # enough to give a different candidate a real chance.
+  defp penalty_for_recurrence(recurrence) do
+    cond do
+      recurrence >= 7 -> 0.85
+      recurrence >= 5 -> 0.45
+      recurrence >= 3 -> 0.20
+      true -> 0.0
+    end
+  end
+
   defp count_consecutive(target, list) do
     Enum.reduce_while(list, 0, fn id, count ->
       if id == target, do: {:cont, count + 1}, else: {:halt, count}
     end)
+  end
+
+  defp count_recurrence(target, list, window) do
+    list
+    |> Enum.take(window)
+    |> Enum.count(&(&1 == target))
   end
 
   defp contradiction_bonus(_belief_id, [], _params), do: 0.0

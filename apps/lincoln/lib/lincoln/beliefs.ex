@@ -184,6 +184,19 @@ defmodule Lincoln.Beliefs do
   end
 
   @doc """
+  Decreases a belief's entrenchment — it becomes easier to revise.
+  Called when a belief is repeatedly examined and a confidence/entrenchment
+  mismatch is detected (e.g., low confidence but high entrenchment — the
+  belief is over-grounded relative to the evidence supporting it).
+
+  Floor is 1 (matching create_belief's default).
+  """
+  def disentrench_belief(%Belief{} = belief, amount \\ 1) do
+    new_entrenchment = max(1, belief.entrenchment - amount)
+    update_belief(belief, %{entrenchment: new_entrenchment})
+  end
+
+  @doc """
   Consolidate similar beliefs — keep the strongest, retract duplicates.
 
   Uses two thresholds:
