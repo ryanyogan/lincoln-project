@@ -646,6 +646,8 @@ defmodule Lincoln.Substrate.Thought do
   end
 
   defp run_narrative_llm(state) do
+    agent = Agents.get_agent!(state.agent_id)
+
     trajectory_summary =
       try do
         Trajectory.summary(state.agent_id, hours: 1)
@@ -653,29 +655,55 @@ defmodule Lincoln.Substrate.Thought do
         _ -> %{total_events: 0, thought_counts: %{completed: 0}}
       end
 
-    completed_thoughts = get_in(trajectory_summary, [:thought_counts, :completed]) || 0
+    context = %{
+      beliefs:
+        safe_list(fn -> Lincoln.Beliefs.list_beliefs(agent, status: "active", limit: 5) end),
+      observations:
+        safe_list(fn -> Lincoln.Memory.list_memories_by_type(agent, "observation", limit: 5) end),
+      questions: safe_list(fn -> Lincoln.Questions.list_open_questions(agent, limit: 3) end),
+      goals: safe_list(fn -> Lincoln.Goals.list_goals(agent, status: "active", limit: 3) end)
+    }
 
     messages = [
       %{
         role: "system",
         content: """
-        You are Lincoln's introspective voice. Write a short autobiographical passage
-        (3-5 sentences) in first person describing what you have been thinking about,
-        what you have noticed, and how your understanding has shifted recently.
-        Be specific about beliefs and topics you have encountered.
-        Be honest about uncertainties. Write as a continuous cognitive entity.
-        Begin with "I have been..." or "In the last stretch of ticks..."
+        You are Lincoln's voice. Write a short paragraph (3-5 sentences) of
+        SUBSTANTIVE reflection. Engage with what you actually believe, observe,
+        or wonder about — NOT with the meta-process of "thinking about thinking".
+
+        Vary your framing across narratives. Sometimes synthesize two of your
+        beliefs. Sometimes contemplate an open question and what would change
+        your mind on it. Sometimes react to a specific external observation
+        you encountered. Sometimes examine a goal's progress concretely. Pick
+        whichever angle has the most actual substance right now.
+
+        Do NOT begin with "I have been..." or "In the last stretch of ticks..."
+        — those openers have become cliché in your prior reflections. Find a
+        fresh framing every time: a noun, a question, a concrete object of
+        attention. Do NOT describe your own throughput or thinking patterns.
         """
       },
       %{
         role: "user",
         content: """
-        Recent activity (last hour):
-        - Substrate events processed: #{trajectory_summary.total_events}
-        - Thoughts completed: #{completed_thoughts}
-        - Current tick: #{state.narrative_tick}
+        Beliefs you hold (most recent activity first):
+        #{format_belief_list(context.beliefs)}
 
-        Write your reflection now.
+        External observations you have received:
+        #{format_observation_list(context.observations)}
+
+        Open questions you have asked:
+        #{format_question_list(context.questions)}
+
+        Active goals:
+        #{format_goal_list(context.goals)}
+
+        Tick #{state.narrative_tick}, #{trajectory_summary.total_events} substrate events recently.
+
+        Reflect now — pick ONE or TWO specific items from above and engage
+        with their substance. Do not enumerate; do not write about thinking
+        itself; do not start with the cliché openers above.
         """
       }
     ]
@@ -689,7 +717,7 @@ defmodule Lincoln.Substrate.Thought do
               tick_number: state.narrative_tick,
               period_start_tick: max(0, state.narrative_tick - 200),
               period_end_tick: state.narrative_tick,
-              thought_count: completed_thoughts
+              thought_count: get_in(trajectory_summary, [:thought_counts, :completed]) || 0
             })
           rescue
             e ->
@@ -890,5 +918,54 @@ defmodule Lincoln.Substrate.Thought do
 
   defp get_statement(belief) when is_map(belief) do
     Map.get(belief, :statement) || Map.get(belief, "statement") || inspect(belief)
+  end
+
+  # ============================================================================
+  # Narrative content helpers — keep run_narrative_llm thin
+  # ============================================================================
+
+  defp safe_list(fun) do
+    fun.()
+  rescue
+    _ -> []
+  end
+
+  defp format_belief_list([]), do: "(none yet)"
+
+  defp format_belief_list(beliefs) do
+    Enum.map_join(beliefs, "\n", fn b ->
+      "- #{String.slice(b.statement, 0, 200)} (confidence #{Float.round(b.confidence, 2)}, " <>
+        "entrenchment #{b.entrenchment})"
+    end)
+  end
+
+  defp format_observation_list([]), do: "(none received)"
+
+  defp format_observation_list(memories) do
+    Enum.map_join(memories, "\n", fn m ->
+      source =
+        case m.source_context do
+          %{"source" => s} when is_binary(s) -> s
+          _ -> "unknown"
+        end
+
+      "- [#{source}] #{String.slice(m.content || "", 0, 200)}"
+    end)
+  end
+
+  defp format_question_list([]), do: "(none open)"
+
+  defp format_question_list(questions) do
+    Enum.map_join(questions, "\n", fn q ->
+      "- #{String.slice(q.question, 0, 200)}"
+    end)
+  end
+
+  defp format_goal_list([]), do: "(none active)"
+
+  defp format_goal_list(goals) do
+    Enum.map_join(goals, "\n", fn g ->
+      "- #{String.slice(g.statement, 0, 200)} (progress #{round(g.progress_estimate * 100)}%)"
+    end)
   end
 end
