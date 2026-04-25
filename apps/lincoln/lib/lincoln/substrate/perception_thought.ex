@@ -12,11 +12,16 @@ defmodule Lincoln.Substrate.PerceptionThought do
   observation forever.
   """
 
-  alias Lincoln.{Cognition, Memory}
+  alias Lincoln.{Cognition, Memory, Questions}
 
   require Logger
 
   @belief_confidence_threshold 0.7
+  # Priority for follow-up questions generated from observations that lacked
+  # an extractable claim. Above the priority-5 default of curiosity-generated
+  # questions so investigation picks them up first — the path that wires
+  # external observations into the Tavily search pipeline.
+  @perception_question_priority 8
 
   @doc """
   Process the next unprocessed observation for the agent.
@@ -39,13 +44,30 @@ defmodule Lincoln.Substrate.PerceptionThought do
     )
 
     case extract_claim(memory) do
-      {:ok, %{"claim" => "", "confidence" => _}} ->
+      {:ok, %{"claim" => "", "confidence" => _} = data} ->
+        # Empty claim, but the observation may still raise a useful question.
+        # When it does, queue the question — the :investigation impulse picks
+        # the highest-priority open question every minute and runs it through
+        # Tavily, so this is the perception → question → search path.
+        question_id = maybe_create_question(agent, memory, data)
         {:ok, _} = Memory.mark_processed(memory, [])
-        {:ok, "Observation noted but no extractable claim"}
+
+        summary =
+          if question_id,
+            do:
+              "Observation noted; asked '" <>
+                String.slice(question_text(data), 0, 80) <> "' for investigation",
+            else: "Observation noted but no extractable claim or question"
+
+        Logger.info("[PerceptionThought] #{summary}")
+        {:ok, summary}
 
       {:ok, %{"claim" => claim, "confidence" => confidence} = data}
       when is_binary(claim) and is_number(confidence) ->
         belief_id = maybe_form_belief(agent, memory, claim, confidence, data)
+        # Even when a claim is extracted, a follow-up question often points
+        # somewhere external the belief alone doesn't reach. Queue it too.
+        _question_id = maybe_create_question(agent, memory, data)
         {:ok, _} = Memory.mark_processed(memory, belief_id: belief_id)
 
         summary =
@@ -64,21 +86,30 @@ defmodule Lincoln.Substrate.PerceptionThought do
   defp extract_claim(memory) do
     prompt = """
     You are reviewing an observation Lincoln received from the outside world.
-    Decide whether it contains a claim worth adding to Lincoln's belief system.
+    Decide whether it contains a claim worth adding to Lincoln's belief
+    system, AND whether it raises an outward-looking question Lincoln should
+    investigate.
 
     Observation source: #{source_label(memory)}
     Observation content:
     #{memory.content}
 
-    If the observation contains a single, well-formed claim that could be a
-    belief Lincoln holds about the world, extract it. If it is purely
-    informational, ambiguous, or merely an event without a generalizable claim,
-    return claim: "" and confidence: 0.
+    Two extractions, both optional:
+
+    1. CLAIM — a single, well-formed declarative statement that could be a
+       belief Lincoln holds about the world. If the observation is purely
+       informational, ambiguous, or merely an event, return claim: "".
+
+    2. FOLLOW_UP_QUESTION — an outward-looking question this observation
+       raises that Lincoln should research. Prefer questions that point
+       beyond Lincoln's current Elixir/BEAM/identity introspection toward
+       the topic the observation is about. Empty string if nothing useful.
 
     Return JSON:
     {
-      "claim": "A concise declarative statement, or empty string",
+      "claim": "...",
       "confidence": 0.0-1.0,
+      "follow_up_question": "What this observation makes Lincoln want to know about the world, or empty string",
       "reasoning": "Brief justification"
     }
     """
@@ -109,6 +140,42 @@ defmodule Lincoln.Substrate.PerceptionThought do
   end
 
   defp maybe_form_belief(_agent, _memory, _claim, _confidence, _data), do: nil
+
+  defp maybe_create_question(agent, memory, data) do
+    case question_text(data) do
+      "" ->
+        nil
+
+      text when is_binary(text) and byte_size(text) > 8 ->
+        case Questions.ask_question(agent, text,
+               priority: @perception_question_priority,
+               context: "Raised by observation from #{source_label(memory)}"
+             ) do
+          {:ok, %{id: id}} ->
+            Logger.info(
+              "[PerceptionThought] Queued question for investigation: #{String.slice(text, 0, 80)}"
+            )
+
+            id
+
+          {:ok, _} ->
+            nil
+
+          _ ->
+            nil
+        end
+
+      _ ->
+        nil
+    end
+  rescue
+    e ->
+      Logger.warning("[PerceptionThought] Question creation failed: #{Exception.message(e)}")
+      nil
+  end
+
+  defp question_text(%{"follow_up_question" => q}) when is_binary(q), do: String.trim(q)
+  defp question_text(_), do: ""
 
   defp describe_outcome(nil, _claim, confidence) do
     "claim too uncertain (#{Float.round(confidence * 100, 0)}%)"

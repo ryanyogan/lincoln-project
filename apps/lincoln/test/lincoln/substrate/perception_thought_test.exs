@@ -100,6 +100,72 @@ defmodule Lincoln.Substrate.PerceptionThoughtTest do
     end
   end
 
+  describe "execute/1 — outward question generation" do
+    test "queues a follow-up question when LLM returns one even with empty claim", %{agent: agent} do
+      {:ok, _memory} = create_observation(agent, "An HN headline about a new database release")
+
+      stub(Lincoln.LLMMock, :extract, fn _prompt, _schema, _opts ->
+        {:ok,
+         %{
+           "claim" => "",
+           "confidence" => 0.0,
+           "follow_up_question" => "What is interesting about this new database release?",
+           "reasoning" => "Event, not a claim"
+         }}
+      end)
+
+      assert {:ok, summary} = Lincoln.Substrate.PerceptionThought.execute(agent)
+      assert summary =~ "asked"
+
+      open = Lincoln.Questions.list_open_questions(agent)
+      assert Enum.any?(open, &(&1.question =~ "new database release"))
+      # Perception-generated questions should be high-priority so the
+      # investigation impulse picks them up before the meta-question backlog.
+      [%{priority: priority}] =
+        Enum.filter(open, &(&1.question =~ "new database release"))
+
+      assert priority >= 7
+    end
+
+    test "queues a follow-up question alongside a belief when both extracted", %{agent: agent} do
+      {:ok, _memory} = create_observation(agent, "Article: Erlang has private heaps per process")
+
+      stub(Lincoln.EmbeddingsMock, :embed, fn _text, _opts -> {:ok, fake_embedding(0.5)} end)
+
+      stub(Lincoln.LLMMock, :extract, fn _prompt, _schema, _opts ->
+        {:ok,
+         %{
+           "claim" => "Erlang has private heaps per process",
+           "confidence" => 0.85,
+           "follow_up_question" =>
+             "How does the per-process heap interact with garbage collection?",
+           "reasoning" => "tech article"
+         }}
+      end)
+
+      assert {:ok, _summary} = Lincoln.Substrate.PerceptionThought.execute(agent)
+
+      assert [_belief] = Lincoln.Beliefs.list_beliefs(agent, status: "active")
+
+      open = Lincoln.Questions.list_open_questions(agent)
+      assert Enum.any?(open, &(&1.question =~ "garbage collection"))
+    end
+
+    test "no question created when LLM returns empty follow_up_question", %{agent: agent} do
+      {:ok, _memory} = create_observation(agent, "An empty observation")
+
+      stub(Lincoln.LLMMock, :extract, fn _prompt, _schema, _opts ->
+        {:ok,
+         %{"claim" => "", "confidence" => 0.0, "follow_up_question" => "", "reasoning" => ""}}
+      end)
+
+      assert {:ok, summary} = Lincoln.Substrate.PerceptionThought.execute(agent)
+      assert summary =~ "no extractable claim"
+
+      assert Lincoln.Questions.list_open_questions(agent) == []
+    end
+  end
+
   defp create_observation(agent, content, opts \\ []) do
     Memory.create_memory(agent, %{
       content: content,
