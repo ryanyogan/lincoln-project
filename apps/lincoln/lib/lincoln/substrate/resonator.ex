@@ -17,7 +17,12 @@ defmodule Lincoln.Substrate.Resonator do
   alias Lincoln.{Beliefs, PubSubBroadcaster}
 
   @min_cluster_size 3
-  @cascade_window_hours 1
+  # Cascade activity window — was 1 hour, now 24h. With L0 thoughts dominating
+  # the substrate (no LLM call → no belief.updated_at refresh), the 1-hour
+  # window was almost always empty for an active substrate. 24 hours keeps
+  # cascades grounded in the recent belief landscape without requiring active
+  # writes every tick.
+  @cascade_window_hours 24
   @similarity_threshold 0.7
   @relationship_similarity_threshold 0.6
   @min_cascade_score 1.5
