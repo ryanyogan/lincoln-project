@@ -335,7 +335,12 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
   end
 
   defp goal_pursuit_score(agent) do
-    case Goals.count_active_goals(agent) do
+    # Use count_pursuable_goals — counts only active goals that are actually
+    # ready for re-evaluation (outside the staleness window). Without this,
+    # the impulse fires every cooldown for any active goal but the
+    # GoalThought immediately reports "no goals to pursue", producing the
+    # dead-end contradiction in the trajectory.
+    case Goals.count_pursuable_goals(agent) do
       0 -> 0.0
       n -> min(0.9, 0.5 + n * 0.05)
     end
