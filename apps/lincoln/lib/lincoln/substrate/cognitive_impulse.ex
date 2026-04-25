@@ -14,7 +14,7 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
   Each impulse has a cooldown to prevent runaway execution.
   """
 
-  alias Lincoln.{Autonomy, Goals, Memory, Questions}
+  alias Lincoln.{Actions, Autonomy, Goals, Memory, Questions}
   alias Lincoln.Events.ImprovementQueue
 
   @curiosity_cooldown_seconds 1800
@@ -24,6 +24,7 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
   @self_improve_cooldown_seconds 300
   @perception_cooldown_seconds 60
   @goal_pursuit_cooldown_seconds 90
+  @action_cooldown_seconds 30
 
   @doc """
   Returns a list of impulse candidates with computed scores.
@@ -42,7 +43,8 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
       investigation_impulse(agent, impulse_state, now),
       self_improve_impulse(agent, impulse_state, now),
       perception_impulse(agent, impulse_state, now),
-      goal_pursuit_impulse(agent, impulse_state, now)
+      goal_pursuit_impulse(agent, impulse_state, now),
+      action_impulse(agent, impulse_state, now)
     ]
     |> Enum.reject(&is_nil/1)
   end
@@ -58,7 +60,8 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
     "investigation" => :investigation,
     "self_improve" => :self_improve,
     "perception" => :perception,
-    "goal_pursuit" => :goal_pursuit
+    "goal_pursuit" => :goal_pursuit,
+    "action" => :action
   }
 
   @doc "Extract the impulse type from an impulse ID."
@@ -73,7 +76,8 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
       last_investigation_at: nil,
       last_self_improve_at: nil,
       last_perception_at: nil,
-      last_goal_pursuit_at: nil
+      last_goal_pursuit_at: nil,
+      last_action_at: nil
     }
   end
 
@@ -157,6 +161,32 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
         %{
           id: "impulse:investigation",
           statement: "I should investigate one of my open questions",
+          confidence: score,
+          entrenchment: 1,
+          source_type: "introspection",
+          revision_count: 0,
+          inserted_at: now,
+          updated_at: now,
+          last_challenged_at: nil,
+          last_reinforced_at: nil,
+          status: "active"
+        }
+      else
+        nil
+      end
+    end
+  end
+
+  defp action_impulse(agent, impulse_state, now) do
+    if on_cooldown?(impulse_state.last_action_at, now, @action_cooldown_seconds) do
+      nil
+    else
+      score = action_score(agent)
+
+      if score > 0.0 do
+        %{
+          id: "impulse:action",
+          statement: "I have an action ready to execute",
           confidence: score,
           entrenchment: 1,
           source_type: "introspection",
@@ -308,6 +338,16 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
     case Goals.count_active_goals(agent) do
       0 -> 0.0
       n -> min(0.9, 0.5 + n * 0.05)
+    end
+  rescue
+    _ -> 0.0
+  end
+
+  defp action_score(agent) do
+    case Actions.count_executable(agent) do
+      0 -> 0.0
+      # Actions are urgent — they exist because something concrete needs doing.
+      n -> min(0.95, 0.7 + n * 0.05)
     end
   rescue
     _ -> 0.0
