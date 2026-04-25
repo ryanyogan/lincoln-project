@@ -291,22 +291,72 @@ defmodule Lincoln.Autonomy.Evolution do
 
   @doc """
   Applies a proposed code change to the filesystem.
+
+  Two safety hardens before the write actually lands on disk:
+
+  1. **Syntax check** — for `.ex` and `.exs` files we run
+     `Code.string_to_quoted/2` against the new content. If it doesn't parse,
+     we refuse the change and never touch the file. Without this gate, a
+     truncated LLM completion (e.g. "{:ok, _" with no closing brace) used
+     to overwrite the source, breaking the running server until a manual
+     `git checkout HEAD --` revert.
+
+  2. **Atomic write** — write to a sibling tempfile then `File.rename/2`,
+     which on POSIX is an atomic operation within the same filesystem. So
+     even if the BEAM dies mid-write the source file is either the prior
+     content or the new content, never a partial.
   """
   def apply_change(code_change) do
     full_path = Path.join(@project_root, code_change.file_path)
 
-    # Ensure directory exists
-    full_path |> Path.dirname() |> File.mkdir_p!()
+    with :ok <- validate_syntax(full_path, code_change.new_content),
+         :ok <- atomic_write(full_path, code_change.new_content) do
+      Logger.info("[Evolution] Applied code change to: #{code_change.file_path}")
+      hot_swap_module(code_change.file_path)
+      {:ok, code_change}
+    else
+      {:error, {:syntax_error, info}} ->
+        Logger.warning(
+          "[Evolution] Refused to apply code change — syntax error in proposed " <>
+            "#{code_change.file_path}: #{inspect(info)}"
+        )
 
-    case File.write(full_path, code_change.new_content) do
-      :ok ->
-        Logger.info("[Evolution] Applied code change to: #{code_change.file_path}")
-        # Hot-swap the module into the running BEAM VM
-        hot_swap_module(code_change.file_path)
-        {:ok, code_change}
+        {:error, {:syntax_error, info}}
 
       {:error, reason} ->
         {:error, {:write_failed, reason}}
+    end
+  end
+
+  # Refuse changes whose new content doesn't parse as Elixir.
+  # Non-Elixir files (eex, json, etc.) skip this check.
+  defp validate_syntax(full_path, content) do
+    if String.ends_with?(full_path, [".ex", ".exs"]) do
+      case Code.string_to_quoted(content, file: full_path) do
+        {:ok, _ast} -> :ok
+        {:error, info} -> {:error, {:syntax_error, info}}
+      end
+    else
+      :ok
+    end
+  end
+
+  # Atomic write via tempfile + rename. The tempfile sits in the same
+  # directory so the rename stays within one filesystem (POSIX guarantee).
+  defp atomic_write(full_path, content) do
+    full_path |> Path.dirname() |> File.mkdir_p!()
+
+    tmp_path =
+      "#{full_path}.tmp.#{System.system_time(:nanosecond)}.#{:erlang.unique_integer([:positive])}"
+
+    with :ok <- File.write(tmp_path, content),
+         :ok <- File.rename(tmp_path, full_path) do
+      :ok
+    else
+      {:error, reason} ->
+        # Best-effort cleanup of the orphan temp file
+        _ = File.rm(tmp_path)
+        {:error, reason}
     end
   end
 
