@@ -93,6 +93,28 @@ defmodule LincolnWeb.Layouts do
                 <details>
                   <summary class={[
                     "text-sm font-terminal",
+                    nav_group_active?(assigns, ["/goals", "/actions"])
+                  ]}>
+                    <.icon name="hero-flag" class="size-4" /> Pursuit
+                  </summary>
+                  <ul class="bg-base-200 border-2 border-base-300 z-50 w-48 shadow-brutal-sm">
+                    <li>
+                      <.link navigate={~p"/goals"} class="font-terminal text-sm">
+                        <.icon name="hero-flag" class="size-4" /> Goals
+                      </.link>
+                    </li>
+                    <li>
+                      <.link navigate={~p"/actions"} class="font-terminal text-sm">
+                        <.icon name="hero-bolt" class="size-4" /> Actions
+                      </.link>
+                    </li>
+                  </ul>
+                </details>
+              </li>
+              <li>
+                <details>
+                  <summary class={[
+                    "text-sm font-terminal",
                     nav_group_active?(assigns, [
                       "/beliefs",
                       "/questions",
@@ -235,6 +257,22 @@ defmodule LincolnWeb.Layouts do
                   class={sidebar_class(assigns, "/substrate/thoughts")}
                 >
                   <.icon name="hero-sparkles" class="size-4" /> Thoughts
+                </.link>
+              </li>
+
+              <li class="menu-title mt-4">
+                <span class="text-[10px] font-terminal uppercase tracking-widest text-base-content/40">
+                  Pursuit
+                </span>
+              </li>
+              <li>
+                <.link navigate={~p"/goals"} class={sidebar_class(assigns, "/goals")}>
+                  <.icon name="hero-flag" class="size-4" /> Goals
+                </.link>
+              </li>
+              <li>
+                <.link navigate={~p"/actions"} class={sidebar_class(assigns, "/actions")}>
+                  <.icon name="hero-bolt" class="size-4" /> Actions
                 </.link>
               </li>
 
