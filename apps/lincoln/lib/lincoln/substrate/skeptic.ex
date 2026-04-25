@@ -19,6 +19,10 @@ defmodule Lincoln.Substrate.Skeptic do
 
   alias Lincoln.{Beliefs, PubSubBroadcaster}
 
+  # Embedding similarity threshold for considering two beliefs related enough
+  # to potentially contradict. Lower than the Resonator's "supports" threshold
+  # because contradictions live in the same topical neighborhood as supports —
+  # we want to surface pairs that talk about the same thing.
   @similarity_threshold 0.75
 
   @doc "Run one round of contradiction detection for the agent."
@@ -61,13 +65,30 @@ defmodule Lincoln.Substrate.Skeptic do
   end
 
   defp contradiction_signals?(belief_a, belief_b) do
+    # Two beliefs are flagged as a potential contradiction when they:
+    #   - sit in the same topical neighborhood (handled by similarity filter
+    #     before this function is called)
+    #   - both have high confidence (so they aren't tentative claims)
+    #   - and at least one of: different sources, recently challenged, or
+    #     a confidence/entrenchment imbalance suggesting one of them is
+    #     under-grounded relative to the other
+    #
+    # The pre-existing rule required different_sources OR challenged. For an
+    # agent like Lincoln whose beliefs are mostly same-sourced and never
+    # explicitly challenged, that gate left the Skeptic permanently silent.
+    # We add an entrenchment-imbalance signal so beliefs that look like the
+    # same claim with very different conviction also surface.
     both_confident = belief_a.confidence > 0.7 and belief_b.confidence > 0.7
     different_sources = belief_a.source_type != belief_b.source_type
 
     recently_challenged =
       not is_nil(belief_a.last_challenged_at) or not is_nil(belief_b.last_challenged_at)
 
-    both_confident and (different_sources or recently_challenged)
+    entrenchment_imbalance = abs(belief_a.entrenchment - belief_b.entrenchment) >= 3
+    confidence_imbalance = abs(belief_a.confidence - belief_b.confidence) >= 0.2
+
+    both_confident and
+      (different_sources or recently_challenged or entrenchment_imbalance or confidence_imbalance)
   end
 
   defp maybe_create_contradiction(belief_a, belief_b, agent) do

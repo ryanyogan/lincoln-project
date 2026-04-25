@@ -20,7 +20,9 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
   @curiosity_cooldown_seconds 1800
   @reflection_cooldown_seconds 7200
   @learning_cooldown_seconds 300
-  @investigation_cooldown_seconds 120
+  # Investigation grounds open questions against memory + web search.
+  # Cooldown 60s — Lincoln researches once per minute when questions exist.
+  @investigation_cooldown_seconds 60
   @self_improve_cooldown_seconds 300
   @perception_cooldown_seconds 60
   @goal_pursuit_cooldown_seconds 90
