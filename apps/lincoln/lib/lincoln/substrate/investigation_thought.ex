@@ -59,11 +59,13 @@ defmodule Lincoln.Substrate.InvestigationThought do
       if embedding, do: Beliefs.find_similar_beliefs(agent, embedding, limit: 5), else: []
 
     search_results = web_search_results(question.question)
+    read_content = maybe_read_top_result(search_results)
 
     %{
       relevant_memories: memories,
       relevant_beliefs: beliefs,
-      search_results: search_results
+      search_results: search_results,
+      read_content: read_content
     }
   end
 
@@ -80,6 +82,26 @@ defmodule Lincoln.Substrate.InvestigationThought do
     e ->
       Logger.debug("[InvestigationThought] Search adapter crashed: #{Exception.message(e)}")
       []
+  end
+
+  defp maybe_read_top_result(results) do
+    if Application.get_env(:lincoln, :fetch_top_result, false) do
+      case Enum.find(results, &(&1.url not in [nil, ""])) do
+        nil ->
+          nil
+
+        %{url: url} ->
+          case fetch_adapter().fetch(url, max_bytes: 8_192) do
+            {:ok, %{content: ""}} -> nil
+            {:ok, %{content: content} = page} -> Map.put(page, :content, content)
+            _ -> nil
+          end
+      end
+    end
+  rescue
+    e ->
+      Logger.debug("[InvestigationThought] Fetch adapter crashed: #{Exception.message(e)}")
+      nil
   end
 
   defp generate_answer(question, context) do
@@ -195,24 +217,56 @@ defmodule Lincoln.Substrate.InvestigationThought do
 
   defp queue_follow_ups(_agent, []), do: :ok
 
+  # Follow-up questions feed back into the question queue that drives
+  # investigation, not the autonomy research-topic queue. Without this,
+  # the investigation→search→finding→follow-up loop has nowhere to put
+  # its output and the question pool drains, which is what causes
+  # Lincoln to stop investigating and perseverate on existing beliefs.
+  # Topics still get a parallel entry so the autonomy/learning side has
+  # context, but the loop-closing path is the question queue.
   defp queue_follow_ups(agent, follow_ups) do
-    session = Autonomy.get_active_session(agent)
-    if session, do: do_queue_follow_ups(agent, session, follow_ups)
+    valid = Enum.filter(follow_ups, &(is_binary(&1) and String.length(&1) > 5))
+
+    Enum.each(valid, fn q ->
+      case Questions.ask_question(agent, q,
+             priority: 6,
+             context: "Follow-up from investigation"
+           ) do
+        {:ok, %{id: id}} ->
+          Logger.debug(
+            "[InvestigationThought] Queued follow-up question #{inspect(id)}: #{String.slice(q, 0, 80)}"
+          )
+
+        _ ->
+          :ok
+      end
+    end)
+
+    # Mirror into the autonomy research-topic queue if there's an
+    # active learning session — keeps the existing learning-impulse
+    # path informed without dropping the question-queue update above.
+    if session = Autonomy.get_active_session(agent) do
+      do_queue_follow_ups(agent, session, valid)
+    end
+
+    :ok
   end
 
   defp do_queue_follow_ups(agent, session, follow_ups) do
-    follow_ups
-    |> Enum.filter(&(is_binary(&1) and String.length(&1) > 5))
-    |> Enum.each(fn q ->
+    Enum.each(follow_ups, fn q ->
       Autonomy.create_topic(agent, session, %{topic: q, source: "investigation", priority: 5})
     end)
   end
 
-  defp format_context(%{
-         relevant_memories: memories,
-         relevant_beliefs: beliefs,
-         search_results: search_results
-       }) do
+  defp format_context(
+         %{
+           relevant_memories: memories,
+           relevant_beliefs: beliefs,
+           search_results: search_results
+         } = ctx
+       ) do
+    read_content = Map.get(ctx, :read_content)
+
     parts =
       []
       |> add_section("Relevant memories", memories, fn m -> "- #{m[:content] || m.content}" end)
@@ -222,10 +276,21 @@ defmodule Lincoln.Substrate.InvestigationThought do
       |> add_section("Web search results", search_results, fn r ->
         "- #{r.title}#{maybe_url(r.url)}#{maybe_snippet(r.snippet)}"
       end)
+      |> add_read_content(read_content)
 
     if parts == [],
       do: "No relevant context found.",
       else: parts |> Enum.reverse() |> Enum.join("\n\n")
+  end
+
+  defp add_read_content(parts, nil), do: parts
+  defp add_read_content(parts, %{content: ""}), do: parts
+
+  defp add_read_content(parts, %{url: url, content: content} = page) do
+    title = Map.get(page, :title)
+    header = "Top result content (fetched from #{url})"
+    body = if title, do: "**#{title}**\n\n#{content}", else: content
+    ["#{header}:\n#{body}" | parts]
   end
 
   defp add_section(parts, _label, [], _formatter), do: parts
@@ -251,5 +316,9 @@ defmodule Lincoln.Substrate.InvestigationThought do
 
   defp search_adapter do
     Application.get_env(:lincoln, :search_adapter, Lincoln.MCP.SearchClient.NoOp)
+  end
+
+  defp fetch_adapter do
+    Application.get_env(:lincoln, :fetch_adapter, Lincoln.MCP.FetchClient.NoOp)
   end
 end

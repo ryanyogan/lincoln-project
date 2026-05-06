@@ -75,6 +75,59 @@ unless config_env() == :test do
   end
 end
 
+# Outbound MCP servers Lincoln may consume. Each is conditionally added
+# based on env vars — unset keys mean "server not configured" and the
+# corresponding clients fall back to NoOp behavior.
+firecrawl_api_key = env!("FIRECRAWL_API_KEY", :string, nil)
+context7_api_key = env!("CONTEXT7_API_KEY", :string, nil)
+fetch_enabled? = env!("LINCOLN_FETCH_ENABLED", :boolean, false)
+
+mcp_servers =
+  []
+  |> then(fn acc ->
+    if firecrawl_api_key && config_env() != :test do
+      Keyword.put(acc, :firecrawl,
+        command: env!("FIRECRAWL_MCP_COMMAND", :string, "npx"),
+        args:
+          String.split(
+            env!("FIRECRAWL_MCP_ARGS", :string, "-y firecrawl-mcp"),
+            " ",
+            trim: true
+          ),
+        env: [{"FIRECRAWL_API_KEY", firecrawl_api_key}]
+      )
+    else
+      acc
+    end
+  end)
+  |> then(fn acc ->
+    if config_env() != :test do
+      headers =
+        if context7_api_key, do: [{"CONTEXT7_API_KEY", context7_api_key}], else: []
+
+      Keyword.put(acc, :context7,
+        url: env!("CONTEXT7_MCP_URL", :string, "https://mcp.context7.com/mcp"),
+        headers: headers
+      )
+    else
+      acc
+    end
+  end)
+  |> then(fn acc ->
+    if fetch_enabled? && config_env() != :test do
+      Keyword.put(acc, :fetch,
+        command: env!("FETCH_MCP_COMMAND", :string, "uvx"),
+        args: String.split(env!("FETCH_MCP_ARGS", :string, "mcp-server-fetch"), " ", trim: true)
+      )
+    else
+      acc
+    end
+  end)
+
+if mcp_servers != [] do
+  config :lincoln, :mcp_servers, mcp_servers
+end
+
 # Tavily web search — pick up the API key from env. When present we switch
 # the search adapter to the Tavily impl so investigation grounds against
 # the live web; otherwise the NoOp adapter keeps investigation LLM-only.
@@ -87,6 +140,23 @@ if tavily_api_key && config_env() != :test do
     max_results: env!("TAVILY_MAX_RESULTS", :integer, 5)
 
   config :lincoln, :search_adapter, Lincoln.MCP.SearchClient.Tavily
+end
+
+# Search adapter precedence: Firecrawl wins over Tavily because it
+# returns full-page markdown with each result (search + scrape in one
+# call), which grounds investigation more deeply than snippets alone.
+# Set last so it overrides the Tavily branch above when both keys are
+# present.
+if firecrawl_api_key && config_env() != :test do
+  config :lincoln, :search_adapter, Lincoln.MCP.SearchClient.Firecrawl
+end
+
+# When Fetch MCP is enabled, route the fetch adapter to the MCP impl and
+# flip the InvestigationThought flag that tells it to read the top
+# search result via Fetch before answering.
+if fetch_enabled? && config_env() != :test do
+  config :lincoln, :fetch_adapter, Lincoln.MCP.FetchClient.MCP
+  config :lincoln, :fetch_top_result, true
 end
 
 # Python ML Service URL

@@ -232,6 +232,12 @@ defmodule Lincoln.Autonomy.Evolution do
           {:error, _} -> nil
         end
 
+      # Pull in current library docs (Phoenix, Ecto, LiveView, etc.) so the
+      # LLM rewrites against the live API rather than its training cutoff.
+      # Empty string when no relevant library is detected or Context7 is
+      # unavailable — never blocks the cycle.
+      docs_section = relevant_docs(original_content || "", description)
+
       # Generate the new code
       prompt =
         if original_content do
@@ -242,7 +248,7 @@ defmodule Lincoln.Autonomy.Evolution do
           ```elixir
           #{original_content}
           ```
-
+          #{docs_section}
           Requested change: #{description}
           Reasoning: #{reasoning}
 
@@ -260,7 +266,7 @@ defmodule Lincoln.Autonomy.Evolution do
           File to create: #{file_path}
           Purpose: #{description}
           Reasoning: #{reasoning}
-
+          #{docs_section}
           Generate the complete file content.
           Follow Elixir conventions and Lincoln's existing code style.
           Add a comment noting this was self-created.
@@ -524,5 +530,53 @@ defmodule Lincoln.Autonomy.Evolution do
 
         "Changed #{changed} lines"
     end
+  end
+
+  # Detect the top library a file depends on and pull current docs
+  # scoped to the requested change. Returns either an empty string (no
+  # match / unavailable / disabled) or a markdown section ready to
+  # splice into the LLM prompt.
+  defp relevant_docs(content, description) do
+    if Application.get_env(:lincoln, :evolution_use_context7, true) do
+      case detect_library(content) do
+        nil ->
+          ""
+
+        library ->
+          case context7_client().lookup_docs(library, description) do
+            {:ok, ""} -> ""
+            {:ok, docs} -> "\n## Relevant library docs (#{library}, via Context7)\n\n#{docs}\n"
+          end
+      end
+    else
+      ""
+    end
+  rescue
+    e ->
+      Logger.debug("[Evolution] Context7 lookup crashed: #{Exception.message(e)}")
+      ""
+  end
+
+  # Cheap, conservative library detection. Order matters — first hit
+  # wins, and we prefer specific over general (LiveView > Phoenix).
+  @library_patterns [
+    {~r/use\s+Phoenix\.LiveView\b|use\s+LincolnWeb\s*,\s*:live_view\b/, "phoenix_live_view"},
+    {~r/use\s+Phoenix\.Component\b/, "phoenix_live_view"},
+    {~r/use\s+Ecto\.Schema\b|use\s+Ecto\.Migration\b|import\s+Ecto\.(Query|Changeset)\b/, "ecto"},
+    {~r/use\s+Phoenix\.(Router|Channel|Endpoint|Controller)\b|use\s+LincolnWeb\b/, "phoenix"},
+    {~r/use\s+Oban\.Worker\b/, "oban"},
+    {~r/use\s+GenServer\b|use\s+Supervisor\b|use\s+DynamicSupervisor\b/, "elixir"}
+  ]
+
+  defp detect_library(content) when is_binary(content) do
+    Enum.find_value(@library_patterns, fn {pattern, lib} ->
+      if Regex.match?(pattern, content), do: lib
+    end)
+  end
+
+  defp detect_library(_), do: nil
+
+  defp context7_client do
+    Application.get_env(:lincoln, :context7_client, Lincoln.MCP.Context7Client)
   end
 end

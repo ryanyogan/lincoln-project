@@ -16,28 +16,55 @@ defmodule Lincoln.Substrate.DiversityMonitor do
 
   alias Lincoln.Adapters.Embeddings
   alias Lincoln.{Agents, Beliefs}
+  alias Lincoln.Substrate.Attention
 
   require Logger
 
   @diversity_threshold 0.3
   @boosted_novelty 0.7
+  @min_focus_samples 5
 
   @doc """
-  Check cognitive diversity of recent focus history and adjust attention
+  Check cognitive diversity of the recent *focus* history (what
+  Attention has actually been selecting) and adjust attention
   parameters if diversity is too low.
+
+  Sampling the focus history rather than the belief table is what makes
+  this work — a fresh batch of incoming RSS observations would inflate
+  recency-sampled diversity to near 1.0 even while Attention is in fact
+  cycling on the same five high-tension items.
   """
   def check_and_adjust(agent) do
-    embeddings = get_recent_focus_embeddings(agent, limit: 15)
-    diversity = compute_diversity(embeddings)
+    focus_ids = recent_focus_ids(agent)
 
-    Logger.debug("[DiversityMonitor] Diversity score: #{Float.round(diversity, 3)}")
+    if length(focus_ids) < @min_focus_samples do
+      Logger.debug(
+        "[DiversityMonitor] Only #{length(focus_ids)} focus samples — skipping check"
+      )
 
-    if diversity < @diversity_threshold do
-      boost_novelty(agent)
-      {:low, diversity}
+      {:ok, :insufficient_data}
     else
-      restore_if_boosted(agent)
-      {:ok, diversity}
+      embeddings = focus_embeddings(focus_ids)
+      diversity = compute_diversity(embeddings)
+      perseveration = perseveration_ratio(focus_ids)
+
+      Logger.debug(
+        "[DiversityMonitor] focus diversity=#{Float.round(diversity, 3)} " <>
+          "unique_ratio=#{Float.round(perseveration, 3)} " <>
+          "samples=#{length(focus_ids)}"
+      )
+
+      # Trip on either signal: low semantic spread OR high repetition.
+      # Repetition alone (e.g. cycling between 3 distinct beliefs) won't
+      # always tank the cosine-distance average if those beliefs are
+      # semantically far apart, so we need both signals.
+      if diversity < @diversity_threshold or perseveration < 0.4 do
+        boost_novelty(agent)
+        {:low, diversity}
+      else
+        restore_if_boosted(agent)
+        {:ok, diversity}
+      end
     end
   rescue
     e ->
@@ -45,12 +72,45 @@ defmodule Lincoln.Substrate.DiversityMonitor do
       {:error, :check_failed}
   end
 
-  defp get_recent_focus_embeddings(agent, opts) do
-    limit = Keyword.get(opts, :limit, 15)
+  defp recent_focus_ids(agent) do
+    case Registry.lookup(Lincoln.AgentRegistry, {agent.id, :attention}) do
+      [{pid, _}] ->
+        try do
+          Attention.recent_focus_ids(pid) || []
+        catch
+          :exit, _ -> []
+        end
 
-    Beliefs.list_beliefs(agent, status: "active", limit: limit)
+      [] ->
+        []
+    end
+  end
+
+  defp focus_embeddings(focus_ids) do
+    focus_ids
+    |> Enum.uniq()
+    |> Enum.map(&safe_get_belief/1)
+    |> Enum.reject(&is_nil/1)
     |> Enum.map(& &1.embedding)
     |> Enum.reject(&is_nil/1)
+  end
+
+  defp safe_get_belief(id) do
+    Beliefs.get_belief!(id)
+  rescue
+    Ecto.NoResultsError -> nil
+    _ -> nil
+  end
+
+  # Ratio of unique focus IDs to total focus events. 1.0 means every
+  # focus was a distinct belief; 0.2 means Lincoln cycled through the
+  # same single belief most of the window. Independent of embedding
+  # similarity — catches structural perseveration even when beliefs are
+  # semantically far apart.
+  defp perseveration_ratio([]), do: 1.0
+
+  defp perseveration_ratio(ids) do
+    length(Enum.uniq(ids)) / length(ids)
   end
 
   defp compute_diversity(embeddings) when length(embeddings) < 3, do: 1.0

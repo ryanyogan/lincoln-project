@@ -93,6 +93,14 @@ defmodule Lincoln.Substrate.Attention do
     GenServer.call(pid, {:score_breakdown, belief_id})
   end
 
+  @doc """
+  Returns the IDs of beliefs Attention has recently selected as focus,
+  most-recent-first. The list is bounded by `@max_focus_history`. Used
+  by `DiversityMonitor` to measure perseveration on the actual focus
+  loop (not just on whichever beliefs were created most recently).
+  """
+  def recent_focus_ids(pid), do: GenServer.call(pid, :recent_focus_ids)
+
   # =============================================================================
   # Server Callbacks
   # =============================================================================
@@ -216,6 +224,11 @@ defmodule Lincoln.Substrate.Attention do
         {:reply, {:ok, best_belief, best_score, scoring_detail},
          %{state | activation_map: new_activation_map, last_scored_at: now}}
     end
+  end
+
+  @impl true
+  def handle_call(:recent_focus_ids, _from, state) do
+    {:reply, state.recent_focus_ids, state}
   end
 
   @impl true
