@@ -407,18 +407,43 @@ defmodule Lincoln.Autonomy.Evolution do
 
   @doc """
   Rolls back a code change.
+
+  For committed changes with a git_commit hash, uses `git revert` to create
+  a clean revert commit. For uncommitted changes, restores original content
+  directly or deletes the file.
   """
   def rollback_change(code_change) do
-    if code_change.original_content do
-      # Restore original content
-      full_path = Path.join(@project_root, code_change.file_path)
-      File.write!(full_path, code_change.original_content)
-      {:ok, :restored}
-    else
-      # Delete created file
-      full_path = Path.join(@project_root, code_change.file_path)
-      File.rm(full_path)
-      {:ok, :deleted}
+    cond do
+      code_change.git_commit && code_change.status == "committed" ->
+        git_revert(code_change)
+
+      code_change.original_content ->
+        full_path = Path.join(@project_root, code_change.file_path)
+        File.write!(full_path, code_change.original_content)
+        mark_rolled_back(code_change)
+
+      true ->
+        full_path = Path.join(@project_root, code_change.file_path)
+        File.rm(full_path)
+        mark_rolled_back(code_change)
+    end
+  end
+
+  defp git_revert(code_change) do
+    case System.cmd("git", ["revert", "--no-edit", code_change.git_commit], cd: @project_root) do
+      {_output, 0} ->
+        mark_rolled_back(code_change)
+
+      {error, _code} ->
+        Logger.warning("[Evolution] git revert failed for #{code_change.git_commit}: #{error}")
+        {:error, {:revert_failed, error}}
+    end
+  end
+
+  defp mark_rolled_back(code_change) do
+    case Autonomy.update_code_change_status(code_change, "rolled_back") do
+      {:ok, updated} -> {:ok, updated}
+      {:error, _} -> {:ok, :rolled_back}
     end
   end
 

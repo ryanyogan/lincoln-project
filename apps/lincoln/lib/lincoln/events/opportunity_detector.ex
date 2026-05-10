@@ -85,8 +85,8 @@ defmodule Lincoln.Events.OpportunityDetector do
     confidences =
       events
       |> Enum.map(fn e ->
-        payload = e.payload || %{}
-        payload["confidence"] || payload[:confidence]
+        context = e.context || %{}
+        context["confidence"] || context[:confidence]
       end)
       |> Enum.reject(&is_nil/1)
 

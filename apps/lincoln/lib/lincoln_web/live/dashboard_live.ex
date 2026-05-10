@@ -234,7 +234,8 @@ defmodule LincolnWeb.DashboardLive do
       beliefs_count: agent.beliefs_count,
       memories_count: agent.memories_count,
       questions_count: agent.questions_asked_count,
-      open_questions: length(Questions.list_open_questions(agent, limit: 100))
+      open_questions: length(Questions.list_open_questions(agent, limit: 100)),
+      memory_distribution: Lincoln.Memory.type_distribution(agent)
     }
   end
 

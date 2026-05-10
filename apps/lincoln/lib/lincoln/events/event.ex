@@ -18,15 +18,20 @@ defmodule Lincoln.Events.Event do
   @event_types ~w(
     thought_loop_gave_up
     thought_loop_slow
+    thought_completed
+    thought_failed
     low_confidence_response
     user_correction
     knowledge_gap_detected
     belief_contradiction
+    belief_created
+    belief_retracted
     research_failed
     belief_formed
     belief_revised
     error_occurred
     slow_operation
+    investigation_completed
     improvement_opportunity
     code_change_applied
     improvement_observed

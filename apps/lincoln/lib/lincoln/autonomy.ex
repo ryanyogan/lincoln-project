@@ -409,6 +409,15 @@ defmodule Lincoln.Autonomy do
   end
 
   @doc """
+  Updates a code change's status.
+  """
+  def update_code_change_status(change, status) do
+    change
+    |> Ecto.Changeset.change(%{status: status})
+    |> Repo.update()
+  end
+
+  @doc """
   Commits a code change to git.
   """
   def commit_code_change(change, commit_hash) do

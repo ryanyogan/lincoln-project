@@ -34,6 +34,7 @@ defmodule LincolnWeb.SubstrateLive do
       |> assign(:recent_contradictions, [])
       |> assign(:recent_cascades, [])
       |> assign(:self_model, Lincoln.SelfModel.get(agent.id))
+      |> assign(:improvement_status, Lincoln.Events.ImprovementQueue.status(agent))
 
     if connected?(socket) do
       Phoenix.PubSub.subscribe(Lincoln.PubSub, PubSubBroadcaster.substrate_topic(agent.id))

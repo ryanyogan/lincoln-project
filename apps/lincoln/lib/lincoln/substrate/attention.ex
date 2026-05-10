@@ -376,9 +376,8 @@ defmodule Lincoln.Substrate.Attention do
         do: belief.confidence * 0.3,
         else: 0.0
 
-    suppression =
-      suppressed_ids = Map.get(params, :suppressed_belief_ids) || Map.get(params, "suppressed_belief_ids") || []
-      if belief.id in suppressed_ids, do: 0.8, else: 0.0
+    suppressed_ids = Map.get(params, :suppressed_belief_ids) || Map.get(params, "suppressed_belief_ids") || []
+    suppression = if is_list(suppressed_ids) and belief.id in suppressed_ids, do: 0.8, else: 0.0
 
     final_score = min(1.0, max(0.0, base_score + focus_boost + impulse_boost - monotony - suppression))
 
