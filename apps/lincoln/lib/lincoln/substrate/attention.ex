@@ -241,7 +241,7 @@ defmodule Lincoln.Substrate.Attention do
     novelty = novelty_score(belief, state, now)
     tension = tension_score(belief, now)
     staleness = staleness_score(belief, state, now)
-    depth = depth_score(belief)
+    depth = depth_score(belief, params)
 
     cb = contradiction_bonus(belief.id, belief_rels, params)
     csb = cascade_bonus(belief.id, belief_rels, params)
@@ -364,26 +364,25 @@ defmodule Lincoln.Substrate.Attention do
     {base_score, components} =
       score_belief_detailed(belief, state, params, now, all_relationships)
 
-    # Focus momentum boost
     focus_boost =
       if state.current_focus_id == belief.id,
         do: params.focus_momentum * 0.3,
         else: 0.0
 
-    # Monotony penalty — prevent perseveration on the same belief
     monotony = monotony_penalty(belief.id, state.recent_focus_ids)
 
-    # Impulse urgency bonus — impulses represent actions, not topics.
-    # Their confidence IS their urgency and should boost their final score
-    # so they can compete with high-scoring beliefs.
     impulse_boost =
       if CognitiveImpulse.impulse?(belief.id),
         do: belief.confidence * 0.3,
         else: 0.0
 
-    final_score = min(1.0, max(0.0, base_score + focus_boost + impulse_boost - monotony))
+    suppression =
+      suppressed_ids = Map.get(params, :suppressed_belief_ids) || Map.get(params, "suppressed_belief_ids") || []
+      if belief.id in suppressed_ids, do: 0.8, else: 0.0
 
-    extra = %{focus_boost: focus_boost, monotony_penalty: monotony, final_score: final_score}
+    final_score = min(1.0, max(0.0, base_score + focus_boost + impulse_boost - monotony - suppression))
+
+    extra = %{focus_boost: focus_boost, monotony_penalty: monotony, suppression_penalty: suppression, final_score: final_score}
     {final_score, Map.merge(components, extra)}
   end
 
@@ -391,7 +390,7 @@ defmodule Lincoln.Substrate.Attention do
     novelty = novelty_score(belief, state, now)
     tension = tension_score(belief, now)
     staleness = staleness_score(belief, state, now)
-    depth = depth_score(belief)
+    depth = depth_score(belief, params)
 
     base = compute_combined_score(novelty, tension, staleness, depth, params)
 
@@ -521,20 +520,25 @@ defmodule Lincoln.Substrate.Attention do
     end
   end
 
-  defp depth_score(belief) do
-    raw = belief.confidence * 0.5 + belief.entrenchment / 20.0 * 0.5
+  defp depth_score(belief, params) do
+    dampening = Map.get(params, :entrenchment_dampening) || Map.get(params, "entrenchment_dampening") || 0.0
+    dampened_e = belief.entrenchment * (1.0 - dampening)
 
-    # Settled beliefs are boring — like how you don't think about gravity
-    # c=1.0 + e>=5 → heavy penalty. The belief is known. Move on.
+    raw = belief.confidence * 0.5 + dampened_e / 20.0 * 0.5
+
     settled_penalty =
-      if belief.confidence >= 0.9 and belief.entrenchment >= 5 do
-        0.6
-      else
-        settled = belief.confidence * (belief.entrenchment / 10.0)
-        settled * settled * 0.4
+      cond do
+        belief.confidence >= 0.9 and belief.entrenchment >= 5 ->
+          0.6
+
+        belief.entrenchment >= 7 ->
+          0.3 + belief.confidence * 0.2
+
+        true ->
+          settled = belief.confidence * (belief.entrenchment / 10.0)
+          settled * settled * 0.4
       end
 
-    # Over-revised beliefs have diminishing returns
     revision_penalty = min(belief.revision_count / 15.0, 0.5) * 0.2
 
     max(0.0, raw - settled_penalty - revision_penalty)

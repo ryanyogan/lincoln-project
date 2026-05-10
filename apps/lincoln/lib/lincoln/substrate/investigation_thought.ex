@@ -26,6 +26,31 @@ defmodule Lincoln.Substrate.InvestigationThought do
     end
   end
 
+  @doc """
+  Investigate multiple questions in a single invocation for backlog drain.
+  """
+  def execute_batch(agent, batch_size \\ 3) do
+    questions = Questions.list_investigatable_questions(agent, limit: batch_size)
+
+    case questions do
+      [] ->
+        {:ok, "No questions to investigate"}
+
+      _ ->
+        results =
+          Enum.map(questions, fn question ->
+            case investigate(agent, question) do
+              {:ok, summary} -> {:ok, summary}
+              {:error, _} = err -> err
+            end
+          end)
+
+        successes = Enum.count(results, &match?({:ok, _}, &1))
+
+        {:ok, "Batch investigated #{successes}/#{length(questions)} questions"}
+    end
+  end
+
   defp investigate(agent, question) do
     Logger.info("[InvestigationThought] Investigating: #{String.slice(question.question, 0, 60)}")
 

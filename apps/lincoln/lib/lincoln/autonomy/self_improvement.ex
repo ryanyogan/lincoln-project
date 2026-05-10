@@ -38,25 +38,59 @@ defmodule Lincoln.Autonomy.SelfImprovement do
     end
   end
 
+  @min_modification_gap_seconds 1800
+
+  @forbidden_files ~w(
+    lib/lincoln/autonomy/evolution.ex
+    lib/lincoln/autonomy/self_improvement.ex
+    lib/lincoln/repo.ex
+    lib/lincoln/application.ex
+  )
+
   @doc """
   Attempt to implement an improvement opportunity.
+
+  Safety guardrails:
+  - Rate limited to one successful modification per 30 minutes
+  - Rejects modifications to forbidden files (evolution engine, self-improvement, repo, application)
+  - Only modifies files under lib/lincoln/
   """
   def attempt(agent, opportunity, llm) do
+    cond do
+      rate_limited?(agent) ->
+        Logger.info("Self-improvement rate limited — skipping #{opportunity.pattern}")
+        :rate_limited
+
+      true ->
+        do_attempt(agent, opportunity, llm)
+    end
+  end
+
+  defp do_attempt(agent, opportunity, llm) do
     Logger.info("Attempting improvement: #{opportunity.pattern} for agent #{agent.id}")
 
     {:ok, opportunity} = ImprovementQueue.mark_in_progress(opportunity)
 
     try do
       analysis = analyze_struggle(opportunity, llm)
-      code_context = gather_code_context(analysis.target_files)
-      plan = plan_improvement(agent, opportunity, analysis, code_context, llm)
 
-      if plan.should_proceed do
-        execute_improvement(agent, opportunity, plan, llm)
-      else
-        Logger.info("Decided not to proceed with improvement: #{plan.reason}")
+      unsafe_files = Enum.reject(analysis.target_files, &safe_to_modify?/1)
+
+      if unsafe_files != [] do
+        Logger.info("Rejected modification to protected files: #{inspect(unsafe_files)}")
         ImprovementQueue.mark_completed(opportunity, "no_change")
-        :skipped
+        :rejected
+      else
+        code_context = gather_code_context(analysis.target_files)
+        plan = plan_improvement(agent, opportunity, analysis, code_context, llm)
+
+        if plan.should_proceed do
+          execute_improvement(agent, opportunity, plan, llm)
+        else
+          Logger.info("Decided not to proceed with improvement: #{plan.reason}")
+          ImprovementQueue.mark_completed(opportunity, "no_change")
+          :skipped
+        end
       end
     rescue
       e ->
@@ -64,6 +98,27 @@ defmodule Lincoln.Autonomy.SelfImprovement do
         ImprovementQueue.mark_failed(opportunity, inspect(e))
         {:error, e}
     end
+  end
+
+  defp safe_to_modify?(path) do
+    path not in @forbidden_files and String.starts_with?(path, "lib/lincoln/")
+  end
+
+  defp rate_limited?(agent) do
+    case Lincoln.Autonomy.most_recent_code_change(agent, status: "committed") do
+      nil ->
+        false
+
+      change ->
+        if change.inserted_at do
+          elapsed = DateTime.diff(DateTime.utc_now(), change.inserted_at, :second)
+          elapsed < @min_modification_gap_seconds
+        else
+          false
+        end
+    end
+  rescue
+    _ -> false
   end
 
   defp evaluate_improvement_plan(opportunity, analysis, target_file, current_code, llm) do

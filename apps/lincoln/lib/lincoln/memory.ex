@@ -123,7 +123,7 @@ defmodule Lincoln.Memory do
     create_memory(agent, %{
       content: content,
       memory_type: "reflection",
-      importance: Keyword.get(opts, :importance, 7),
+      importance: Keyword.get(opts, :importance, 5),
       source_context: Keyword.get(opts, :context, %{}),
       related_belief_ids: Keyword.get(opts, :belief_ids, []),
       embedding: Keyword.get(opts, :embedding)
@@ -156,26 +156,29 @@ defmodule Lincoln.Memory do
   - recency: exponential decay based on time since creation
   - importance: normalized importance score (1-10 -> 0.1-1.0)
   - relevance: cosine similarity to query embedding
+
+  Options:
+  - `:type_diversity` - when true (default), ensures results include
+    memories from all available types rather than being dominated by
+    whichever type scores highest
   """
   def retrieve_memories(%Agent{id: agent_id}, query_embedding, opts \\ []) do
     limit = Keyword.get(opts, :limit, 10)
+    type_diversity = Keyword.get(opts, :type_diversity, true)
     recency_weight = Keyword.get(opts, :recency_weight, 1.0)
     importance_weight = Keyword.get(opts, :importance_weight, 1.0)
     relevance_weight = Keyword.get(opts, :relevance_weight, 1.0)
 
-    # Convert UUID string to binary for raw SQL query
     {:ok, agent_id_binary} = Ecto.UUID.dump(agent_id)
 
-    # Use raw SQL for the complex scoring function
+    fetch_limit = if type_diversity, do: limit * 3, else: limit
+
     query = """
     WITH scored_memories AS (
       SELECT
         m.*,
-        -- Recency score: exponential decay (half-life of 24 hours)
         EXP(-EXTRACT(EPOCH FROM (NOW() - m.inserted_at)) / 86400.0) as recency_score,
-        -- Importance score: normalized to 0-1
         m.importance / 10.0 as importance_score,
-        -- Relevance score: cosine similarity
         CASE
           WHEN m.embedding IS NOT NULL THEN 1 - (m.embedding <=> $1::vector)
           ELSE 0
@@ -197,22 +200,39 @@ defmodule Lincoln.Memory do
         recency_weight,
         importance_weight,
         relevance_weight,
-        limit
+        fetch_limit
       ])
 
     columns = Enum.map(result.columns, &String.to_atom/1)
 
-    Enum.map(result.rows, fn row ->
-      row_map =
-        columns
-        |> Enum.zip(row)
-        |> Map.new()
+    rows =
+      Enum.map(result.rows, fn row ->
+        row_map =
+          columns
+          |> Enum.zip(row)
+          |> Map.new()
 
-      # Convert binary UUIDs back to string format for Ecto compatibility
-      row_map
-      |> maybe_convert_uuid(:id)
-      |> maybe_convert_uuid(:agent_id)
-    end)
+        row_map
+        |> maybe_convert_uuid(:id)
+        |> maybe_convert_uuid(:agent_id)
+      end)
+
+    if type_diversity do
+      diversify_by_type(rows, limit)
+    else
+      Enum.take(rows, limit)
+    end
+  end
+
+  defp diversify_by_type(rows, limit) do
+    grouped = Enum.group_by(rows, & &1.memory_type)
+    type_count = max(map_size(grouped), 1)
+    per_type = ceil(limit / type_count)
+
+    grouped
+    |> Enum.flat_map(fn {_type, memories} -> Enum.take(memories, per_type) end)
+    |> Enum.sort_by(& &1.total_score, :desc)
+    |> Enum.take(limit)
   end
 
   @doc """
@@ -262,6 +282,24 @@ defmodule Lincoln.Memory do
       _ ->
         map
     end
+  end
+
+  # ============================================================================
+  # Memory Distribution
+  # ============================================================================
+
+  @doc """
+  Returns the count of memories by type for an agent.
+
+  Returns a map like `%{"reflection" => 150, "observation" => 12, "conversation" => 8}`.
+  """
+  def type_distribution(%Agent{id: agent_id}) do
+    Memory
+    |> where([m], m.agent_id == ^agent_id)
+    |> group_by([m], m.memory_type)
+    |> select([m], {m.memory_type, count(m.id)})
+    |> Repo.all()
+    |> Map.new()
   end
 
   # ============================================================================

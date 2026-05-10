@@ -31,7 +31,8 @@ defmodule Lincoln.Questions do
   end
 
   @doc """
-  Returns questions ready for investigation.
+  Returns questions ready for investigation, prioritizing frequently-asked
+  questions first.
   """
   def list_investigatable_questions(%Agent{id: agent_id}, opts \\ []) do
     limit = Keyword.get(opts, :limit, 10)
@@ -40,9 +41,36 @@ defmodule Lincoln.Questions do
     Question
     |> where([q], q.agent_id == ^agent_id and q.status == "open")
     |> where([q], is_nil(q.investigate_after) or q.investigate_after <= ^now)
-    |> order_by([q], desc: q.priority, asc: q.inserted_at)
+    |> order_by([q], desc: q.times_asked, desc: q.priority, asc: q.inserted_at)
     |> limit(^limit)
     |> Repo.all()
+  end
+
+  @doc """
+  Returns the count of open questions for an agent.
+  """
+  def count_open_questions(%Agent{id: agent_id}) do
+    Question
+    |> where([q], q.agent_id == ^agent_id and q.status == "open")
+    |> Repo.aggregate(:count)
+  end
+
+  @doc """
+  Marks questions older than `stale_days` (default 30) with times_asked <= 1
+  as abandoned. Returns the number of pruned questions.
+  """
+  def prune_stale_questions(%Agent{id: agent_id}, opts \\ []) do
+    stale_days = Keyword.get(opts, :stale_days, 30)
+    cutoff = DateTime.add(DateTime.utc_now(), -stale_days * 86_400, :second)
+
+    {count, _} =
+      Question
+      |> where([q], q.agent_id == ^agent_id and q.status == "open")
+      |> where([q], q.inserted_at < ^cutoff)
+      |> where([q], q.times_asked <= 1)
+      |> Repo.update_all(set: [status: "abandoned"])
+
+    count
   end
 
   @doc """

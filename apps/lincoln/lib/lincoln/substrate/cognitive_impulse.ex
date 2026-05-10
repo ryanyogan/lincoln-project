@@ -154,7 +154,9 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
   end
 
   defp investigation_impulse(agent, impulse_state, now) do
-    if on_cooldown?(impulse_state.last_investigation_at, now, @investigation_cooldown_seconds) do
+    cooldown = investigation_cooldown(agent)
+
+    if on_cooldown?(impulse_state.last_investigation_at, now, cooldown) do
       nil
     else
       score = investigation_score(agent)
@@ -314,6 +316,15 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
     end
   rescue
     _ -> 0.0
+  end
+
+  @investigation_drain_cooldown 15
+
+  defp investigation_cooldown(agent) do
+    pending = Questions.count_open_questions(agent)
+    if pending > 20, do: @investigation_drain_cooldown, else: @investigation_cooldown_seconds
+  rescue
+    _ -> @investigation_cooldown_seconds
   end
 
   defp investigation_score(agent) do

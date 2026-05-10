@@ -2,14 +2,13 @@ defmodule Lincoln.Substrate.DiversityMonitor do
   @moduledoc """
   Entropy-based diversity monitoring for the cognitive substrate.
 
-  Continuously measures the semantic diversity of recent cognitive output.
-  When diversity drops below a threshold (perseveration), temporarily boosts
-  novelty_weight in attention parameters to force exploration. When diversity
-  recovers, returns to base parameters.
+  Measures two forms of Shannon entropy over recent cognitive focus:
+  - Item entropy: frequency distribution over individual belief IDs
+  - Topic entropy: frequency distribution over semantic clusters
 
-  This is a self-regulating mechanism — Lincoln notices it has been thinking
-  the same kinds of things and gets restless. From the GWA cognitive
-  architecture paper's approach to preventing stagnation.
+  When entropy drops, applies graduated response from mild novelty
+  boosting to aggressive belief suppression. Self-regulating — Lincoln
+  notices its own monotony and gets restless.
 
   Called periodically by the Substrate tick loop — not a GenServer.
   """
@@ -20,19 +19,18 @@ defmodule Lincoln.Substrate.DiversityMonitor do
 
   require Logger
 
-  @diversity_threshold 0.3
-  @boosted_novelty 0.7
   @min_focus_samples 5
+  @cluster_similarity_threshold 0.7
 
   @doc """
-  Check cognitive diversity of the recent *focus* history (what
-  Attention has actually been selecting) and adjust attention
-  parameters if diversity is too low.
+  Check cognitive diversity of the recent focus history and adjust
+  attention parameters based on Shannon entropy levels.
 
-  Sampling the focus history rather than the belief table is what makes
-  this work — a fresh batch of incoming RSS observations would inflate
-  recency-sampled diversity to near 1.0 even while Attention is in fact
-  cycling on the same five high-tension items.
+  Uses graduated response:
+  - entropy >= 0.6: healthy
+  - 0.35-0.59: mild boost
+  - 0.15-0.34: moderate boost + entrenchment dampening
+  - < 0.15: aggressive boost + dampening + belief suppression
   """
   def check_and_adjust(agent) do
     focus_ids = recent_focus_ids(agent)
@@ -45,31 +43,185 @@ defmodule Lincoln.Substrate.DiversityMonitor do
       {:ok, :insufficient_data}
     else
       embeddings = focus_embeddings(focus_ids)
-      diversity = compute_diversity(embeddings)
-      perseveration = perseveration_ratio(focus_ids)
+      item_entropy = item_entropy(focus_ids)
+      topic_entropy = topic_entropy(embeddings)
+      entropy = min(item_entropy, topic_entropy)
 
       Logger.debug(
-        "[DiversityMonitor] focus diversity=#{Float.round(diversity, 3)} " <>
-          "unique_ratio=#{Float.round(perseveration, 3)} " <>
-          "samples=#{length(focus_ids)}"
+        "[DiversityMonitor] item_entropy=#{Float.round(item_entropy, 3)} " <>
+          "topic_entropy=#{Float.round(topic_entropy, 3)} " <>
+          "effective=#{Float.round(entropy, 3)} samples=#{length(focus_ids)}"
       )
 
-      # Trip on either signal: low semantic spread OR high repetition.
-      # Repetition alone (e.g. cycling between 3 distinct beliefs) won't
-      # always tank the cosine-distance average if those beliefs are
-      # semantically far apart, so we need both signals.
-      if diversity < @diversity_threshold or perseveration < 0.4 do
-        boost_novelty(agent)
-        {:low, diversity}
-      else
-        restore_if_boosted(agent)
-        {:ok, diversity}
-      end
+      apply_graduated_response(agent, entropy, focus_ids)
     end
   rescue
     e ->
       Logger.debug("[DiversityMonitor] Check failed: #{Exception.message(e)}")
       {:error, :check_failed}
+  end
+
+  defp apply_graduated_response(agent, entropy, focus_ids) do
+    cond do
+      entropy >= 0.6 ->
+        restore_if_boosted(agent)
+        {:ok, entropy}
+
+      entropy >= 0.35 ->
+        apply_tier(agent, :mild, novelty: 0.5, dampening: 0.3)
+        {:mild, entropy}
+
+      entropy >= 0.15 ->
+        apply_tier(agent, :moderate, novelty: 0.7, dampening: 0.6)
+        {:moderate, entropy}
+
+      true ->
+        suppressed = top_focused_ids(focus_ids, 3)
+        apply_tier(agent, :aggressive, novelty: 0.85, dampening: 0.9, suppress: suppressed)
+        {:aggressive, entropy}
+    end
+  end
+
+  defp apply_tier(agent, tier, opts) do
+    current = agent.attention_params || %{}
+    base_novelty = current["base_novelty_weight"] || current["novelty_weight"] || current[:novelty_weight] || 0.3
+
+    updates =
+      current
+      |> Map.put("base_novelty_weight", base_novelty)
+      |> Map.put("novelty_weight", Keyword.get(opts, :novelty))
+      |> Map.put("entrenchment_dampening", Keyword.get(opts, :dampening))
+      |> Map.put("suppressed_belief_ids", Keyword.get(opts, :suppress, []))
+
+    Logger.info("[DiversityMonitor] #{tier} response — novelty=#{opts[:novelty]} dampening=#{opts[:dampening]}")
+
+    Agents.update_agent(agent, %{attention_params: updates})
+    signal_attention_reload(agent.id)
+  end
+
+  defp restore_if_boosted(agent) do
+    current = agent.attention_params || %{}
+    base = current["base_novelty_weight"]
+
+    if base do
+      Logger.info("[DiversityMonitor] Diversity recovered — restoring base params")
+
+      restored =
+        current
+        |> Map.put("novelty_weight", base)
+        |> Map.delete("base_novelty_weight")
+        |> Map.put("entrenchment_dampening", 0.0)
+        |> Map.put("suppressed_belief_ids", [])
+
+      Agents.update_agent(agent, %{attention_params: restored})
+      signal_attention_reload(agent.id)
+    end
+  end
+
+  # Shannon entropy over belief-ID frequency, normalized to [0,1].
+  # H = -sum(p_i * log2(p_i)), normalized by log2(unique_count).
+  defp item_entropy([]), do: 1.0
+
+  defp item_entropy(ids) do
+    total = length(ids)
+    freqs = Enum.frequencies(ids)
+    unique = map_size(freqs)
+
+    if unique <= 1 do
+      0.0
+    else
+      raw_h =
+        freqs
+        |> Map.values()
+        |> Enum.reduce(0.0, fn count, acc ->
+          p = count / total
+          acc - p * :math.log2(p)
+        end)
+
+      raw_h / :math.log2(unique)
+    end
+  end
+
+  # Shannon entropy over semantic clusters. Cluster focused beliefs by
+  # embedding similarity using single-linkage, then compute entropy over
+  # cluster sizes.
+  defp topic_entropy(embeddings) when length(embeddings) < 3, do: 1.0
+
+  defp topic_entropy(embeddings) do
+    clusters = single_linkage_cluster(embeddings, @cluster_similarity_threshold)
+    cluster_count = length(clusters)
+
+    if cluster_count <= 1 do
+      0.0
+    else
+      total = Enum.sum(Enum.map(clusters, &length/1))
+
+      raw_h =
+        clusters
+        |> Enum.reduce(0.0, fn cluster, acc ->
+          p = length(cluster) / total
+          acc - p * :math.log2(p)
+        end)
+
+      raw_h / :math.log2(cluster_count)
+    end
+  end
+
+  defp single_linkage_cluster(embeddings, threshold) do
+    embeddings_adapter = embeddings_adapter()
+    indexed = Enum.with_index(embeddings)
+
+    adjacency =
+      for {e1, i} <- indexed, {e2, j} <- indexed, i < j, reduce: %{} do
+        acc ->
+          if embeddings_adapter.similarity(e1, e2) >= threshold do
+            acc
+            |> Map.update(i, MapSet.new([j]), &MapSet.put(&1, j))
+            |> Map.update(j, MapSet.new([i]), &MapSet.put(&1, i))
+          else
+            acc
+          end
+      end
+
+    all_indices = MapSet.new(0..(length(embeddings) - 1))
+    bfs_clusters(adjacency, all_indices, [])
+  end
+
+  defp bfs_clusters(_adj, remaining, clusters) when remaining == %MapSet{} do
+    clusters
+  end
+
+  defp bfs_clusters(adj, remaining, clusters) do
+    if MapSet.size(remaining) == 0 do
+      clusters
+    else
+      start = remaining |> MapSet.to_list() |> hd()
+      cluster = bfs(adj, start, MapSet.new())
+      new_remaining = MapSet.difference(remaining, cluster)
+      bfs_clusters(adj, new_remaining, [MapSet.to_list(cluster) | clusters])
+    end
+  end
+
+  defp bfs(adj, node, visited) do
+    if MapSet.member?(visited, node) do
+      visited
+    else
+      visited = MapSet.put(visited, node)
+      neighbors = Map.get(adj, node, MapSet.new())
+
+      Enum.reduce(neighbors, visited, fn neighbor, acc ->
+        bfs(adj, neighbor, acc)
+      end)
+    end
+  end
+
+  # Returns the N most frequently focused belief IDs.
+  defp top_focused_ids(focus_ids, n) do
+    focus_ids
+    |> Enum.frequencies()
+    |> Enum.sort_by(fn {_id, count} -> -count end)
+    |> Enum.take(n)
+    |> Enum.map(fn {id, _count} -> id end)
   end
 
   defp recent_focus_ids(agent) do
@@ -100,77 +252,6 @@ defmodule Lincoln.Substrate.DiversityMonitor do
   rescue
     Ecto.NoResultsError -> nil
     _ -> nil
-  end
-
-  # Ratio of unique focus IDs to total focus events. 1.0 means every
-  # focus was a distinct belief; 0.2 means Lincoln cycled through the
-  # same single belief most of the window. Independent of embedding
-  # similarity — catches structural perseveration even when beliefs are
-  # semantically far apart.
-  defp perseveration_ratio([]), do: 1.0
-
-  defp perseveration_ratio(ids) do
-    length(Enum.uniq(ids)) / length(ids)
-  end
-
-  defp compute_diversity(embeddings) when length(embeddings) < 3, do: 1.0
-
-  defp compute_diversity(embeddings) do
-    embeddings_adapter = embeddings_adapter()
-
-    pairs =
-      for {e1, i} <- Enum.with_index(embeddings),
-          {e2, j} <- Enum.with_index(embeddings),
-          i < j,
-          do: {e1, e2}
-
-    if pairs == [] do
-      1.0
-    else
-      distances =
-        Enum.map(pairs, fn {e1, e2} ->
-          1.0 - embeddings_adapter.similarity(e1, e2)
-        end)
-
-      Enum.sum(distances) / length(distances)
-    end
-  end
-
-  defp boost_novelty(agent) do
-    current = agent.attention_params || %{}
-    base = current["novelty_weight"] || current[:novelty_weight] || 0.3
-
-    # Only boost if not already boosted
-    if base < @boosted_novelty do
-      Logger.info(
-        "[DiversityMonitor] Low diversity — boosting novelty_weight to #{@boosted_novelty}"
-      )
-
-      boosted =
-        current
-        |> Map.put("base_novelty_weight", base)
-        |> Map.put("novelty_weight", @boosted_novelty)
-
-      Agents.update_agent(agent, %{attention_params: boosted})
-      signal_attention_reload(agent.id)
-    end
-  end
-
-  defp restore_if_boosted(agent) do
-    current = agent.attention_params || %{}
-    base = current["base_novelty_weight"]
-
-    if base do
-      Logger.info("[DiversityMonitor] Diversity recovered — restoring novelty_weight to #{base}")
-
-      restored =
-        current
-        |> Map.put("novelty_weight", base)
-        |> Map.delete("base_novelty_weight")
-
-      Agents.update_agent(agent, %{attention_params: restored})
-      signal_attention_reload(agent.id)
-    end
   end
 
   defp signal_attention_reload(agent_id) do

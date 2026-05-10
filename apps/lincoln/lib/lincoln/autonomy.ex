@@ -389,6 +389,26 @@ defmodule Lincoln.Autonomy do
   end
 
   @doc """
+  Returns the most recent code change for an agent, optionally filtered by status.
+  """
+  def most_recent_code_change(agent, opts \\ []) do
+    query =
+      from(c in CodeChange,
+        where: c.agent_id == ^agent.id,
+        order_by: [desc: c.inserted_at],
+        limit: 1
+      )
+
+    query =
+      case Keyword.get(opts, :status) do
+        nil -> query
+        status -> where(query, [c], c.status == ^status)
+      end
+
+    Repo.one(query)
+  end
+
+  @doc """
   Commits a code change to git.
   """
   def commit_code_change(change, commit_hash) do

@@ -6,6 +6,8 @@ defmodule Lincoln.Beliefs do
   Implements concepts from the AGM belief revision framework.
   """
   import Ecto.Query
+  require Logger
+
   alias Lincoln.Agents.Agent
   alias Lincoln.Beliefs.{Belief, BeliefRelationship, BeliefRevision}
   alias Lincoln.PubSubBroadcaster
@@ -107,23 +109,61 @@ defmodule Lincoln.Beliefs do
 
   @doc """
   Creates a new belief for an agent.
+
+  When the caller provides an embedding, checks for existing beliefs with
+  high semantic similarity (>= 0.90) and strengthens the existing belief
+  instead of creating a duplicate.
   """
-  def create_belief(%Agent{id: agent_id}, attrs) do
-    result =
-      %Belief{}
-      |> Belief.create_changeset(attrs, agent_id)
-      |> Repo.insert()
+  def create_belief(%Agent{id: agent_id} = agent, attrs) do
+    case maybe_dedup_on_create(agent, attrs) do
+      {:duplicate, existing} ->
+        {:ok, existing}
 
-    case result do
-      {:ok, belief} ->
-        PubSubBroadcaster.broadcast_belief_created(agent_id, belief)
-        # Auto-embed in background so Skeptic/Resonator can find this belief
-        embed_belief_async(belief)
-        {:ok, belief}
+      :no_duplicate ->
+        result =
+          %Belief{}
+          |> Belief.create_changeset(attrs, agent_id)
+          |> Repo.insert()
 
-      error ->
-        error
+        case result do
+          {:ok, belief} ->
+            PubSubBroadcaster.broadcast_belief_created(agent_id, belief)
+            embed_belief_async(belief)
+            {:ok, belief}
+
+          error ->
+            error
+        end
     end
+  end
+
+  @dedup_similarity_threshold 0.90
+
+  defp maybe_dedup_on_create(%Agent{} = agent, attrs) do
+    embedding = Map.get(attrs, :embedding) || Map.get(attrs, "embedding")
+
+    if embedding do
+      case find_similar_beliefs(agent, embedding, limit: 1, threshold: @dedup_similarity_threshold) do
+        [match | _] ->
+          statement = Map.get(attrs, :statement) || Map.get(attrs, "statement") || ""
+          Logger.debug("[Beliefs] Dedup: strengthening existing belief instead of creating duplicate")
+
+          case strengthen_belief(
+                 get_belief!(match.id),
+                 "Duplicate avoided: #{String.slice(statement, 0, 60)}"
+               ) do
+            {:ok, updated} -> {:duplicate, updated}
+            _ -> :no_duplicate
+          end
+
+        [] ->
+          :no_duplicate
+      end
+    else
+      :no_duplicate
+    end
+  rescue
+    _ -> :no_duplicate
   end
 
   defp embed_belief_async(belief) do
@@ -200,8 +240,8 @@ defmodule Lincoln.Beliefs do
   Consolidate similar beliefs — keep the strongest, retract duplicates.
 
   Uses two thresholds:
-  - 0.95 for high-confidence beliefs (near-exact duplicates only)
-  - 0.88 for low-confidence beliefs (<0.4) which tend to accumulate as
+  - 0.90 for high-confidence beliefs
+  - 0.82 for low-confidence beliefs (<0.4) which tend to accumulate as
     slight restatements of the same idea
   """
   def consolidate_similar(%Agent{} = agent) do
@@ -209,16 +249,33 @@ defmodule Lincoln.Beliefs do
     beliefs_with_embeddings = Enum.filter(beliefs, &(&1.embedding != nil))
 
     if length(beliefs_with_embeddings) < 2 do
-      0
+      %{merged: 0, checked: 0}
     else
-      do_consolidate(beliefs_with_embeddings)
+      result = do_consolidate(beliefs_with_embeddings)
+
+      if result.merged > 0 do
+        Logger.info(
+          "[Beliefs] Consolidation: merged=#{result.merged} checked=#{result.checked}"
+        )
+      end
+
+      :telemetry.execute(
+        [:lincoln, :beliefs, :consolidation],
+        %{merged: result.merged, checked: result.checked},
+        %{}
+      )
+
+      result
     end
   end
 
   defp do_consolidate(beliefs) do
-    find_similar_pairs(beliefs)
-    |> Enum.reduce({MapSet.new(), 0}, &merge_pair/2)
-    |> elem(1)
+    pairs = find_similar_pairs(beliefs)
+
+    {_retracted, merged} =
+      Enum.reduce(pairs, {MapSet.new(), 0}, &merge_pair/2)
+
+    %{merged: merged, checked: length(pairs)}
   end
 
   defp find_similar_pairs(beliefs) do
@@ -235,20 +292,38 @@ defmodule Lincoln.Beliefs do
   # Low-confidence beliefs get a more aggressive consolidation threshold
   # since they tend to accumulate as slight restatements
   defp consolidation_threshold(a, b) do
-    if a.confidence < 0.4 and b.confidence < 0.4, do: 0.88, else: 0.95
+    if a.confidence < 0.4 and b.confidence < 0.4, do: 0.82, else: 0.90
   end
 
   defp merge_pair({a, b, _sim}, {retracted, count}) do
     if MapSet.member?(retracted, a.id) or MapSet.member?(retracted, b.id) do
       {retracted, count}
     else
-      {winner, loser} = if a.entrenchment >= b.entrenchment, do: {a, b}, else: {b, a}
+      {winner, loser} = pick_consolidation_winner(a, b)
 
       strengthen_belief(winner, "Consolidated from: #{String.slice(loser.statement, 0, 50)}")
       retract_belief(loser, "Consolidated into stronger belief")
 
       {MapSet.put(retracted, loser.id), count + 1}
     end
+  end
+
+  defp pick_consolidation_winner(a, b) do
+    if consolidation_score(a) >= consolidation_score(b), do: {a, b}, else: {b, a}
+  end
+
+  defp consolidation_score(belief) do
+    entrenchment_score = belief.entrenchment * 3
+
+    recency_score =
+      if belief.updated_at &&
+           DateTime.diff(DateTime.utc_now(), belief.updated_at, :second) < 7 * 86_400,
+         do: 2,
+         else: 0
+
+    revision_score = min(belief.revision_count || 0, 10)
+
+    entrenchment_score + recency_score + revision_score
   end
 
   defp embedding_similarity(%Pgvector{} = a, %Pgvector{} = b) do

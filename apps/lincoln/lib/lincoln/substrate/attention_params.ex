@@ -21,6 +21,8 @@ defmodule Lincoln.Substrate.AttentionParams do
       interrupt_threshold: 0.8,
       boredom_decay: 0.05,
       depth_preference: 0.8,
+      entrenchment_dampening: 0.0,
+      suppressed_belief_ids: [],
       thought_type_weights: %{
         elaborate: 0.4,
         critique: 0.3,
@@ -39,6 +41,8 @@ defmodule Lincoln.Substrate.AttentionParams do
       interrupt_threshold: 0.3,
       boredom_decay: 0.3,
       depth_preference: 0.2,
+      entrenchment_dampening: 0.0,
+      suppressed_belief_ids: [],
       thought_type_weights: %{
         elaborate: 0.1,
         critique: 0.1,
@@ -57,6 +61,8 @@ defmodule Lincoln.Substrate.AttentionParams do
       interrupt_threshold: 0.9,
       boredom_decay: 0.4,
       depth_preference: 0.6,
+      entrenchment_dampening: 0.0,
+      suppressed_belief_ids: [],
       thought_type_weights: %{
         elaborate: 0.2,
         critique: 0.15,
@@ -75,6 +81,8 @@ defmodule Lincoln.Substrate.AttentionParams do
       interrupt_threshold: 0.7,
       boredom_decay: 0.1,
       depth_preference: 0.5,
+      entrenchment_dampening: 0.0,
+      suppressed_belief_ids: [],
       thought_type_weights: %{
         elaborate: 0.25,
         critique: 0.2,

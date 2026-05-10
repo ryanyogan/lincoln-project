@@ -337,7 +337,16 @@ defmodule Lincoln.Substrate.Thought do
   defp run_impulse(agent, :investigation) do
     alias Lincoln.Substrate.InvestigationThought
 
-    case InvestigationThought.execute(agent) do
+    pending = Lincoln.Questions.count_open_questions(agent)
+
+    result =
+      cond do
+        pending > 20 -> InvestigationThought.execute_batch(agent, 5)
+        pending > 5 -> InvestigationThought.execute_batch(agent, 3)
+        true -> InvestigationThought.execute(agent)
+      end
+
+    case result do
       {:ok, summary} ->
         {:ok, "Investigation impulse: #{summary}"}
 
@@ -840,7 +849,8 @@ defmodule Lincoln.Substrate.Thought do
         should_record_memory? =
           tier != :local and
             is_binary(belief_id) and
-            not CognitiveImpulse.impulse?(belief_id)
+            not CognitiveImpulse.impulse?(belief_id) and
+            not reflection_rate_exceeded?(agent)
 
         if should_record_memory? do
           Lincoln.Memory.create_memory(agent, %{
@@ -859,6 +869,25 @@ defmodule Lincoln.Substrate.Thought do
         e -> Logger.warning("[Thought] Result processing failed: #{Exception.message(e)}")
       end
     end)
+  end
+
+  @max_reflections_per_window 10
+  @reflection_window_seconds 300
+
+  defp reflection_rate_exceeded?(agent) do
+    recent =
+      Lincoln.Memory.list_memories_by_type(agent, "reflection", limit: @max_reflections_per_window + 1)
+
+    cutoff = DateTime.add(DateTime.utc_now(), -@reflection_window_seconds, :second)
+
+    count =
+      Enum.count(recent, fn m ->
+        m.inserted_at && DateTime.compare(m.inserted_at, cutoff) != :lt
+      end)
+
+    count >= @max_reflections_per_window
+  rescue
+    _ -> false
   end
 
   defp feed_back_to_beliefs(_agent, _belief, _result, :local) do

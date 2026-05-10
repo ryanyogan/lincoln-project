@@ -25,11 +25,6 @@ defmodule Lincoln.Substrate.Substrate do
   }
 
   @default_timeout 5_000
-  # Narrative spawns an LLM-tier thought that synthesizes recent activity.
-  # 50-tick interval was ~50s in active operation, producing ~70 narrative
-  # LLM calls per hour and flooding the trajectory + memory table with
-  # near-duplicate "in the last stretch of ticks I have been thinking about..."
-  # entries. 300 ticks ≈ 5 minutes — narrative as deep breath, not heartbeat.
   @narrative_interval 300
   @self_model_interval 50
   @belief_maintenance_interval 1000
@@ -38,6 +33,8 @@ defmodule Lincoln.Substrate.Substrate do
   @event_cleanup_interval 500
   @skeptic_interval 6
   @resonator_interval 12
+  @question_pruning_interval 1000
+  @opportunity_detection_interval 500
 
   defstruct [
     :agent_id,
@@ -270,6 +267,17 @@ defmodule Lincoln.Substrate.Substrate do
 
     maybe_run(tick, @belief_maintenance_interval, fn ->
       run_bg(fn -> BeliefMaintenance.decay_unreinforced(state.agent_id) end, "maintenance")
+    end)
+
+    maybe_run(tick, @question_pruning_interval, fn ->
+      run_bg(fn -> Lincoln.Questions.prune_stale_questions(state.agent) end, "question pruning")
+    end)
+
+    maybe_run(tick, @opportunity_detection_interval, fn ->
+      run_bg(
+        fn -> Lincoln.Events.OpportunityDetector.scan(state.agent) end,
+        "opportunity detection"
+      )
     end)
   end
 
