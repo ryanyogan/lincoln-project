@@ -8,10 +8,12 @@ defmodule Lincoln.BeliefsDedupTest do
   defp make_embedding(seed) do
     # Generate a deterministic normalized vector from a seed
     rng = :rand.seed(:exsss, {seed, seed + 1, seed + 2})
-    {values, _} = Enum.map_reduce(1..@vector_dim, rng, fn _, state ->
-      {val, new_state} = :rand.uniform_s(state)
-      {val, new_state}
-    end)
+
+    {values, _} =
+      Enum.map_reduce(1..@vector_dim, rng, fn _, state ->
+        {val, new_state} = :rand.uniform_s(state)
+        {val, new_state}
+      end)
 
     # Normalize to unit vector
     mag = :math.sqrt(Enum.reduce(values, 0.0, fn x, acc -> acc + x * x end))
@@ -40,7 +42,9 @@ defmodule Lincoln.BeliefsDedupTest do
       %{agent: agent}
     end
 
-    test "strengthens existing belief instead of creating duplicate when similarity > 0.90", %{agent: agent} do
+    test "strengthens existing belief instead of creating duplicate when similarity > 0.90", %{
+      agent: agent
+    } do
       base_emb = make_embedding(42)
 
       {:ok, original} =
@@ -123,7 +127,9 @@ defmodule Lincoln.BeliefsDedupTest do
 
   describe "consolidation with lowered thresholds" do
     setup do
-      {:ok, agent} = Agents.create_agent(%{name: "Consolidation Agent #{System.unique_integer()}"})
+      {:ok, agent} =
+        Agents.create_agent(%{name: "Consolidation Agent #{System.unique_integer()}"})
+
       %{agent: agent}
     end
 
@@ -216,7 +222,9 @@ defmodule Lincoln.BeliefsDedupTest do
         })
 
       # Backdate the old belief
-      two_weeks_ago = DateTime.utc_now() |> DateTime.add(-14 * 86_400, :second) |> DateTime.truncate(:second)
+      two_weeks_ago =
+        DateTime.utc_now() |> DateTime.add(-14 * 86_400, :second) |> DateTime.truncate(:second)
+
       old |> Ecto.Changeset.change(updated_at: two_weeks_ago) |> Repo.update!()
 
       # Add embeddings

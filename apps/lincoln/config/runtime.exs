@@ -128,9 +128,13 @@ if mcp_servers != [] do
   config :lincoln, :mcp_servers, mcp_servers
 end
 
-# Tavily web search — pick up the API key from env. When present we switch
-# the search adapter to the Tavily impl so investigation grounds against
-# the live web; otherwise the NoOp adapter keeps investigation LLM-only.
+# Search adapter chain: SearXNG (free, unlimited) → Tavily (fallback) → Firecrawl
+searxng_url = env!("SEARXNG_URL", :string, nil)
+
+if searxng_url && config_env() != :test do
+  config :lincoln, :searxng, base_url: searxng_url
+end
+
 tavily_api_key = env!("TAVILY_API_KEY", :string, nil)
 
 if tavily_api_key && config_env() != :test do
@@ -138,17 +142,21 @@ if tavily_api_key && config_env() != :test do
     api_key: tavily_api_key,
     search_depth: env!("TAVILY_SEARCH_DEPTH", :string, "basic"),
     max_results: env!("TAVILY_MAX_RESULTS", :integer, 5)
-
-  config :lincoln, :search_adapter, Lincoln.MCP.SearchClient.Tavily
 end
 
-# Search adapter precedence: Firecrawl wins over Tavily because it
-# returns full-page markdown with each result (search + scrape in one
-# call), which grounds investigation more deeply than snippets alone.
-# Set last so it overrides the Tavily branch above when both keys are
-# present.
-if firecrawl_api_key && config_env() != :test do
-  config :lincoln, :search_adapter, Lincoln.MCP.SearchClient.Firecrawl
+# Build provider chain based on configured credentials
+search_providers =
+  []
+  |> then(fn acc -> if searxng_url, do: [Lincoln.MCP.SearchClient.SearXNG | acc], else: acc end)
+  |> then(fn acc -> if tavily_api_key, do: acc ++ [Lincoln.MCP.SearchClient.Tavily], else: acc end)
+  |> then(fn acc ->
+    if firecrawl_api_key, do: acc ++ [Lincoln.MCP.SearchClient.Firecrawl], else: acc
+  end)
+
+if search_providers != [] && config_env() != :test do
+  config :lincoln, :search_providers, search_providers
+  config :lincoln, :search_adapter, Lincoln.MCP.SearchClient.Cached
+  config :lincoln, :search_inner_adapter, Lincoln.MCP.SearchClient.Cascade
 end
 
 # When Fetch MCP is enabled, route the fetch adapter to the MCP impl and

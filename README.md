@@ -93,9 +93,270 @@ The six failed attempts that preceded Lincoln (documented in the blog post) all 
 
 The full research narrative is at [ryanyogan.com/writing/building-agent-memory-from-research-to-reality](https://ryanyogan.com/writing/building-agent-memory-from-research-to-reality).
 
+## Goals System
+
+Goals are first-class entities that compete for attention alongside beliefs and impulses. A goal is essentially a belief that something should be accomplished — it enters the same attention scoring pipeline and gets pursued when it wins.
+
+### Goal Lifecycle
+
+1. **Creation** — from conversation ("monitor Elixir conference dates"), from the LiveView UI, or from Lincoln's own self-proposal system
+2. **Pursuit** — the `:goal_pursuit` impulse wins attention, GoalThought gathers context (relevant beliefs, memories, prior reflections), asks the LLM to evaluate progress and propose next steps
+3. **Research** — if the next step is "research", GoalThought queues a high-priority question that the `:investigation` impulse picks up and grounds against the web
+4. **Decomposition** — if a goal is too complex, GoalThought triggers the Decomposer which breaks it into sub-goals using an HTN-style method library with pgvector caching
+5. **Review** — the `:goal_review` impulse fires hourly to evaluate whether active goals are still relevant, abandoning stale ones and reprioritizing based on new beliefs
+
+### Goal Detection in Conversation
+
+Lincoln detects goal-like statements in natural conversation:
+
+- Explicit: "set a goal to learn category theory", "goal: monitor Elixir releases"
+- Inferred: "I want you to track school registration deadlines", "can you monitor the BEAM conference schedule", "your mission is to understand consciousness"
+
+Goals created this way are tagged `origin: "user"` with priority 7 (high). Lincoln can also self-propose goals from its own reflection, which require user approval before becoming active.
+
+### Goal Pursuit Loop
+
+```
+GoalThought reflects on goal
+        │
+        ├── next_step_kind: "research" → queue question → investigation + web search
+        ├── next_step_kind: "decompose" → HTN decomposition → sub-goals
+        ├── next_step_kind: "reflect" → internal reasoning over existing beliefs
+        └── next_step_kind: "act" → external action (future)
+        │
+        ▼
+New beliefs/memories from investigation feed back into next GoalThought cycle
+```
+
+## Web Search Pipeline
+
+Lincoln searches to answer its own questions, not to browse. Every search traces back to an open question, an active goal, or a belief that needs evidence.
+
+### Search Architecture
+
+```
+Question or goal needs information
+        │
+        ▼
+Search adapter (SearXNG → Tavily → Firecrawl cascade)
+        │
+        ▼
+ETS cache (1h TTL, 10/min rate limit)
+        │
+        ▼
+Results normalized to {title, url, snippet}
+        │
+        ▼
+LLM evaluates content against question + existing beliefs
+        │
+        ▼
+Outputs: observation memories, new beliefs, question resolution, follow-up questions
+```
+
+### Three Access Contexts
+
+| Context | How it works |
+|---------|-------------|
+| **Autonomous investigation** | The `:investigation` impulse picks an open question, searches, reads top results, forms beliefs. Runs every 60s when questions exist. |
+| **Conversation** | When Lincoln is chatting and the message looks like a factual question ("what is X?", "look up Y"), it searches inline and includes results in its response. |
+| **Goal pursuit** | GoalThought queues research questions at priority 8. The investigation impulse picks these up preferentially and searches on the goal's behalf. |
+
+### Search Providers
+
+Lincoln uses a cascading search strategy — free providers first, paid fallbacks second:
+
+| Provider | Role | Cost | Setup |
+|----------|------|------|-------|
+| **SearXNG** | Primary | Free (self-hosted) | `docker compose --profile search up` |
+| **Tavily** | Fallback | 1000 free/month | Set `TAVILY_API_KEY` |
+| **Firecrawl** | Deep read | Per-query | Set `FIRECRAWL_API_KEY` |
+
+The `Cached → Cascade` adapter chain handles this automatically. Results are cached in ETS for 1 hour with a 10-queries-per-minute rate limiter to prevent runaway search.
+
+### Running SearXNG Locally
+
+SearXNG is a self-hosted meta-search engine that aggregates Google, DuckDuckGo, Bing, and Wikipedia. No API keys, no rate limits, no vendor dependency.
+
+```bash
+# Start SearXNG alongside the default services
+docker compose --profile search up -d
+
+# Verify it's running
+curl "http://localhost:8888/search?q=elixir+otp&format=json" | jq '.results[:2]'
+
+# Add to your .env
+echo 'SEARXNG_URL=http://localhost:8888' >> .env
+```
+
+SearXNG runs on port 8888. The configuration lives in `config/searxng/settings.yml` with JSON output enabled and Google/DuckDuckGo/Bing/Wikipedia engines active. Lincoln's `SearchClient.SearXNG` adapter queries it via simple HTTP GET.
+
+When `SEARXNG_URL` is set, it becomes the first provider in the cascade. If SearXNG returns empty results (upstream engine rate-limited, network issue), the cascade falls through to Tavily automatically.
+
+## Quick Start
+
+### Prerequisites
+
+- Elixir 1.17+ / OTP 27+
+- Docker & Docker Compose
+- An Anthropic API key
+
+### Setup
+
+```bash
+# 1. Clone and install dependencies
+git clone <repo-url> && cd lincoln-project
+make setup
+
+# 2. Configure environment
+cp .env.example .env
+# Edit .env — at minimum set ANTHROPIC_API_KEY
+
+# 3. Start development
+make dev
+# → DB on :5432, ML service on :8000, Phoenix on :4000
+```
+
+### Optional Services
+
+```bash
+# Self-hosted search (recommended for sustained substrate operation)
+docker compose --profile search up -d
+
+# Local LLM inference via Ollama
+docker compose --profile ollama up -d
+
+# Full containerized stack (Elixir app in Docker too)
+docker compose --profile full up -d
+```
+
+### Dashboards
+
+| URL | What |
+|-----|------|
+| `localhost:4000/substrate` | Live cognitive state |
+| `localhost:4000/substrate/thoughts` | Live thought tree |
+| `localhost:4000/substrate/compare` | Two-agent divergence observatory |
+| `localhost:4000/goals` | Goal management (CRUD, approve/reject) |
+| `localhost:4000/narrative` | Autobiographical reflections |
+| `localhost:4000/chat` | Conversation interface |
+
+### MCP Server
+
+Lincoln exposes an MCP (Model Context Protocol) server at `http://localhost:4000/mcp` with tools for external integration:
+
+- `observe(content)` — inject an observation into the substrate
+- `get_state()` — read current cognitive state
+- `list_agents()` — enumerate agents
+- `start_substrate()` / `stop_substrate()` — control the cognitive loop
+
+### Useful Make Targets
+
+```bash
+make dev          # Start dev (Docker services + local Elixir)
+make test         # Run test suite
+make lint         # Format check + Credo strict
+make precommit    # All checks before committing
+make iex          # IEx with Lincoln loaded
+make db-console   # PostgreSQL shell
+make status       # System health check
+```
+
+## Configuration
+
+### Environment Variables
+
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `ANTHROPIC_API_KEY` | Yes (prod) | — | Claude API key for frontier inference |
+| `ML_SERVICE_URL` | Yes (prod) | `http://localhost:8000` | Python embedding service URL |
+| `DATABASE_URL` | Yes (prod) | `postgres://postgres:postgres@localhost:5432/lincoln_dev` | PostgreSQL connection |
+| `SEARXNG_URL` | No | — | SearXNG base URL for self-hosted search |
+| `TAVILY_API_KEY` | No | — | Tavily API key (1000 free queries/month) |
+| `FIRECRAWL_API_KEY` | No | — | Firecrawl API key for search + scrape |
+| `CONTEXT7_API_KEY` | No | — | Context7 API key for library documentation |
+| `LINCOLN_FETCH_ENABLED` | No | `false` | Enable Fetch MCP server for page reading |
+| `LLM_PROVIDER` | No | `anthropic` | LLM provider (`anthropic` or `openai`) |
+| `OPENAI_API_KEY` | No | — | OpenAI API key (if using `openai` provider) |
+
+### Search Provider Precedence
+
+The search adapter is auto-configured at startup based on which env vars are set:
+
+1. If `SEARXNG_URL` is set → SearXNG is first in cascade (free, unlimited)
+2. If `TAVILY_API_KEY` is set → Tavily is added to cascade (1000 free/month)
+3. If `FIRECRAWL_API_KEY` is set → Firecrawl is added to cascade (search + scrape)
+
+When multiple providers are configured, they form a cascade: first provider that returns non-empty results wins. All results are cached in ETS for 1 hour.
+
+If no search providers are configured, investigation still works — it just uses LLM reasoning over existing beliefs and memories without web grounding.
+
+## Project Structure
+
+```
+lincoln-project/
+├── apps/
+│   ├── lincoln/                    # Main Elixir application
+│   │   ├── lib/lincoln/
+│   │   │   ├── substrate/          # Core cognitive processes
+│   │   │   │   ├── substrate.ex    #   Tick loop orchestrator
+│   │   │   │   ├── attention.ex    #   Parameterized belief scoring
+│   │   │   │   ├── thought.ex      #   OTP thought processes
+│   │   │   │   ├── skeptic.ex      #   Contradiction detection
+│   │   │   │   ├── resonator.ex    #   Coherence/cascade detection
+│   │   │   │   ├── cognitive_impulse.ex  # Impulse types + scoring
+│   │   │   │   ├── goal_thought.ex       # Goal pursuit reasoning
+│   │   │   │   ├── goal_review_thought.ex # Goal relevance review
+│   │   │   │   ├── investigation_thought.ex # Question → search → belief
+│   │   │   │   └── conversation_bridge.ex   # Chat ↔ substrate bridge
+│   │   │   ├── goals/              # Goal system
+│   │   │   │   ├── goal.ex         #   Ecto schema
+│   │   │   │   ├── decomposer.ex   #   HTN-style goal decomposition
+│   │   │   │   ├── method_library.ex #  Cached decomposition methods
+│   │   │   │   └── self_proposer.ex  #  Lincoln proposes its own goals
+│   │   │   ├── mcp/                # MCP + search infrastructure
+│   │   │   │   ├── search_client.ex         # SearchClient behaviour
+│   │   │   │   ├── search_client_searxng.ex # SearXNG adapter
+│   │   │   │   ├── search_client_tavily.ex  # Tavily adapter
+│   │   │   │   ├── search_client_firecrawl.ex # Firecrawl adapter
+│   │   │   │   ├── search_client_cascade.ex # Cascading fallback
+│   │   │   │   ├── search_client_cached.ex  # ETS cache wrapper
+│   │   │   │   ├── search_cache.ex          # ETS cache + rate limiter
+│   │   │   │   └── client.ex               # Unified MCP tool calling
+│   │   │   ├── beliefs.ex          # Belief CRUD + AGM revision
+│   │   │   ├── memory.ex           # Memory recording + retrieval
+│   │   │   ├── goals.ex            # Goal context module
+│   │   │   ├── questions.ex        # Investigation question pipeline
+│   │   │   ├── cognition/          # Conversation processing
+│   │   │   │   └── conversation_handler.ex  # Full cognitive pipeline
+│   │   │   └── autonomy/           # Self-modification + learning
+│   │   ├── lib/lincoln_web/        # Phoenix + LiveView UI
+│   │   ├── config/                 # App configuration
+│   │   └── test/                   # Test suite (290 tests)
+│   └── ml_service/                 # Python embedding service
+│       ├── main.py                 #   FastAPI + sentence-transformers
+│       └── Dockerfile
+├── config/
+│   └── searxng/settings.yml        # SearXNG engine configuration
+├── docker-compose.yml              # Service orchestration
+├── Makefile                        # Development tasks
+├── .env.example                    # Environment template
+└── writeup.md                      # Full research narrative
+```
+
 ## Status
 
-Research-grade exploration in active development. Not production software. The substrate runs, the divergence demo works, the belief revision framework is functional, and the self-modification pipeline has produced real commits. The Resonator is crude by design (v1 heuristic). Trajectory recording needs richer data. Conversation currently bypasses the substrate for response generation. These limitations are documented in the codebase and are the next work.
+Research-grade exploration in active development. Not production software. The substrate runs, beliefs revise, goals pursue, investigation searches the web, and the self-modification pipeline has produced real commits. The system maintains ~97% local computation (Level 0) with expensive LLM calls reserved for high-attention moments.
+
+Current capabilities:
+- Continuous cognitive loop with parameterized attention
+- AGM belief revision with confidence, entrenchment, and source credibility
+- Goal creation, pursuit, decomposition, and periodic relevance review
+- Web search grounded in Lincoln's own questions (SearXNG/Tavily/Firecrawl cascade)
+- Conversation with goal detection, web search, and full belief/memory context
+- Self-modification pipeline with safety guardrails
+- Two-agent divergence observatory
+
+Known limitations are documented in `LEARNINGS.md` and are the next work.
 
 ## Stack
 
@@ -107,6 +368,7 @@ Research-grade exploration in active development. Not production software. The s
 - **Frontier LLM:** Anthropic Claude API
 - **Local LLM:** Ollama (Qwen 2.5, Gemma 3, Phi-4, Llama 3.3)
 - **Embeddings:** Python sentence-transformers (384-dim, all-MiniLM-L6-v2)
+- **Search:** SearXNG (self-hosted) + Tavily + Firecrawl (cascading)
 - **UI:** Tailwind CSS v4 + DaisyUI
 - **Code quality:** Credo (strict mode)
 

@@ -36,9 +36,7 @@ defmodule Lincoln.Substrate.DiversityMonitor do
     focus_ids = recent_focus_ids(agent)
 
     if length(focus_ids) < @min_focus_samples do
-      Logger.debug(
-        "[DiversityMonitor] Only #{length(focus_ids)} focus samples — skipping check"
-      )
+      Logger.debug("[DiversityMonitor] Only #{length(focus_ids)} focus samples — skipping check")
 
       {:ok, :insufficient_data}
     else
@@ -84,7 +82,10 @@ defmodule Lincoln.Substrate.DiversityMonitor do
 
   defp apply_tier(agent, tier, opts) do
     current = agent.attention_params || %{}
-    base_novelty = current["base_novelty_weight"] || current["novelty_weight"] || current[:novelty_weight] || 0.3
+
+    base_novelty =
+      current["base_novelty_weight"] || current["novelty_weight"] || current[:novelty_weight] ||
+        0.3
 
     updates =
       current
@@ -93,7 +94,9 @@ defmodule Lincoln.Substrate.DiversityMonitor do
       |> Map.put("entrenchment_dampening", Keyword.get(opts, :dampening))
       |> Map.put("suppressed_belief_ids", Keyword.get(opts, :suppress, []))
 
-    Logger.info("[DiversityMonitor] #{tier} response — novelty=#{opts[:novelty]} dampening=#{opts[:dampening]}")
+    Logger.info(
+      "[DiversityMonitor] #{tier} response — novelty=#{opts[:novelty]} dampening=#{opts[:dampening]}"
+    )
 
     Agents.update_agent(agent, %{attention_params: updates})
     signal_attention_reload(agent.id)

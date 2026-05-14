@@ -154,6 +154,18 @@ defmodule Lincoln.Goals do
     |> tap_ok(&PubSubBroadcaster.broadcast_goal_updated(goal.agent_id, &1))
   end
 
+  @doc """
+  General-purpose update for a goal. Accepts any attrs that `Goal.changeset/2`
+  permits (e.g. priority, deadline, success_criteria). For status-only changes
+  prefer `update_status/2`; for progress prefer `record_progress/2`.
+  """
+  def update_goal(%Goal{} = goal, attrs) when is_map(attrs) do
+    goal
+    |> Goal.changeset(attrs)
+    |> Repo.update()
+    |> tap_ok(&PubSubBroadcaster.broadcast_goal_updated(goal.agent_id, &1))
+  end
+
   @doc "Returns the immediate sub-goals of a goal."
   def list_sub_goals(%Goal{id: id}) do
     Goal

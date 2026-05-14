@@ -83,6 +83,22 @@ services:
     restart: unless-stopped
 
   # ===========================================================================
+  # SearXNG (Self-hosted Search)
+  # ===========================================================================
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: lincoln_searxng
+    ports:
+      - "8888:8080"
+    volumes:
+      - searxng_data:/etc/searxng
+      - ./config/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    restart: unless-stopped
+    profiles:
+      - search
+
+  # ===========================================================================
   # Elixir App (Optional - use profile: full)
   # ===========================================================================
   
@@ -141,6 +157,8 @@ volumes:
     name: lincoln_postgres_test_data
   ml_model_cache:
     name: lincoln_ml_model_cache
+  searxng_data:
+    name: lincoln_searxng_data
   ollama_data:
     name: lincoln_ollama_data
 

@@ -25,7 +25,7 @@ defmodule Lincoln.Substrate.GoalThought do
   """
 
   alias Lincoln.{Beliefs, Goals, Memory, Questions}
-  alias Lincoln.Goals.Goal
+  alias Lincoln.Goals.{Decomposer, Goal}
 
   require Logger
 
@@ -59,8 +59,9 @@ defmodule Lincoln.Substrate.GoalThought do
         {:ok, _} = Goals.record_progress(goal, clamped)
         record_memory(agent, goal, clamped, next_step)
         question_id = maybe_create_question(agent, goal, data)
+        decompose_count = maybe_decompose(agent, goal, data)
 
-        summary = build_summary(goal, clamped, next_step, question_id)
+        summary = build_summary(goal, clamped, next_step, question_id, decompose_count)
         Logger.info("[GoalThought] #{summary}")
         {:ok, summary}
 
@@ -216,6 +217,48 @@ defmodule Lincoln.Substrate.GoalThought do
 
   defp maybe_create_question(_agent, _goal, _data), do: nil
 
+  # ---------------------------------------------------------------------------
+  # Decomposition — break complex goals into sub-goals
+  # ---------------------------------------------------------------------------
+
+  defp maybe_decompose(agent, goal, %{"next_step_kind" => "decompose"}) do
+    if Goals.list_sub_goals(goal) != [] do
+      Logger.info("[GoalThought] Goal #{goal.id} already has sub-goals, skipping decomposition")
+      0
+    else
+      case Decomposer.decompose(goal) do
+        {:ok, sub_goals} ->
+          count = length(sub_goals)
+
+          Logger.info("[GoalThought] Decomposed goal #{goal.id} into #{count} sub-goals")
+
+          Memory.create_memory(agent, %{
+            content:
+              "Decomposed goal '#{String.slice(goal.statement, 0, 80)}' into #{count} sub-goals: " <>
+                Enum.map_join(sub_goals, ", ", &String.slice(&1.statement, 0, 60)),
+            memory_type: "reflection",
+            importance: 6,
+            source_context: %{"source" => "goal_thought", "goal_id" => goal.id}
+          })
+
+          count
+
+        {:error, reason} ->
+          Logger.warning(
+            "[GoalThought] Decomposition failed for goal #{goal.id}: #{inspect(reason)}"
+          )
+
+          0
+      end
+    end
+  rescue
+    e ->
+      Logger.warning("[GoalThought] Decomposition error: #{Exception.message(e)}")
+      0
+  end
+
+  defp maybe_decompose(_agent, _goal, _data), do: 0
+
   defp research_question(%{"research_question" => q}) when is_binary(q), do: String.trim(q)
   defp research_question(_), do: ""
 
@@ -245,13 +288,17 @@ defmodule Lincoln.Substrate.GoalThought do
       :ok
   end
 
-  defp build_summary(goal, progress, next_step, question_id) do
+  defp build_summary(goal, progress, next_step, question_id, decompose_count) do
     base =
       "Goal '#{String.slice(goal.statement, 0, 60)}' — progress " <>
         "#{round(progress * 100)}%, next step: " <>
         String.slice(to_string(next_step || "none"), 0, 80)
 
-    if question_id, do: base <> " [queued for investigation]", else: base
+    base
+    |> then(fn s -> if question_id, do: s <> " [queued for investigation]", else: s end)
+    |> then(fn s ->
+      if decompose_count > 0, do: s <> " [decomposed into #{decompose_count} sub-goals]", else: s
+    end)
   end
 
   # ---------------------------------------------------------------------------

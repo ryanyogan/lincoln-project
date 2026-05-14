@@ -86,6 +86,15 @@ docker-up: ## Start all Docker services (default profile)
 docker-up-full: ## Start all services including Elixir app in Docker
 	docker compose --profile full up -d
 
+docker-up-search: ## Start SearXNG self-hosted search engine (port 8888)
+	docker compose --profile search up -d searxng
+	@echo "$(YELLOW)Waiting for SearXNG...$(NC)"
+	@until curl -sf http://localhost:8888/healthz > /dev/null 2>&1; do \
+		sleep 1; \
+	done
+	@echo "$(GREEN)SearXNG is ready at http://localhost:8888$(NC)"
+	@echo "$(CYAN)Add SEARXNG_URL=http://localhost:8888 to your .env$(NC)"
+
 docker-up-test: ## Start test database
 	docker compose --profile test up -d db-test
 

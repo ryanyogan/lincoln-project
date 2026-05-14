@@ -391,6 +391,18 @@ defmodule Lincoln.Substrate.Thought do
     end
   end
 
+  defp run_impulse(agent, :goal_review) do
+    alias Lincoln.Substrate.GoalReviewThought
+
+    case GoalReviewThought.execute(agent) do
+      {:ok, summary} ->
+        {:ok, "Goal review: #{summary}"}
+
+      {:error, reason} ->
+        {:ok, "Goal review failed: #{inspect(reason)}"}
+    end
+  end
+
   defp run_impulse(agent, :action) do
     alias Lincoln.Substrate.ActionThought
 
@@ -876,7 +888,9 @@ defmodule Lincoln.Substrate.Thought do
 
   defp reflection_rate_exceeded?(agent) do
     recent =
-      Lincoln.Memory.list_memories_by_type(agent, "reflection", limit: @max_reflections_per_window + 1)
+      Lincoln.Memory.list_memories_by_type(agent, "reflection",
+        limit: @max_reflections_per_window + 1
+      )
 
     cutoff = DateTime.add(DateTime.utc_now(), -@reflection_window_seconds, :second)
 

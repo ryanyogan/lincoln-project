@@ -42,7 +42,9 @@ defmodule Lincoln.MemoryDistributionTest do
       %{agent: agent}
     end
 
-    test "observations appear in results despite being outnumbered by reflections", %{agent: agent} do
+    test "observations appear in results despite being outnumbered by reflections", %{
+      agent: agent
+    } do
       # Create 20 reflections
       for i <- 1..20 do
         Memory.create_memory(agent, %{
@@ -78,7 +80,9 @@ defmodule Lincoln.MemoryDistributionTest do
       %{agent: agent}
     end
 
-    test "reflection_rate_exceeded? returns true when >= 10 reflections in window", %{agent: agent} do
+    test "reflection_rate_exceeded? returns true when >= 10 reflections in window", %{
+      agent: agent
+    } do
       # Create 10 reflections (at the limit)
       for i <- 1..10 do
         Memory.record_reflection(agent, "Reflection #{i}")
@@ -99,7 +103,9 @@ defmodule Lincoln.MemoryDistributionTest do
       assert count >= 10
     end
 
-    test "reflection_rate_exceeded? returns false when < 10 reflections in window", %{agent: agent} do
+    test "reflection_rate_exceeded? returns false when < 10 reflections in window", %{
+      agent: agent
+    } do
       for i <- 1..9 do
         Memory.record_reflection(agent, "Reflection #{i}")
       end

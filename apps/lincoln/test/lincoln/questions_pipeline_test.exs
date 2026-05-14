@@ -53,7 +53,10 @@ defmodule Lincoln.QuestionsPipelineTest do
       {:ok, stale} = Questions.ask_question(agent, "Old forgotten question")
 
       stale
-      |> Ecto.Changeset.change(inserted_at: DateTime.utc_now() |> DateTime.add(-31 * 86_400, :second) |> DateTime.truncate(:second))
+      |> Ecto.Changeset.change(
+        inserted_at:
+          DateTime.utc_now() |> DateTime.add(-31 * 86_400, :second) |> DateTime.truncate(:second)
+      )
       |> Repo.update!()
 
       pruned_count = Questions.prune_stale_questions(agent)
@@ -70,7 +73,8 @@ defmodule Lincoln.QuestionsPipelineTest do
       popular
       |> Ecto.Changeset.change(
         times_asked: 3,
-        inserted_at: DateTime.utc_now() |> DateTime.add(-31 * 86_400, :second) |> DateTime.truncate(:second)
+        inserted_at:
+          DateTime.utc_now() |> DateTime.add(-31 * 86_400, :second) |> DateTime.truncate(:second)
       )
       |> Repo.update!()
 
@@ -96,7 +100,10 @@ defmodule Lincoln.QuestionsPipelineTest do
       {:ok, q} = Questions.ask_question(agent, "10 day old question")
 
       q
-      |> Ecto.Changeset.change(inserted_at: DateTime.utc_now() |> DateTime.add(-11 * 86_400, :second) |> DateTime.truncate(:second))
+      |> Ecto.Changeset.change(
+        inserted_at:
+          DateTime.utc_now() |> DateTime.add(-11 * 86_400, :second) |> DateTime.truncate(:second)
+      )
       |> Repo.update!()
 
       # With default 30 days, should not be pruned

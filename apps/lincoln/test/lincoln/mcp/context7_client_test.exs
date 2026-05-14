@@ -58,7 +58,9 @@ defmodule Lincoln.MCP.Context7ClientTest do
     end
 
     test "threads resolved id into the docs call" do
-      assert {:ok, docs} = Context7Client.lookup_docs("phoenix_live_view", "x", client: HappyClient)
+      assert {:ok, docs} =
+               Context7Client.lookup_docs("phoenix_live_view", "x", client: HappyClient)
+
       assert docs =~ "/phoenixframework/phoenix_live_view"
     end
 

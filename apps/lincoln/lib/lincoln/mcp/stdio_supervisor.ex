@@ -38,7 +38,11 @@ defmodule Lincoln.MCP.StdioSupervisor do
           env: Keyword.get(cfg, :env, [])
         ]
 
-        spec = %{id: {StdioServer, name}, start: {StdioServer, :start_link, [opts]}, restart: :transient}
+        spec = %{
+          id: {StdioServer, name},
+          start: {StdioServer, :start_link, [opts]},
+          restart: :transient
+        }
 
         case DynamicSupervisor.start_child(__MODULE__, spec) do
           {:ok, pid} -> {:ok, pid}

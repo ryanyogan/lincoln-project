@@ -1,0 +1,31 @@
+use_default_settings: true
+
+search:
+  formats:
+    - html
+    - json
+
+server:
+  secret_key: "lincoln-searxng-secret"
+  limiter: false
+
+engines:
+  # Core engines Lincoln uses
+  - name: google
+    disabled: false
+  - name: duckduckgo
+    disabled: false
+  - name: bing
+    disabled: false
+  - name: wikipedia
+    disabled: false
+
+  # Tor-only engines — fail without Tor installed
+  - name: ahmia
+    disabled: true
+  - name: torch
+    disabled: true
+
+  # Wikidata SPARQL endpoint rate-limits cold starts (403 on init)
+  - name: wikidata
+    disabled: true

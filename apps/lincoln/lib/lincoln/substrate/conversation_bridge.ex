@@ -16,7 +16,7 @@ defmodule Lincoln.Substrate.ConversationBridge do
 
   require Logger
 
-  alias Lincoln.{Agents, Beliefs, Memory, Substrate}
+  alias Lincoln.{Agents, Beliefs, Goals, Memory, Substrate}
   alias Lincoln.Substrate.Trajectory
   alias Lincoln.UserModels
 
@@ -74,6 +74,7 @@ defmodule Lincoln.Substrate.ConversationBridge do
       {:ok, state} ->
         agent = state.agent
         beliefs = safe_query(fn -> Beliefs.list_beliefs(agent, status: "active") end, [])
+        goals = safe_query(fn -> Goals.list_goals(agent, status: "active", limit: 10) end, [])
         trajectory = safe_query(fn -> Trajectory.summary(agent_id, hours: 1) end, nil)
         focus_history = safe_query(fn -> Trajectory.focus_history(agent_id, limit: 10) end, [])
 
@@ -85,6 +86,8 @@ defmodule Lincoln.Substrate.ConversationBridge do
           current_score: state.last_attention_score,
           beliefs: format_beliefs_for_prompt(beliefs),
           belief_count: length(beliefs),
+          goals: format_goals_for_prompt(goals),
+          goal_count: length(goals),
           trajectory: trajectory,
           focus_history: format_focus_history(focus_history)
         }
@@ -108,6 +111,16 @@ defmodule Lincoln.Substrate.ConversationBridge do
     |> Enum.map_join("\n", fn b ->
       conf = round(b.confidence * 100)
       "- [e=#{b.entrenchment} c=#{conf}% src=#{b.source_type}] #{b.statement}"
+    end)
+  end
+
+  defp format_goals_for_prompt([]), do: "(no active goals)"
+
+  defp format_goals_for_prompt(goals) do
+    Enum.map_join(goals, "\n", fn g ->
+      progress = round((g.progress_estimate || 0.0) * 100)
+      deadline = if g.deadline, do: " deadline: #{DateTime.to_date(g.deadline)}", else: ""
+      "- [P#{g.priority} | #{progress}%#{deadline}] #{g.statement}"
     end)
   end
 

@@ -40,7 +40,9 @@ defmodule Lincoln.Substrate.DiversityMonitorTest do
 
   describe "check_and_adjust/1" do
     setup do
-      {:ok, agent} = Lincoln.Agents.create_agent(%{name: "Diversity Test #{System.unique_integer()}"})
+      {:ok, agent} =
+        Lincoln.Agents.create_agent(%{name: "Diversity Test #{System.unique_integer()}"})
+
       %{agent: agent}
     end
 

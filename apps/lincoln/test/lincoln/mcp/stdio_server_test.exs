@@ -101,7 +101,10 @@ defmodule Lincoln.MCP.StdioServerTest do
   describe "failure modes" do
     test "executable not found stops the GenServer with a clear reason" do
       Process.flag(:trap_exit, true)
-      result = StdioServer.start_link(name: :test_missing, command: "no_such_binary_xyz", args: [])
+
+      result =
+        StdioServer.start_link(name: :test_missing, command: "no_such_binary_xyz", args: [])
+
       assert {:error, {:executable_not_found, "no_such_binary_xyz"}} = result
     end
   end

@@ -376,12 +376,21 @@ defmodule Lincoln.Substrate.Attention do
         do: belief.confidence * 0.3,
         else: 0.0
 
-    suppressed_ids = Map.get(params, :suppressed_belief_ids) || Map.get(params, "suppressed_belief_ids") || []
+    suppressed_ids =
+      Map.get(params, :suppressed_belief_ids) || Map.get(params, "suppressed_belief_ids") || []
+
     suppression = if is_list(suppressed_ids) and belief.id in suppressed_ids, do: 0.8, else: 0.0
 
-    final_score = min(1.0, max(0.0, base_score + focus_boost + impulse_boost - monotony - suppression))
+    final_score =
+      min(1.0, max(0.0, base_score + focus_boost + impulse_boost - monotony - suppression))
 
-    extra = %{focus_boost: focus_boost, monotony_penalty: monotony, suppression_penalty: suppression, final_score: final_score}
+    extra = %{
+      focus_boost: focus_boost,
+      monotony_penalty: monotony,
+      suppression_penalty: suppression,
+      final_score: final_score
+    }
+
     {final_score, Map.merge(components, extra)}
   end
 
@@ -520,7 +529,9 @@ defmodule Lincoln.Substrate.Attention do
   end
 
   defp depth_score(belief, params) do
-    dampening = Map.get(params, :entrenchment_dampening) || Map.get(params, "entrenchment_dampening") || 0.0
+    dampening =
+      Map.get(params, :entrenchment_dampening) || Map.get(params, "entrenchment_dampening") || 0.0
+
     dampened_e = belief.entrenchment * (1.0 - dampening)
 
     raw = belief.confidence * 0.5 + dampened_e / 20.0 * 0.5

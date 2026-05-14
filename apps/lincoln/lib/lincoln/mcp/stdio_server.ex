@@ -130,8 +130,11 @@ defmodule Lincoln.MCP.StdioServer do
   defp maybe_with_env(port_opts, env) do
     normalized =
       Enum.map(env, fn
-        {k, v} when is_binary(k) and is_binary(v) -> {String.to_charlist(k), String.to_charlist(v)}
-        {k, v} when is_list(k) and is_list(v) -> {k, v}
+        {k, v} when is_binary(k) and is_binary(v) ->
+          {String.to_charlist(k), String.to_charlist(v)}
+
+        {k, v} when is_list(k) and is_list(v) ->
+          {k, v}
       end)
 
     [{:env, normalized} | port_opts]
@@ -165,9 +168,7 @@ defmodule Lincoln.MCP.StdioServer do
 
   @impl true
   def handle_info({port, {:exit_status, status}}, %{port: port} = state) do
-    Logger.warning(
-      "[MCP.StdioServer/#{state.name}] subprocess exited with status #{status}"
-    )
+    Logger.warning("[MCP.StdioServer/#{state.name}] subprocess exited with status #{status}")
 
     fail_all_pending(state, {:stdio_server_exited, status})
     {:stop, {:shutdown, {:exit_status, status}}, %{state | port: nil}}
@@ -270,16 +271,12 @@ defmodule Lincoln.MCP.StdioServer do
         dispatch_response(id, msg, state)
 
       {:ok, %{"method" => method}} ->
-        Logger.debug(
-          "[MCP.StdioServer/#{state.name}] received notification #{method}, ignored"
-        )
+        Logger.debug("[MCP.StdioServer/#{state.name}] received notification #{method}, ignored")
 
         {:noreply, state}
 
       {:error, reason} ->
-        Logger.debug(
-          "[MCP.StdioServer/#{state.name}] non-JSON line dropped: #{inspect(reason)}"
-        )
+        Logger.debug("[MCP.StdioServer/#{state.name}] non-JSON line dropped: #{inspect(reason)}")
 
         {:noreply, state}
     end

@@ -25,7 +25,7 @@ defmodule Lincoln.Cognition.ConversationHandler do
 
   require Logger
 
-  alias Lincoln.{Agents, Autonomy, Beliefs, Conversation, Memory, Questions}
+  alias Lincoln.{Agents, Autonomy, Beliefs, Conversation, Goals, Memory, Questions}
   alias Lincoln.Autonomy.{Evolution, SelfImprovement}
   alias Lincoln.Cognition.{BeliefRevision, Perception, ThoughtLoop}
   alias Lincoln.Events.Emitter
@@ -44,6 +44,7 @@ defmodule Lincoln.Cognition.ConversationHandler do
 
   @type command ::
           {:research, String.t()}
+          | {:set_goal, String.t()}
           | :evolve
           | {:view_code, String.t()}
           | :view_commits
@@ -174,6 +175,15 @@ defmodule Lincoln.Cognition.ConversationHandler do
     ~r/enhance\s+your\s+(.+)/i
   ]
 
+  @goal_patterns [
+    ~r/^(?:set\s+(?:a\s+)?goal\s*(?:to\s+)?|goal:\s*)(.+)$/i,
+    ~r/^(?:my|your)\s+(?:goal|mission)\s+is\s+(?:to\s+)?(.+)$/i,
+    ~r/^i\s+want\s+you\s+to\s+(?:monitor|track|watch|keep\s+an\s+eye\s+on)\s+(.+)$/i,
+    ~r/^(?:can\s+you\s+)?(?:monitor|track|watch|keep\s+an\s+eye\s+on)\s+(.+)$/i,
+    ~r/^(?:your\s+)?mission\s+is\s+(?:to\s+)?(.+)$/i,
+    ~r/^(?:please\s+)?find\s+out\s+(?:about\s+)?(.+)$/i
+  ]
+
   defp detect_command(message) do
     cond do
       topic = detect_research_topic(message) ->
@@ -191,6 +201,9 @@ defmodule Lincoln.Cognition.ConversationHandler do
       modification = detect_code_modification_request(message) ->
         modification
 
+      statement = detect_goal_statement(message) ->
+        {:set_goal, statement}
+
       true ->
         nil
     end
@@ -200,6 +213,15 @@ defmodule Lincoln.Cognition.ConversationHandler do
     Enum.find_value(@research_patterns, fn pattern ->
       case Regex.run(pattern, String.trim(message)) do
         [_, topic] -> String.trim(topic)
+        _ -> nil
+      end
+    end)
+  end
+
+  defp detect_goal_statement(message) do
+    Enum.find_value(@goal_patterns, fn pattern ->
+      case Regex.run(pattern, String.trim(message)) do
+        [_, statement] -> String.trim(statement)
         _ -> nil
       end
     end)
@@ -285,6 +307,25 @@ defmodule Lincoln.Cognition.ConversationHandler do
 
       {:error, reason} ->
         Logger.error("Failed to queue research topic: #{inspect(reason)}")
+        {:ok, state}
+    end
+  end
+
+  defp handle_command(%{command: {:set_goal, statement}} = state, _opts) do
+    Logger.info("COMMAND: Goal creation request: #{statement}")
+
+    case Goals.create_goal(state.agent, %{
+           statement: statement,
+           origin: "user",
+           priority: 7,
+           status: "active"
+         }) do
+      {:ok, goal} ->
+        Logger.info("COMMAND: Created goal #{goal.id}: #{statement}")
+        {:ok, update_metadata(state, :goal_created, statement)}
+
+      {:error, reason} ->
+        Logger.error("Failed to create goal: #{inspect(reason)}")
         {:ok, state}
     end
   end
@@ -785,6 +826,12 @@ defmodule Lincoln.Cognition.ConversationHandler do
     |> Enum.join(" ")
   end
 
+  @search_trigger_patterns [
+    ~r/^(?:search\s+(?:for\s+)?|look\s+up\s+|find\s+out\s+(?:about\s+)?)/i,
+    ~r/^(?:what|who|when|where|how)\s+(?:is|are|was|were|did|does|do)\s+/i,
+    ~r/(?:latest|current|recent|newest|today'?s?)\s+\w+/i
+  ]
+
   # Step 2: REMEMBER - Retrieve relevant memories and beliefs.
   defp remember(state, opts) do
     Logger.debug("REMEMBER: Retrieving context")
@@ -808,10 +855,14 @@ defmodule Lincoln.Cognition.ConversationHandler do
           # Get recent conversation messages for context
           recent_messages = Conversation.get_recent_messages(state.conversation.id, 10)
 
+          # Optionally search the web for factual questions
+          search_results = maybe_search_web(state.user_message)
+
           %{
             memories: memories,
             beliefs: beliefs,
             recent_messages: recent_messages,
+            search_results: search_results,
             embedding: embedding
           }
 
@@ -823,17 +874,75 @@ defmodule Lincoln.Cognition.ConversationHandler do
             memories: [],
             beliefs: [],
             recent_messages: Conversation.get_recent_messages(state.conversation.id, 10),
+            search_results: [],
             embedding: nil
           }
       end
+
+    if context.search_results != [] do
+      record_search_observation(state.agent, state.user_message, context.search_results)
+    end
 
     state =
       state
       |> Map.put(:context, context)
       |> update_metadata(:memories_retrieved, length(context.memories))
       |> update_metadata(:beliefs_consulted, length(context.beliefs))
+      |> update_metadata(:search_results_count, length(context.search_results))
 
     {:ok, state}
+  end
+
+  defp maybe_search_web(message) do
+    if should_search?(message) do
+      adapter = search_adapter()
+
+      case adapter.search(message, limit: 3) do
+        {:ok, results} ->
+          Logger.info("REMEMBER: Web search returned #{length(results)} results")
+          results
+
+        {:error, reason} ->
+          Logger.debug("REMEMBER: Web search failed: #{inspect(reason)}")
+          []
+      end
+    else
+      []
+    end
+  rescue
+    e ->
+      Logger.debug("REMEMBER: Web search error: #{Exception.message(e)}")
+      []
+  end
+
+  defp should_search?(message) do
+    Enum.any?(@search_trigger_patterns, &Regex.match?(&1, message))
+  end
+
+  defp search_adapter do
+    Application.get_env(:lincoln, :search_adapter, Lincoln.MCP.SearchClient.NoOp)
+  end
+
+  defp record_search_observation(agent, query, results) do
+    Task.Supervisor.start_child(Lincoln.TaskSupervisor, fn ->
+      snippets =
+        results
+        |> Enum.take(3)
+        |> Enum.map_join("\n", fn r ->
+          title = Map.get(r, :title) || Map.get(r, "title") || ""
+          url = Map.get(r, :url) || Map.get(r, "url") || ""
+          "#{title} (#{url})"
+        end)
+
+      Memory.record_observation(
+        agent,
+        "Web search for '#{String.slice(query, 0, 100)}' returned: #{snippets}",
+        importance: 4,
+        context: %{"source" => "web_search", "query" => String.slice(query, 0, 200)}
+      )
+    end)
+  rescue
+    _ -> :ok
   end
 
   # Step 3: REASON - Analyze contradictions, decide on revisions.
@@ -1012,6 +1121,7 @@ defmodule Lincoln.Cognition.ConversationHandler do
     identity_context = build_identity_context(state.agent)
     deliberation_context = format_deliberation_context(state)
     substrate_context = build_substrate_context(state.agent)
+    search_context = format_search_results(state.context[:search_results] || [])
 
     # If substrate is running with full beliefs, skip the vector-similar subset
     beliefs_section =
@@ -1039,15 +1149,18 @@ defmodule Lincoln.Cognition.ConversationHandler do
     #{beliefs_section}
     #{if memories_context != "", do: "## Relevant Memories\n#{memories_context}\n", else: ""}
     #{contradiction_context}
+    #{search_context}
     #{command_context}
     #{deliberation_context}
 
     ## Your Capabilities
     - You can REMEMBER past conversations and form persistent beliefs
+    - When users express goals, missions, or monitoring requests, you create trackable goals
     - When users say "research [topic]", you queue it for autonomous learning
     - When users say "improve yourself", you reflect on your own code for enhancements
     - When users say "show me [file.ex]", you can view your own source code
     - You can REVISE beliefs when presented with compelling evidence
+    - You can SEARCH the web when asked factual questions or told to look something up
 
     ## Guidelines
     - Be natural and conversational
@@ -1144,24 +1257,35 @@ defmodule Lincoln.Cognition.ConversationHandler do
             "No trajectory data yet"
           end
 
+        goals_section =
+          if ctx.goal_count > 0 do
+            """
+
+            ### Active Goals (#{ctx.goal_count})
+            #{ctx.goals}
+            """
+          else
+            ""
+          end
+
         """
         ## Your Cognitive Substrate (Live State)
         You are running on tick #{ctx.tick_count}. Your current focus is: "#{focus_text}" (attention score: #{score_text}).
-        You hold #{ctx.belief_count} active beliefs.
+        You hold #{ctx.belief_count} active beliefs and #{ctx.goal_count} active goals.
 
         ### All Your Beliefs (entrenchment, confidence, source)
         #{ctx.beliefs}
-
+        #{goals_section}
         ### Recent Focus History (what you've been thinking about)
         #{ctx.focus_history}
 
         ### Trajectory (last hour)
         #{trajectory_text}
 
-        IMPORTANT: When asked about your beliefs, state, or what you're thinking,
-        answer from the data above. These are your ACTUAL beliefs and state from the
-        database. Do not invent beliefs you don't hold. Quote specific confidence
-        scores and entrenchment levels.
+        IMPORTANT: When asked about your beliefs, goals, state, or what you're thinking,
+        answer from the data above. These are your ACTUAL beliefs, goals, and state from the
+        database. Do not invent beliefs or goals you don't hold. Quote specific confidence
+        scores, entrenchment levels, and goal progress.
         """
 
       _ ->
@@ -1205,6 +1329,7 @@ defmodule Lincoln.Cognition.ConversationHandler do
     cond do
       meta[:research_queued] -> format_research_context(meta[:research_queued])
       meta[:evolution_triggered] -> format_evolution_context()
+      meta[:goal_created] -> format_goal_created_context(meta[:goal_created])
       true -> nil
     end
   end
@@ -1239,6 +1364,34 @@ defmodule Lincoln.Cognition.ConversationHandler do
     ## Action Taken
     You have initiated a self-reflection process to identify potential code improvements.
     You're examining your own implementation for ways to enhance your capabilities.
+    """
+  end
+
+  defp format_search_results([]), do: ""
+
+  defp format_search_results(results) do
+    formatted =
+      Enum.map_join(results, "\n", fn r ->
+        title = Map.get(r, :title) || Map.get(r, "title") || ""
+        url = Map.get(r, :url) || Map.get(r, "url") || ""
+        snippet = Map.get(r, :snippet) || Map.get(r, "snippet") || ""
+        "- #{title} (#{url}) — #{String.slice(snippet, 0, 200)}"
+      end)
+
+    """
+    ## Web Search Results
+    #{formatted}
+
+    Use these search results to inform your response. Cite sources when relevant.
+    """
+  end
+
+  defp format_goal_created_context(statement) do
+    """
+    ## Action Taken
+    You have created a new goal: "#{statement}"
+    This goal is now active and will be pursued autonomously by your goal pursuit system.
+    Acknowledge the goal to the user and briefly explain how you'll work on it.
     """
   end
 

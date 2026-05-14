@@ -107,7 +107,10 @@ defmodule Lincoln.MCP.Context7Client do
   defp extract_library_id(_), do: nil
 
   defp first_library_id_in_text(text) do
-    Regex.run(~r{(?:Context7-compatible library ID:\s*)?(/[\w\.\-]+/[\w\.\-]+(?:/[\w\.\-]+)?)}, text)
+    Regex.run(
+      ~r{(?:Context7-compatible library ID:\s*)?(/[\w\.\-]+/[\w\.\-]+(?:/[\w\.\-]+)?)},
+      text
+    )
     |> case do
       [_, id] -> id
       _ -> nil

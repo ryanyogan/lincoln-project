@@ -27,6 +27,7 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
   @perception_cooldown_seconds 60
   @goal_pursuit_cooldown_seconds 90
   @action_cooldown_seconds 30
+  @goal_review_cooldown_seconds 3600
 
   @doc """
   Returns a list of impulse candidates with computed scores.
@@ -46,7 +47,8 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
       self_improve_impulse(agent, impulse_state, now),
       perception_impulse(agent, impulse_state, now),
       goal_pursuit_impulse(agent, impulse_state, now),
-      action_impulse(agent, impulse_state, now)
+      action_impulse(agent, impulse_state, now),
+      goal_review_impulse(agent, impulse_state, now)
     ]
     |> Enum.reject(&is_nil/1)
   end
@@ -63,7 +65,8 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
     "self_improve" => :self_improve,
     "perception" => :perception,
     "goal_pursuit" => :goal_pursuit,
-    "action" => :action
+    "action" => :action,
+    "goal_review" => :goal_review
   }
 
   @doc "Extract the impulse type from an impulse ID."
@@ -79,7 +82,8 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
       last_self_improve_at: nil,
       last_perception_at: nil,
       last_goal_pursuit_at: nil,
-      last_action_at: nil
+      last_action_at: nil,
+      last_goal_review_at: nil
     }
   end
 
@@ -285,6 +289,32 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
     end
   end
 
+  defp goal_review_impulse(agent, impulse_state, now) do
+    if on_cooldown?(impulse_state.last_goal_review_at, now, @goal_review_cooldown_seconds) do
+      nil
+    else
+      score = goal_review_score(agent)
+
+      if score > 0.0 do
+        %{
+          id: "impulse:goal_review",
+          statement: "I should review whether my active goals are still relevant",
+          confidence: score,
+          entrenchment: 1,
+          source_type: "introspection",
+          revision_count: 0,
+          inserted_at: now,
+          updated_at: now,
+          last_challenged_at: nil,
+          last_reinforced_at: nil,
+          status: "active"
+        }
+      else
+        nil
+      end
+    end
+  end
+
   defp on_cooldown?(nil, _now, _seconds), do: false
 
   defp on_cooldown?(last_at, now, seconds) do
@@ -366,6 +396,19 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
       0 -> 0.0
       # Actions are urgent — they exist because something concrete needs doing.
       n -> min(0.95, 0.7 + n * 0.05)
+    end
+  rescue
+    _ -> 0.0
+  end
+
+  defp goal_review_score(agent) do
+    # Moderate score — goal review shouldn't crowd out active pursuit or
+    # investigation. Score slightly higher when there are many active goals
+    # since the review is more valuable then.
+    case Goals.count_active_goals(agent) do
+      0 -> 0.0
+      n when n >= 5 -> 0.55
+      _ -> 0.4
     end
   rescue
     _ -> 0.0

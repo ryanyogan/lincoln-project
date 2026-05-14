@@ -143,10 +143,16 @@ defmodule Lincoln.Beliefs do
     embedding = Map.get(attrs, :embedding) || Map.get(attrs, "embedding")
 
     if embedding do
-      case find_similar_beliefs(agent, embedding, limit: 1, threshold: @dedup_similarity_threshold) do
+      case find_similar_beliefs(agent, embedding,
+             limit: 1,
+             threshold: @dedup_similarity_threshold
+           ) do
         [match | _] ->
           statement = Map.get(attrs, :statement) || Map.get(attrs, "statement") || ""
-          Logger.debug("[Beliefs] Dedup: strengthening existing belief instead of creating duplicate")
+
+          Logger.debug(
+            "[Beliefs] Dedup: strengthening existing belief instead of creating duplicate"
+          )
 
           case strengthen_belief(
                  get_belief!(match.id),
@@ -254,9 +260,7 @@ defmodule Lincoln.Beliefs do
       result = do_consolidate(beliefs_with_embeddings)
 
       if result.merged > 0 do
-        Logger.info(
-          "[Beliefs] Consolidation: merged=#{result.merged} checked=#{result.checked}"
-        )
+        Logger.info("[Beliefs] Consolidation: merged=#{result.merged} checked=#{result.checked}")
       end
 
       :telemetry.execute(
