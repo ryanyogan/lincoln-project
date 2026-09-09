@@ -108,12 +108,16 @@ services:
       dockerfile: Dockerfile
     container_name: lincoln_app
     ports:
-      - "4000:4000"
+      - "127.0.0.1:4000:4000"
     environment:
       - DATABASE_URL=postgres://postgres:postgres@db:5432/lincoln_dev
       - ML_SERVICE_URL=http://ml_service:8000
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
-      - SECRET_KEY_BASE=${SECRET_KEY_BASE:-$(openssl rand -base64 48)}
+      - LLM_PROVIDER=${LLM_PROVIDER:-anthropic}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OLLAMA_URL=${OLLAMA_URL:-http://ollama:11434}
+      - OLLAMA_MODEL=${OLLAMA_MODEL:-qwen2.5:7b}
+      - SECRET_KEY_BASE=${SECRET_KEY_BASE:?Set SECRET_KEY_BASE in .env (mix phx.gen.secret)}
       - PHX_HOST=localhost
       - PORT=4000
     depends_on:

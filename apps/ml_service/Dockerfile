@@ -22,6 +22,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Extract dependencies from pyproject.toml using pip
 COPY pyproject.toml .
 
+# This container uses CPU inference; avoid downloading unused CUDA libraries.
+RUN pip install torch --index-url https://download.pytorch.org/whl/cpu
+
 # Install dependencies directly with pip (faster than building a wheel)
 RUN pip install \
     "fastapi>=0.109.0" \

@@ -45,11 +45,11 @@ COPY priv priv
 COPY lib lib
 COPY assets assets
 
+# Compile first so Phoenix generates the colocated hooks used by assets.
+RUN mix compile
+
 # Compile assets
 RUN mix assets.deploy
-
-# Compile application
-RUN mix compile
 
 # Copy runtime config
 COPY config/runtime.exs config/
@@ -97,7 +97,7 @@ EXPOSE 4000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD curl -f http://localhost:4000/health || exit 1
+    CMD curl -f http://localhost:4000/ || exit 1
 
 # Run the application
 CMD ["bin/lincoln", "start"]
