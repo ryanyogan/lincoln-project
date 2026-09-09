@@ -86,6 +86,7 @@ defmodule Lincoln.CognitionTest do
       {:ok, _} =
         Beliefs.create_belief(agent, %{
           statement: "Patterns tend to repeat",
+          embedding: generate_fake_embedding("Patterns tend to repeat"),
           source_type: "observation",
           confidence: 0.7
         })
@@ -155,7 +156,7 @@ defmodule Lincoln.CognitionTest do
       assert belief.confidence == 0.6
     end
 
-    test "strengthens existing belief when very similar belief exists", %{agent: agent} do
+    test "reuses an identical account without increasing confidence", %{agent: agent} do
       # Create an existing belief with embedding
       existing_content = "Water is essential for life"
       embedding = generate_fake_embedding(existing_content)
@@ -182,7 +183,7 @@ defmodule Lincoln.CognitionTest do
       # Should strengthen the existing belief
       assert updated.id == existing.id
       # Strengthening increases confidence
-      assert updated.confidence > existing.confidence
+      assert updated.confidence == existing.confidence
     end
 
     test "creates new belief when similar beliefs exist but are INDEPENDENT", %{agent: agent} do

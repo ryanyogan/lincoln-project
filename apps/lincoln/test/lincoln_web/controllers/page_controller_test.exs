@@ -1,10 +1,11 @@
 defmodule LincolnWeb.PageControllerTest do
   use LincolnWeb.ConnCase
 
-  test "GET / loads the dashboard", %{conn: conn} do
+  test "GET / loads the conversation workspace", %{conn: conn} do
     conn = get(conn, ~p"/")
     assert html_response(conn, 200) =~ "Lincoln"
-    assert html_response(conn, 200) =~ "Neural Learning System"
+    document = conn |> html_response(200) |> LazyHTML.from_fragment()
+    assert document |> LazyHTML.query("#chat-form") |> Enum.count() == 1
   end
 
   test "GET /welcome loads the welcome page", %{conn: conn} do

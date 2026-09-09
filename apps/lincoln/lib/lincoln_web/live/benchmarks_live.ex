@@ -18,7 +18,7 @@ defmodule LincolnWeb.BenchmarksLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="container mx-auto max-w-3xl p-6">
         <.page_header
           title="Benchmarks"

@@ -10,11 +10,12 @@ defmodule Lincoln.Substrate.Substrate do
   use GenServer
   require Logger
 
-  alias Lincoln.{Agents, Beliefs, PubSubBroadcaster}
+  alias Lincoln.{Agents, Beliefs, Drive, PubSubBroadcaster}
 
   alias Lincoln.Substrate.{
     Attention,
     BeliefMaintenance,
+    CognitiveImpulse,
     DiversityMonitor,
     InferenceTier,
     Resonator,
@@ -35,6 +36,7 @@ defmodule Lincoln.Substrate.Substrate do
   @resonator_interval 12
   @question_pruning_interval 1000
   @opportunity_detection_interval 500
+  @drive_prune_interval 2000
 
   defstruct [
     :agent_id,
@@ -48,6 +50,8 @@ defmodule Lincoln.Substrate.Substrate do
     :last_attention_score,
     :last_tier,
     :tick_timer_ref,
+    :pre_thought_snapshot,
+    :pre_thought_metadata,
     idle_streak: 0
   ]
 
@@ -132,10 +136,16 @@ defmodule Lincoln.Substrate.Substrate do
   @impl true
   def handle_info(:tick, state) do
     new_state =
-      if state.pending_events != [] or not has_running_thought?(state) do
-        handle_active_tick(state)
-      else
-        handle_idle_tick(state)
+      try do
+        if state.pending_events != [] or not has_running_thought?(state) do
+          handle_active_tick(state)
+        else
+          handle_idle_tick(state)
+        end
+      rescue
+        e ->
+          Logger.warning("[Substrate #{state.agent_id}] Tick crashed: #{Exception.message(e)}")
+          %{state | tick_count: state.tick_count + 1, last_tick_at: DateTime.utc_now()}
       end
 
     run_periodic_tasks(new_state)
@@ -167,8 +177,20 @@ defmodule Lincoln.Substrate.Substrate do
       label: "thought trajectory"
     )
 
+    maybe_record_prediction_error(state, thought_id)
+
     # Thought completed — schedule immediate tick to spawn next thought
-    new_state = schedule_tick_cancel_old(%{state | activation_map: activation_map}, 0)
+    new_state =
+      schedule_tick_cancel_old(
+        %{
+          state
+          | activation_map: activation_map,
+            pre_thought_snapshot: nil,
+            pre_thought_metadata: nil
+        },
+        0
+      )
+
     {:noreply, new_state}
   end
 
@@ -189,7 +211,12 @@ defmodule Lincoln.Substrate.Substrate do
       label: "thought failure trajectory"
     )
 
-    new_state = schedule_tick_cancel_old(state, 0)
+    new_state =
+      schedule_tick_cancel_old(
+        %{state | pre_thought_snapshot: nil, pre_thought_metadata: nil},
+        0
+      )
+
     {:noreply, new_state}
   end
 
@@ -279,6 +306,10 @@ defmodule Lincoln.Substrate.Substrate do
         "opportunity detection"
       )
     end)
+
+    maybe_run(tick, @drive_prune_interval, fn ->
+      run_bg(fn -> Drive.prune_old_errors(state.agent_id, hours: 72) end, "drive pruning")
+    end)
   end
 
   defp maybe_run(tick, interval, fun) do
@@ -299,10 +330,61 @@ defmodule Lincoln.Substrate.Substrate do
     end)
   end
 
+  defp maybe_record_prediction_error(
+         %{pre_thought_snapshot: snap, pre_thought_metadata: meta} = state,
+         thought_id
+       )
+       when not is_nil(snap) and not is_nil(meta) do
+    run_background_task(
+      fn ->
+        outcome = Drive.OutcomeMeasurement.compute_outcome(snap, state.agent_id)
+        expected = meta.attention_score || 0.0
+
+        Drive.record_prediction_error(state.agent_id, %{
+          thought_id: thought_id,
+          impulse_source: meta.impulse_source,
+          belief_id: meta.belief && Map.get(meta.belief, :id),
+          expected_score: expected,
+          thought_type: to_string(meta.thought_type || "unknown"),
+          tier: to_string(state.last_tier || "unknown"),
+          actual_outcome: outcome.actual_outcome,
+          beliefs_created: outcome.beliefs_created,
+          beliefs_revised: outcome.beliefs_revised,
+          beliefs_retracted: outcome.beliefs_retracted,
+          relationships_created: outcome.relationships_created,
+          questions_resolved: outcome.questions_resolved,
+          goals_advanced: outcome.goals_advanced,
+          findings_created: outcome.findings_created,
+          prediction_error: outcome.actual_outcome - expected
+        })
+      end,
+      label: "prediction error recording"
+    )
+  end
+
+  defp maybe_record_prediction_error(_state, _thought_id), do: :ok
+
   defp handle_active_tick(state) do
     state_after_events = drain_pending_events(state)
     {chosen_belief, attention_score, scoring_detail} = consult_attention(state_after_events)
     thought_type = scoring_detail && scoring_detail[:thought_type]
+
+    snapshot = Drive.OutcomeMeasurement.snapshot_before(state.agent_id)
+
+    belief_id = chosen_belief && Map.get(chosen_belief, :id)
+
+    impulse_source =
+      if belief_id && CognitiveImpulse.impulse?(belief_id),
+        do: String.replace(to_string(belief_id), "impulse:", ""),
+        else: nil
+
+    metadata = %{
+      attention_score: attention_score,
+      belief: chosen_belief,
+      thought_type: thought_type,
+      impulse_source: impulse_source
+    }
+
     tier = spawn_thought(state_after_events, chosen_belief, attention_score, thought_type)
 
     new_state = %{
@@ -312,7 +394,9 @@ defmodule Lincoln.Substrate.Substrate do
         last_tick_at: DateTime.utc_now(),
         last_attention_score: attention_score,
         last_tier: tier,
-        idle_streak: 0
+        idle_streak: 0,
+        pre_thought_snapshot: snapshot,
+        pre_thought_metadata: metadata
     }
 
     PubSubBroadcaster.broadcast_substrate_event(

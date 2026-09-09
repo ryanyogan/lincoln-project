@@ -90,6 +90,7 @@ defmodule Lincoln.Substrate.PerceptionThought do
     system, AND whether it raises an outward-looking question Lincoln should
     investigate.
 
+    A source reporting a claim is testimony, not independent verification.
     Observation source: #{source_label(memory)}
     Observation content:
     #{memory.content}
@@ -125,7 +126,7 @@ defmodule Lincoln.Substrate.PerceptionThought do
 
   defp maybe_form_belief(agent, memory, claim, confidence, _data)
        when confidence >= @belief_confidence_threshold do
-    case Cognition.form_belief(agent, claim, "observation",
+    case Cognition.form_belief(agent, claim, "testimony",
            confidence: confidence,
            evidence:
              "Perceived from #{source_label(memory)}: #{String.slice(memory.content, 0, 200)}"

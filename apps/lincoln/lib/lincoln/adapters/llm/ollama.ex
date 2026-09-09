@@ -21,7 +21,7 @@ defmodule Lincoln.Adapters.LLM.Ollama do
 
     body = %{
       model: model,
-      messages: format_messages(messages),
+      messages: format_messages(with_system_prompt(messages, opts)),
       stream: false
     }
 
@@ -94,6 +94,13 @@ defmodule Lincoln.Adapters.LLM.Ollama do
   # Private Functions
   # ============================================================================
 
+  defp with_system_prompt(messages, opts) do
+    case Keyword.get(opts, :system) do
+      prompt when is_binary(prompt) -> [%{role: "system", content: prompt} | messages]
+      _ -> messages
+    end
+  end
+
   defp config(key, default) do
     Application.get_env(:lincoln, :ollama, [])
     |> Keyword.get(key, default)
@@ -123,10 +130,10 @@ defmodule Lincoln.Adapters.LLM.Ollama do
 
   defp extract_json(text) do
     cond do
-      match = Regex.run(~r/\[[\s\S]*\]/, text) ->
+      match = Regex.run(~r/\{[\s\S]*\}/, text) ->
         {:ok, hd(match)}
 
-      match = Regex.run(~r/\{[\s\S]*\}/, text) ->
+      match = Regex.run(~r/\[[\s\S]*\]/, text) ->
         {:ok, hd(match)}
 
       true ->

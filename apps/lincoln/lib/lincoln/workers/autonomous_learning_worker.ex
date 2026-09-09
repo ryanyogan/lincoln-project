@@ -436,7 +436,8 @@ defmodule Lincoln.Workers.AutonomousLearningWorker do
   # ============================================================================
 
   defp maybe_evolve(agent, session, llm) do
-    unless TokenBudget.should_skip_expensive?(session) do
+    if Application.get_env(:lincoln, :self_modification_enabled, false) and
+         not TokenBudget.should_skip_expensive?(session) do
       Logger.info("[Lincoln] Considering self-improvement...")
 
       # First, check for event-driven improvement opportunities from the queue

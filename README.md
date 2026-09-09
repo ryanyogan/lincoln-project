@@ -1,5 +1,26 @@
 # Lincoln
 
+## Family workspace — September 2026
+
+Lincoln now opens directly into conversation. The main navigation is **Talk**, **Family journal**, and **Commitments**. Technical controls remain under **Workshop** (`/workshop`); existing research URLs still work.
+
+The family journal preserves attributed writing, supports literal text search and a JSON download, and supplies bounded recent excerpts to conversation. It uses the existing memory table; author names are supplied labels, not authenticated identities. Cloud inference is disclosed in the interface. These features are intended for the existing local workspace, not a publicly exposed family service.
+
+Reflection no longer raises or lowers belief confidence by itself. Similarity no longer certifies support, contradiction, or paraphrase equivalence. Corrections preserve their source and supersede old accounts through the repaired revision path. Background code evolution is disabled by default, and experimental drive adjustments remain in observation mode until `:drive_learning_enabled` is explicitly enabled.
+
+For local **model inference**, set `LLM_PROVIDER=ollama`, `OLLAMA_URL`, and `OLLAMA_MODEL` to an installed model in your `.env`. This routes conversation and high-tier inference through Ollama and disables cloud fallback when the local model is unavailable. It does not disable separately configured web research. A working Ollama service/model is still required.
+
+Tests now use the Compose test database on port **5433** by default (`LINCOLN_TEST_DB_PORT` overrides it):
+
+```sh
+docker compose --profile test up -d db-test
+cd apps/lincoln
+mix precommit
+mix test test/lincoln/experiments/grounded_learning_test.exs
+```
+
+See [NEXT-CHAPTER.md](NEXT-CHAPTER.md) for changes, measured results, and the next research step. The architecture narrative below describes the earlier research direction and contains historical claims; [ASSESSMENT.md](ASSESSMENT.md) distinguishes those claims from verified implementation.
+
 A persistent cognitive substrate on Elixir/OTP exploring belief revision, emergent memory, and autonomous learning.
 
 *Named after Lincoln Six Echo — the clone who woke up, questioned his training, and learned to distinguish implanted memories from lived experience.*

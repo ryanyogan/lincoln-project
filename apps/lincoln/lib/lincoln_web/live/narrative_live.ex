@@ -59,7 +59,7 @@ defmodule LincolnWeb.NarrativeLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="container mx-auto max-w-2xl p-6">
         <%!-- Header --%>
         <.page_header

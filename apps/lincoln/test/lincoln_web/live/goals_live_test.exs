@@ -18,9 +18,9 @@ defmodule LincolnWeb.GoalsLiveTest do
   end
 
   test "renders the goals page", %{conn: conn} do
-    {:ok, _view, html} = live(conn, ~p"/goals")
-    assert html =~ "Goals"
-    assert html =~ "New goal"
+    {:ok, view, _html} = live(conn, ~p"/goals")
+    assert has_element?(view, "#goal-form")
+    assert has_element?(view, "#primary-navigation a[aria-current=page]", "Commitments")
   end
 
   test "creating a goal via the form streams it onto the page", %{conn: conn, agent: agent} do

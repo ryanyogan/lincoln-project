@@ -242,7 +242,7 @@ defmodule LincolnWeb.DashboardLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="space-y-6">
         <%!-- Agent Header --%>
         <div class="bg-base-200 border-2 border-primary p-4 sm:p-6 shadow-brutal scan-lines">

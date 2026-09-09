@@ -57,9 +57,9 @@ defmodule Lincoln.Substrate.AgentSupervisorTest do
       assert_receive {:DOWN, ^sub_ref, :process, ^sub_pid, _reason}
       assert_receive {:DOWN, ^att_ref, :process, ^att_pid, _reason}
 
-      assert [] = Registry.lookup(Lincoln.AgentRegistry, {agent.id, :substrate})
-      assert [] = Registry.lookup(Lincoln.AgentRegistry, {agent.id, :attention})
-      assert [] = Registry.lookup(Lincoln.AgentRegistry, {agent.id, :supervisor})
+      # Registry receives its own DOWN notifications asynchronously. The
+      # monitored process exits above establish termination without racing it.
+      assert Supervisor.which_children(Lincoln.AgentSupervisor) == []
     end
 
     test "returns error if not running" do

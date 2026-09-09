@@ -74,7 +74,9 @@ defmodule Lincoln.Substrate.InferenceTier do
         {:ok, response}
 
       {:error, :ollama_unavailable} ->
-        execute_at_tier(:claude, messages, opts)
+        if Application.get_env(:lincoln, :local_inference_only, false),
+          do: {:error, :ollama_unavailable},
+          else: execute_at_tier(:claude, messages, opts)
 
       {:error, reason} ->
         {:error, reason}

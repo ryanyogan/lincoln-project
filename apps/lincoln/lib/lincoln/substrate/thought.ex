@@ -8,14 +8,20 @@ defmodule Lincoln.Substrate.Thought do
 
   This is the architectural claim: thoughts in Lincoln are processes,
   not function calls. They are observable, interruptible, and supervised.
-  Python cannot do this.
   """
 
   use GenServer
   require Logger
 
   alias Lincoln.{Agents, Cognition, Narratives, PubSubBroadcaster}
-  alias Lincoln.Substrate.{CognitiveImpulse, InferenceTier, ThoughtSupervisor, Trajectory}
+
+  alias Lincoln.Substrate.{
+    CognitiveImpulse,
+    InferenceTier,
+    ReflectionFeedback,
+    ThoughtSupervisor,
+    Trajectory
+  }
 
   defstruct [
     :id,
@@ -113,6 +119,7 @@ defmodule Lincoln.Substrate.Thought do
 
     Logger.debug("[Thought #{id}] Spawned: #{tier} — #{belief_statement}")
 
+    Process.flag(:trap_exit, true)
     {:ok, state, {:continue, :execute}}
   end
 
@@ -232,8 +239,36 @@ defmodule Lincoln.Substrate.Thought do
     end
   end
 
-  def handle_info({:DOWN, _ref, :process, _pid, _reason}, state) do
+  def handle_info({:DOWN, _ref, :process, _pid, :normal}, state) do
     {:noreply, state}
+  end
+
+  def handle_info({:DOWN, _ref, :process, _pid, reason}, state) do
+    Logger.warning("[Thought #{state.id}] Linked task crashed: #{inspect(reason)}")
+    new_state = %{state | status: :failed, completed_at: DateTime.utc_now()}
+
+    PubSubBroadcaster.broadcast_thought_event(
+      state.agent_id,
+      {:thought_failed, state.id, reason}
+    )
+
+    {:stop, :normal, new_state}
+  end
+
+  def handle_info({:EXIT, _pid, :normal}, state) do
+    {:noreply, state}
+  end
+
+  def handle_info({:EXIT, _pid, reason}, state) do
+    Logger.warning("[Thought #{state.id}] Linked process exited: #{inspect(reason)}")
+    new_state = %{state | status: :failed, completed_at: DateTime.utc_now()}
+
+    PubSubBroadcaster.broadcast_thought_event(
+      state.agent_id,
+      {:thought_failed, state.id, reason}
+    )
+
+    {:stop, :normal, new_state}
   end
 
   @impl true
@@ -828,59 +863,41 @@ defmodule Lincoln.Substrate.Thought do
   end
 
   defp finalize(state) do
+    # Completion means the result has been persisted, not merely generated.
+    if state.result && state.result != "Skipped (budget constraint)" do
+      process_thought_result(state.agent_id, state.belief, state.result, state.tier)
+    end
+
     PubSubBroadcaster.broadcast_thought_event(
       state.agent_id,
       {:thought_completed, state.id, state.result}
     )
 
-    if state.result && state.result != "Skipped (budget constraint)" do
-      process_thought_result(state.agent_id, state.belief, state.result, state.tier)
-    end
-
     Logger.debug("[Thought #{state.id}] Completed: #{state.tier}")
   end
 
-  defp process_thought_result(agent_id, belief, result, tier) do
-    Task.Supervisor.start_child(Lincoln.TaskSupervisor, fn ->
-      try do
-        agent = Agents.get_agent!(agent_id)
-        belief_id = belief && Map.get(belief, :id)
+  defp process_thought_result(_agent_id, _belief, _result, :local), do: :ok
 
-        # Write a "Reflection on X: Y" memory only for substantive belief
-        # reflections — skip three kinds of thoughts that already record
-        # their work elsewhere or are pure noise:
-        #
-        #   * local-tier thoughts (cheap, repetitive belief-graph reads)
-        #   * narrative thoughts — they have their own narrative_reflections
-        #     table; the duplicate memory just floods the trajectory feed
-        #   * impulse thoughts — each impulse handler (Investigation,
-        #     Perception, Goal, Learning) writes its own purpose-shaped
-        #     memory with the right type and importance; the generic
-        #     "Reflection on 'I have unprocessed observations': no
-        #     extractable claim" memory is duplicate noise.
-        should_record_memory? =
-          tier != :local and
-            is_binary(belief_id) and
-            not CognitiveImpulse.impulse?(belief_id) and
-            not reflection_rate_exceeded?(agent)
+  defp process_thought_result(agent_id, belief, result, _tier) do
+    belief_id = belief && Map.get(belief, :id)
 
-        if should_record_memory? do
-          Lincoln.Memory.create_memory(agent, %{
-            content: "Reflection on '#{get_statement(belief)}': #{result}",
-            memory_type: "reflection",
-            importance: 5
-          })
-        end
+    if is_binary(belief_id) and not CognitiveImpulse.impulse?(belief_id) do
+      agent = Agents.get_agent!(agent_id)
+      record_belief_reflection(agent, belief, result)
+      ReflectionFeedback.apply(agent, belief, result)
+    end
+  rescue
+    e -> Logger.warning("[Thought] Result processing failed: #{Exception.message(e)}")
+  end
 
-        # Feed back into beliefs — same exclusion: impulses don't have a
-        # belief row to revise.
-        if belief_id && is_binary(belief_id) && not CognitiveImpulse.impulse?(belief_id) do
-          feed_back_to_beliefs(agent, belief, result, tier)
-        end
-      rescue
-        e -> Logger.warning("[Thought] Result processing failed: #{Exception.message(e)}")
-      end
-    end)
+  defp record_belief_reflection(agent, belief, result) do
+    unless reflection_rate_exceeded?(agent) do
+      Lincoln.Memory.create_memory(agent, %{
+        content: "Reflection on '#{get_statement(belief)}': #{result}",
+        memory_type: "reflection",
+        importance: 5
+      })
+    end
   end
 
   @max_reflections_per_window 10
@@ -902,54 +919,6 @@ defmodule Lincoln.Substrate.Thought do
     count >= @max_reflections_per_window
   rescue
     _ -> false
-  end
-
-  defp feed_back_to_beliefs(_agent, _belief, _result, :local) do
-    # Local-tier thoughts do NOT entrench beliefs.
-    # Only LLM-confirmed reflections should increase entrenchment.
-    # Local reasoning checks the graph and reports status — that's it.
-    :ok
-  end
-
-  defp feed_back_to_beliefs(agent, belief, result, _tier) do
-    # LLM-tier: evaluate whether reflection reinforces or challenges
-    case Cognition.evaluate_reflection(result) do
-      :reinforce ->
-        live_belief = Lincoln.Beliefs.get_belief!(belief.id)
-        Lincoln.Beliefs.strengthen_belief(live_belief, "Reinforced by reflection")
-
-        # LLM reinforcement can entrench up to 6 — only user input should go higher
-        if live_belief.entrenchment < 6 do
-          Lincoln.Beliefs.entrench_belief(live_belief)
-        end
-
-      :challenge ->
-        live_belief = Lincoln.Beliefs.get_belief!(belief.id)
-        Lincoln.Beliefs.weaken_belief(live_belief, "Challenged by reflection")
-
-      {:extend, insight} ->
-        # Rate-limit: only form new belief if we haven't created too many recently
-        recent_inferences =
-          Lincoln.Beliefs.list_beliefs(agent, status: "active")
-          |> Enum.count(fn b ->
-            b.source_type == "inference" and
-              b.inserted_at != nil and
-              DateTime.diff(DateTime.utc_now(), b.inserted_at, :second) < 300
-          end)
-
-        if recent_inferences < 5 do
-          Cognition.form_belief(agent, insight, "inference",
-            evidence: "Extended from: #{get_statement(belief)}",
-            confidence: 0.6,
-            parent_belief_ids: [belief.id]
-          )
-        end
-
-      _ ->
-        :ok
-    end
-  rescue
-    _ -> :ok
   end
 
   defp get_statement(belief) when is_map(belief) do

@@ -42,7 +42,8 @@ anthropic_api_key = env!("ANTHROPIC_API_KEY", :string, nil)
 openai_api_key = env!("OPENAI_API_KEY", :string, nil)
 
 if config_env() == :prod do
-  unless anthropic_api_key || openai_api_key do
+  unless anthropic_api_key || openai_api_key ||
+           env!("LLM_PROVIDER", :string, "anthropic") == "ollama" do
     raise """
     At least one LLM API key is required.
     Set ANTHROPIC_API_KEY or OPENAI_API_KEY (or both).
@@ -66,7 +67,16 @@ end
 unless config_env() == :test do
   llm_provider = env!("LLM_PROVIDER", :string, "anthropic")
 
+  config :lincoln, :local_inference_only, llm_provider == "ollama"
+
+  config :lincoln, :ollama,
+    service_url: env!("OLLAMA_URL", :string, "http://localhost:11434"),
+    model: env!("OLLAMA_MODEL", :string, "qwen2.5:7b")
+
   case llm_provider do
+    "ollama" ->
+      config :lincoln, :llm_adapter, Lincoln.Adapters.LLM.Ollama
+
     "openai" ->
       config :lincoln, :llm_adapter, Lincoln.Adapters.LLM.OpenAI
 

@@ -141,8 +141,10 @@ defmodule Lincoln.Cognition.BeliefRevision do
     case decision do
       {:revise, reason} ->
         # Create a new belief that supersedes the old one
-        case Beliefs.supersede_belief(belief, evidence[:statement], reason) do
-          {:ok, new_belief, _revision} -> {:ok, new_belief}
+        attrs = revised_attributes(evidence, reason)
+
+        case Beliefs.supersede_belief(belief, attrs, reason) do
+          {:ok, new_belief} -> {:ok, new_belief}
           {:error, reason} -> {:error, reason}
         end
 
@@ -156,6 +158,16 @@ defmodule Lincoln.Cognition.BeliefRevision do
       {:hold, _reason} ->
         {:ok, :held}
     end
+  end
+
+  defp revised_attributes(evidence, reason) do
+    %{
+      statement: evidence[:statement],
+      source_type: to_string(evidence[:source_type] || "testimony"),
+      source_evidence: evidence[:source_evidence] || reason,
+      confidence: strength_to_score(evidence[:strength]),
+      entrenchment: 1
+    }
   end
 
   # ============================================================================

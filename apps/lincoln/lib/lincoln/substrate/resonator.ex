@@ -157,7 +157,7 @@ defmodule Lincoln.Substrate.Resonator do
       pairs
       |> Enum.filter(fn {a, b} ->
         cosine_similarity(a.embedding, b.embedding) >= @relationship_similarity_threshold and
-          not Beliefs.relationship_exists?(agent, a.id, b.id, "supports")
+          not Beliefs.relationship_exists?(agent, a.id, b.id, "related")
       end)
       |> Enum.map(fn {a, b} ->
         pair_similarity = Float.round(cosine_similarity(a.embedding, b.embedding), 2)
@@ -166,7 +166,7 @@ defmodule Lincoln.Substrate.Resonator do
           agent_id: agent.id,
           source_belief_id: a.id,
           target_belief_id: b.id,
-          relationship_type: "supports",
+          relationship_type: "related",
           confidence: avg_confidence,
           detected_by: "resonator",
           evidence:

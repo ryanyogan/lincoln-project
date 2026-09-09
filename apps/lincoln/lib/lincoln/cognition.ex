@@ -193,9 +193,12 @@ defmodule Lincoln.Cognition do
   end
 
   defp gather_curiosity_context(agent) do
+    open_count = Questions.count_open_questions(agent)
+
     context = %{
       recent_memories: Memory.list_recent_memories(agent, 24, limit: 10),
-      open_questions: Questions.list_open_questions(agent, limit: 5),
+      open_questions: Questions.list_open_questions(agent, limit: 10),
+      open_question_count: open_count,
       interests: Questions.list_interests(agent),
       beliefs: Beliefs.list_beliefs(agent) |> Enum.take(10)
     }
@@ -205,18 +208,27 @@ defmodule Lincoln.Cognition do
 
   defp generate_questions(context, llm) do
     context_text = format_curiosity_context(context)
+    open_count = context[:open_question_count] || 0
+    max_questions = if open_count >= 20, do: 1, else: 3
+
+    backlog_note =
+      if open_count >= 10,
+        do:
+          "\nIMPORTANT: You already have #{open_count} unanswered questions. Only ask a new question if it is genuinely different from your existing ones. Prefer depth over breadth.",
+        else: ""
 
     prompt = """
     You are a curious agent exploring your understanding of the world.
 
     Here is your current context:
     #{context_text}
+    #{backlog_note}
 
-    Generate 1-3 questions you're genuinely curious about.
+    Generate 1-#{max_questions} questions you're genuinely curious about.
     Questions should:
     1. Relate to your experiences and interests
-    2. Not duplicate existing open questions
-    3. Be specific enough to potentially answer
+    2. Not duplicate or closely resemble any of your existing open questions
+    3. Be specific enough to potentially answer through investigation
     4. Help fill gaps in your understanding
 
     Format as JSON:
@@ -257,7 +269,9 @@ defmodule Lincoln.Cognition do
     parts =
       if context.open_questions != [] do
         questions = Enum.map_join(context.open_questions, "\n- ", & &1.question)
-        ["Open questions:\n- #{questions}" | parts]
+        count = context[:open_question_count] || length(context.open_questions)
+        header = "Open questions (#{count} total, showing #{length(context.open_questions)}):"
+        ["#{header}\n- #{questions}" | parts]
       else
         parts
       end
@@ -321,11 +335,10 @@ defmodule Lincoln.Cognition do
     existing_similar = Beliefs.find_similar_beliefs(agent, embedding, limit: 5, threshold: 0.8)
 
     cond do
-      # Very similar belief already exists - might strengthen it
-      Enum.any?(existing_similar, fn b -> b[:similarity] > 0.95 end) ->
-        strongest_match = Enum.max_by(existing_similar, & &1[:similarity])
-        belief = Beliefs.get_belief!(strongest_match.id)
-        Beliefs.strengthen_belief(belief, evidence || content)
+      # Repeating an account is not independent evidence. Similar wording may disagree.
+      Enum.any?(existing_similar, &same_account?(&1, content, source_type, evidence)) ->
+        match = Enum.find(existing_similar, &same_account?(&1, content, source_type, evidence))
+        {:ok, Beliefs.get_belief!(match.id)}
 
       existing_similar != [] ->
         check_and_resolve_contradictions(
@@ -341,6 +354,11 @@ defmodule Lincoln.Cognition do
       true ->
         create_new_belief(agent, content, source_type, embedding, opts)
     end
+  end
+
+  defp same_account?(belief, content, source_type, evidence) do
+    String.downcase(String.trim(belief.statement)) == String.downcase(String.trim(content)) and
+      belief.source_type == to_string(source_type) and belief.source_evidence == evidence
   end
 
   defp check_and_resolve_contradictions(

@@ -149,15 +149,11 @@ defmodule Lincoln.Adapters.LLM.Anthropic do
   end
 
   defp extract_json(text) do
-    # Try to find JSON in the text - either an array or object
-    # First try to find an array (for lists of facts/topics)
     cond do
-      # Try array first (more specific for our use cases)
-      match = Regex.run(~r/\[[\s\S]*\]/, text) ->
+      match = Regex.run(~r/\{[\s\S]*\}/, text) ->
         {:ok, hd(match)}
 
-      # Fall back to object
-      match = Regex.run(~r/\{[\s\S]*\}/, text) ->
+      match = Regex.run(~r/\[[\s\S]*\]/, text) ->
         {:ok, hd(match)}
 
       true ->

@@ -29,8 +29,8 @@ defmodule Lincoln.Substrate.AttentionTest do
         })
 
       pid = start_supervised!({Attention, %{agent_id: agent.id}})
-      {:ok, belief, score, _detail} = Attention.next_thought(pid)
-      assert belief.statement == "Scored belief"
+      {:ok, _belief, score, detail} = Attention.next_thought(pid)
+      assert Enum.any?(detail.top_candidates, &(&1.statement == "Scored belief"))
       assert is_float(score)
       assert score > 0.0
     end
@@ -79,9 +79,12 @@ defmodule Lincoln.Substrate.AttentionTest do
         })
 
       pid = start_supervised!({Attention, %{agent_id: focused_agent.id}})
-      {:ok, belief, _score, _detail} = Attention.next_thought(pid)
+      {:ok, _belief, _score, detail} = Attention.next_thought(pid)
 
-      assert belief.statement in ["Deep entrenched belief", "Tensioned belief"]
+      real_candidates =
+        Enum.reject(detail.top_candidates, &String.starts_with?(&1.belief_id, "impulse:"))
+
+      assert hd(real_candidates).statement in ["Deep entrenched belief", "Tensioned belief"]
     end
 
     test "butterfly params rank novel beliefs higher", %{agent: _agent} do

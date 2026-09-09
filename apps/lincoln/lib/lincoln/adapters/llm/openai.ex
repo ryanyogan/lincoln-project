@@ -127,10 +127,10 @@ defmodule Lincoln.Adapters.LLM.OpenAI do
 
   defp extract_json(text) do
     cond do
-      match = Regex.run(~r/\[[\s\S]*\]/, text) ->
+      match = Regex.run(~r/\{[\s\S]*\}/, text) ->
         {:ok, hd(match)}
 
-      match = Regex.run(~r/\{[\s\S]*\}/, text) ->
+      match = Regex.run(~r/\[[\s\S]*\]/, text) ->
         {:ok, hd(match)}
 
       true ->

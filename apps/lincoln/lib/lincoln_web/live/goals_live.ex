@@ -9,7 +9,7 @@ defmodule LincolnWeb.GoalsLive do
   use LincolnWeb, :live_view
 
   alias Lincoln.{Agents, Goals}
-  alias Lincoln.Goals.Goal
+  alias Lincoln.Goals.{Goal, SelfProposer}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -21,7 +21,7 @@ defmodule LincolnWeb.GoalsLive do
 
     {:ok,
      socket
-     |> assign(:page_title, "Goals")
+     |> assign(:page_title, "Commitments")
      |> assign(:agent, agent)
      |> assign(:filter, "active")
      |> assign(:form, to_form(Goal.changeset(%Goal{}, %{})))
@@ -84,7 +84,7 @@ defmodule LincolnWeb.GoalsLive do
   def handle_event("approve", %{"id" => id}, socket) do
     goal = Goals.get_goal!(id)
 
-    case Lincoln.Goals.SelfProposer.approve(goal) do
+    case SelfProposer.approve(goal) do
       {:ok, updated} ->
         {:noreply,
          socket
@@ -104,7 +104,7 @@ defmodule LincolnWeb.GoalsLive do
   def handle_event("reject", %{"id" => id}, socket) do
     goal = Goals.get_goal!(id)
 
-    case Lincoln.Goals.SelfProposer.reject(goal) do
+    case SelfProposer.reject(goal) do
       {:ok, updated} ->
         {:noreply,
          socket
@@ -141,144 +141,132 @@ defmodule LincolnWeb.GoalsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
-      <div class="space-y-6 max-w-4xl mx-auto">
-        <header class="border-b-4 border-base-300 pb-4">
-          <h1 class="text-3xl font-terminal uppercase tracking-tight">Goals</h1>
-          <p class="text-sm opacity-70 mt-1">
-            Explicit pursuits — Lincoln reasons about progress on each one.
+    <Layouts.app flash={@flash} current_path={@current_path}>
+      <section class="commitments-page">
+        <header class="page-intro">
+          <span class="eyebrow">Make room for what matters</span>
+          <h1>Things to follow through on.</h1>
+          <p>
+            Keep a shared intention here. Track what’s open, what needs your input, and what’s done.
           </p>
         </header>
-
-        <section class="border-2 border-base-300 p-4">
-          <h2 class="text-lg font-terminal uppercase mb-3">New goal</h2>
-          <.form
-            for={@form}
-            id="goal-form"
-            phx-change="validate"
-            phx-submit="save"
-            class="space-y-3"
-          >
-            <input
-              type="text"
-              name="goal[statement]"
-              value={@form[:statement].value}
-              placeholder="e.g. Submit the school forms by Friday"
-              class="input input-bordered w-full"
-              autocomplete="off"
+        <.form
+          for={@form}
+          id="goal-form"
+          phx-change="validate"
+          phx-submit="save"
+          class="family-form commitment-form"
+        >
+          <.input
+            field={@form[:statement]}
+            label="A new commitment"
+            placeholder="Something you want to follow through on…"
+            class="family-input"
+            required
+          />
+          <div class="commitment-options">
+            <.input
+              field={@form[:priority]}
+              type="select"
+              label="How important?"
+              options={[{"Everyday", 5}, {"Important", 7}, {"Highest priority", 10}]}
+              class="family-input"
             />
-            <div class="flex flex-wrap gap-3 items-end">
-              <label class="flex flex-col text-xs uppercase font-terminal">
-                Priority
-                <input
-                  type="number"
-                  name="goal[priority]"
-                  value={@form[:priority].value || 5}
-                  min="1"
-                  max="10"
-                  class="input input-bordered w-24"
-                />
-              </label>
-              <label class="flex flex-col text-xs uppercase font-terminal">
-                Deadline (optional)
-                <input
-                  type="datetime-local"
-                  name="goal[deadline]"
-                  value={@form[:deadline].value}
-                  class="input input-bordered"
-                />
-              </label>
-              <button type="submit" class="btn btn-primary font-terminal uppercase">
-                Add goal
-              </button>
-            </div>
-            <p
-              :for={msg <- Enum.map(@form[:statement].errors, &translate_error/1)}
-              class="text-sm text-error"
-            >
-              {msg}
-            </p>
-          </.form>
-        </section>
-
-        <nav class="flex gap-2 text-xs uppercase font-terminal flex-wrap">
+            <.input
+              field={@form[:deadline]}
+              type="datetime-local"
+              label="By when? (optional)"
+              class="family-input"
+            />
+            <button type="submit" class="family-button" phx-disable-with="Adding…">
+              Add commitment
+            </button>
+          </div>
+          <p class="muted small">A place to keep track. This does not send scheduled alerts.</p>
+        </.form>
+        <nav class="commitment-filters" aria-label="Filter commitments">
           <button
-            :for={f <- ~w(active blocked pending_user_approval achieved abandoned all)}
+            :for={
+              {label, status} <- [
+                {"Open", "active"},
+                {"Needs input", "pending_user_approval"},
+                {"Blocked", "blocked"},
+                {"Done", "achieved"},
+                {"All", "all"}
+              ]
+            }
             phx-click="filter"
-            phx-value-status={f}
-            class={[
-              "border-2 px-3 py-1",
-              if(@filter == f,
-                do: "border-primary bg-primary text-primary-content",
-                else: "border-base-300 hover:border-primary"
-              )
-            ]}
+            phx-value-status={status}
+            aria-pressed={@filter == status}
           >
-            {f}
+            {label}
           </button>
         </nav>
-
-        <ul id="goals-stream" phx-update="stream" class="space-y-3">
-          <li id="goals-empty" class="hidden only:block opacity-60 text-sm">
-            No goals match this filter yet.
+        <ul id="goals-stream" phx-update="stream">
+          <li id="goals-empty" class="hidden only:block empty-journal">
+            Nothing here yet. Start with one thing that matters.
           </li>
-          <li
-            :for={{dom_id, goal} <- @streams.goals}
-            id={dom_id}
-            class="border-2 border-base-300 p-4 space-y-2"
-          >
-            <div class="flex items-start justify-between gap-3">
-              <div class="flex-1">
-                <h3 class="font-medium">{goal.statement}</h3>
-                <div class="text-xs opacity-70 mt-1 flex flex-wrap gap-3">
-                  <span>priority {goal.priority}/10</span>
-                  <span>status {goal.status}</span>
-                  <span>origin {goal.origin}</span>
-                  <span>progress {Float.round(goal.progress_estimate * 100, 0)}%</span>
-                  <span :if={goal.deadline}>due {format_dt(goal.deadline)}</span>
-                </div>
-              </div>
-              <div class="flex gap-1">
-                <button
-                  :if={goal.status == "pending_user_approval"}
-                  phx-click="approve"
-                  phx-value-id={goal.id}
-                  class="text-xs uppercase border-2 border-primary px-2 py-1 hover:bg-primary hover:text-primary-content"
-                >
-                  approve
-                </button>
-                <button
-                  :if={goal.status == "pending_user_approval"}
-                  phx-click="reject"
-                  phx-value-id={goal.id}
-                  class="text-xs uppercase border-2 border-error px-2 py-1 hover:bg-error hover:text-error-content"
-                >
-                  reject
-                </button>
-                <button
-                  :if={goal.status in ~w(active blocked)}
-                  phx-click="status:achieved"
-                  phx-value-id={goal.id}
-                  class="text-xs uppercase border-2 border-success px-2 py-1 hover:bg-success hover:text-success-content"
-                >
-                  achieved
-                </button>
-                <button
-                  :if={goal.status in ~w(active blocked)}
-                  phx-click="status:abandoned"
-                  phx-value-id={goal.id}
-                  class="text-xs uppercase border-2 border-error px-2 py-1 hover:bg-error hover:text-error-content"
-                >
-                  abandon
-                </button>
-              </div>
+          <li :for={{dom_id, goal} <- @streams.goals} id={dom_id} class="commitment-item">
+            <div>
+              <h2>{goal.statement}</h2>
+              <p class="commitment-meta">
+                {status_label(goal.status)}
+                <span :if={goal.deadline}> · Due   {format_dt(goal.deadline)}</span>
+              </p>
+              <details class="response-context">
+                <summary>Details</summary>
+                <p>
+                  priority {goal.priority}/10 · {goal.origin} · Lincoln’s progress estimate: {round(
+                    goal.progress_estimate * 100
+                  )}%
+                </p>
+              </details>
+            </div>
+            <div class="commitment-actions">
+              <button
+                :if={goal.status == "pending_user_approval"}
+                phx-click="approve"
+                phx-value-id={goal.id}
+                class="family-button"
+              >
+                Accept
+              </button>
+              <button
+                :if={goal.status == "pending_user_approval"}
+                phx-click="reject"
+                phx-value-id={goal.id}
+                class="family-button secondary"
+              >
+                Decline
+              </button>
+              <button
+                :if={goal.status in ~w(active blocked)}
+                phx-click="status:achieved"
+                phx-value-id={goal.id}
+                class="family-button secondary"
+              >
+                Mark done
+              </button>
+              <button
+                :if={goal.status in ~w(active blocked)}
+                phx-click="status:abandoned"
+                phx-value-id={goal.id}
+                class="family-button secondary"
+              >
+                Let go
+              </button>
             </div>
           </li>
         </ul>
-      </div>
+      </section>
     </Layouts.app>
     """
   end
 
-  defp format_dt(%DateTime{} = dt), do: dt |> DateTime.to_date() |> Date.to_string()
+  defp status_label("active"), do: "Open"
+  defp status_label("pending_user_approval"), do: "Waiting for your input"
+  defp status_label("achieved"), do: "Done"
+  defp status_label("abandoned"), do: "Let go"
+  defp status_label(status), do: String.capitalize(status)
+  defp format_dt(%DateTime{} = dt), do: Calendar.strftime(dt, "%b %d, %Y")
 end

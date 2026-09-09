@@ -111,8 +111,8 @@ defmodule Lincoln.Beliefs do
   Creates a new belief for an agent.
 
   When the caller provides an embedding, checks for existing beliefs with
-  high semantic similarity (>= 0.90) and strengthens the existing belief
-  instead of creating a duplicate.
+  high semantic similarity and identical statement and provenance. Returns the
+  existing account without increasing confidence; similarity alone cannot merge claims.
   """
   def create_belief(%Agent{id: agent_id} = agent, attrs) do
     case maybe_dedup_on_create(agent, attrs) do
@@ -137,40 +137,37 @@ defmodule Lincoln.Beliefs do
     end
   end
 
+  defp normalize_statement(statement), do: statement |> String.trim() |> String.downcase()
+
   @dedup_similarity_threshold 0.90
 
   defp maybe_dedup_on_create(%Agent{} = agent, attrs) do
-    embedding = Map.get(attrs, :embedding) || Map.get(attrs, "embedding")
-
-    if embedding do
-      case find_similar_beliefs(agent, embedding,
+    with embedding when not is_nil(embedding) <-
+           Map.get(attrs, :embedding) || Map.get(attrs, "embedding"),
+         [match | _] <-
+           find_similar_beliefs(agent, embedding,
              limit: 1,
              threshold: @dedup_similarity_threshold
-           ) do
-        [match | _] ->
-          statement = Map.get(attrs, :statement) || Map.get(attrs, "statement") || ""
-
-          Logger.debug(
-            "[Beliefs] Dedup: strengthening existing belief instead of creating duplicate"
-          )
-
-          case strengthen_belief(
-                 get_belief!(match.id),
-                 "Duplicate avoided: #{String.slice(statement, 0, 60)}"
-               ) do
-            {:ok, updated} -> {:duplicate, updated}
-            _ -> :no_duplicate
-          end
-
-        [] ->
-          :no_duplicate
-      end
+           ),
+         true <- duplicate_account?(match, attrs) do
+      {:duplicate, match}
     else
-      :no_duplicate
+      _ -> :no_duplicate
     end
   rescue
     _ -> :no_duplicate
   end
+
+  defp duplicate_account?(match, attrs) do
+    statement = Map.get(attrs, :statement) || Map.get(attrs, "statement") || ""
+    source = Map.get(attrs, :source_type) || Map.get(attrs, "source_type")
+    evidence = Map.get(attrs, :source_evidence) || Map.get(attrs, "source_evidence")
+
+    normalize_statement(statement) == normalize_statement(match.statement) and
+      to_string(source) == match.source_type and evidence == match.source_evidence
+  end
+
+  defp embed_belief_async(%{embedding: embedding}) when not is_nil(embedding), do: :ok
 
   defp embed_belief_async(belief) do
     Task.Supervisor.start_child(Lincoln.TaskSupervisor, fn ->
@@ -287,7 +284,11 @@ defmodule Lincoln.Beliefs do
       sim = embedding_similarity(a.embedding, b.embedding)
       threshold = consolidation_threshold(a, b)
 
-      if sim >= threshold, do: {a, b, sim}, else: nil
+      same_account? =
+        normalize_statement(a.statement) == normalize_statement(b.statement) and
+          a.source_type == b.source_type and a.source_evidence == b.source_evidence
+
+      if sim >= threshold and same_account?, do: {a, b, sim}, else: nil
     end
     |> Enum.reject(&is_nil/1)
     |> Enum.sort_by(fn {_, _, sim} -> -sim end)
@@ -303,9 +304,8 @@ defmodule Lincoln.Beliefs do
     if MapSet.member?(retracted, a.id) or MapSet.member?(retracted, b.id) do
       {retracted, count}
     else
-      {winner, loser} = pick_consolidation_winner(a, b)
+      {_winner, loser} = pick_consolidation_winner(a, b)
 
-      strengthen_belief(winner, "Consolidated from: #{String.slice(loser.statement, 0, 50)}")
       retract_belief(loser, "Consolidated into stronger belief")
 
       {MapSet.put(retracted, loser.id), count + 1}

@@ -20,7 +20,9 @@ defmodule LincolnWeb.Router do
     live_session :default,
       on_mount: [LincolnWeb.Live.Hooks.AssignCurrentPath] do
       # Dashboard is the main page
-      live("/", DashboardLive)
+      live("/", ChatLive, :index)
+      live("/workshop", DashboardLive)
+      live("/journal", JournalLive)
 
       # Chat interface
       live("/chat", ChatLive, :index)
@@ -51,6 +53,8 @@ defmodule LincolnWeb.Router do
       live("/narrative", NarrativeLive, :index)
       live("/benchmarks", BenchmarksLive, :index)
     end
+
+    get("/journal/export", JournalExportController, :show)
 
     # Keep the old page controller for reference
     get("/welcome", PageController, :home)

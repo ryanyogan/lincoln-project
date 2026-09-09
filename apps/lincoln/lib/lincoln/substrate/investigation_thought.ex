@@ -57,8 +57,12 @@ defmodule Lincoln.Substrate.InvestigationThought do
     context = gather_context(agent, question)
 
     case generate_answer(question, context) do
-      {:ok, answer_data} ->
+      {:ok, answer_data} when is_map(answer_data) ->
         process_answer(agent, question, answer_data)
+
+      {:ok, other} ->
+        Logger.warning("[InvestigationThought] LLM returned non-map: #{inspect(other)}")
+        {:error, "Investigation LLM returned unexpected format"}
 
       {:error, reason} ->
         Logger.warning("[InvestigationThought] LLM call failed: #{inspect(reason)}")

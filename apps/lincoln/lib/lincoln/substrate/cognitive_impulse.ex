@@ -35,8 +35,7 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
   Each impulse is a map that looks like a belief to Attention:
   `%{id: "impulse:type", statement: ..., confidence: ..., ...}`
   """
-  def candidates(agent, impulse_state, now, beliefs \\ nil) do
-    # Accept pre-fetched beliefs to avoid re-querying on every tick
+  def candidates(agent, impulse_state, now, beliefs \\ nil, drive_adjustments \\ %{}) do
     cached_beliefs = beliefs || []
 
     [
@@ -44,13 +43,16 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
       reflection_impulse(cached_beliefs, impulse_state, now),
       learning_impulse(agent, impulse_state, now),
       investigation_impulse(agent, impulse_state, now),
-      self_improve_impulse(agent, impulse_state, now),
+      if(Application.get_env(:lincoln, :self_modification_enabled, false),
+        do: self_improve_impulse(agent, impulse_state, now)
+      ),
       perception_impulse(agent, impulse_state, now),
       goal_pursuit_impulse(agent, impulse_state, now),
       action_impulse(agent, impulse_state, now),
       goal_review_impulse(agent, impulse_state, now)
     ]
     |> Enum.reject(&is_nil/1)
+    |> apply_drive_adjustments(drive_adjustments)
   end
 
   @doc "Check if a belief ID represents an impulse."
@@ -87,25 +89,46 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
     }
   end
 
+  defp apply_drive_adjustments(impulses, adjustments) when map_size(adjustments) == 0,
+    do: impulses
+
+  defp apply_drive_adjustments(impulses, adjustments) do
+    Enum.map(impulses, fn impulse ->
+      source = String.replace(impulse.id, "impulse:", "")
+      adjustment = Map.get(adjustments, source, 0.0)
+
+      if adjustment == 0.0 do
+        impulse
+      else
+        adjusted = max(0.05, min(0.95, impulse.confidence + adjustment))
+        %{impulse | confidence: adjusted}
+      end
+    end)
+  end
+
   defp curiosity_impulse(beliefs, impulse_state, now) do
     if on_cooldown?(impulse_state.last_curiosity_at, now, @curiosity_cooldown_seconds) do
       nil
     else
       score = curiosity_score(beliefs)
 
-      %{
-        id: "impulse:curiosity",
-        statement: "I should explore something new and generate questions",
-        confidence: score,
-        entrenchment: 1,
-        source_type: "introspection",
-        revision_count: 0,
-        inserted_at: now,
-        updated_at: now,
-        last_challenged_at: nil,
-        last_reinforced_at: nil,
-        status: "active"
-      }
+      if score > 0.0 do
+        %{
+          id: "impulse:curiosity",
+          statement: "I should explore something new and generate questions",
+          confidence: score,
+          entrenchment: 1,
+          source_type: "introspection",
+          revision_count: 0,
+          inserted_at: now,
+          updated_at: now,
+          last_challenged_at: nil,
+          last_reinforced_at: nil,
+          status: "active"
+        }
+      else
+        nil
+      end
     end
   end
 
@@ -334,9 +357,27 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
         end)
 
       staleness_ratio = stale_count / length(beliefs)
+      base = min(1.0, staleness_ratio * 0.6 + 0.1)
 
-      min(1.0, staleness_ratio * 0.6 + 0.1)
+      # Suppress curiosity when the question backlog is large.
+      # Investigation needs room to drain unanswered questions
+      # before we pile on more.
+      agent = List.first(beliefs) && Lincoln.Agents.get_agent!(List.first(beliefs).agent_id)
+
+      backlog =
+        if agent,
+          do: Questions.count_open_questions(agent),
+          else: 0
+
+      cond do
+        backlog >= 50 -> 0.0
+        backlog >= 20 -> base * 0.3
+        backlog >= 10 -> base * 0.6
+        true -> base
+      end
     end
+  rescue
+    _ -> 0.1
   end
 
   defp self_improve_score(agent) do
@@ -361,8 +402,18 @@ defmodule Lincoln.Substrate.CognitiveImpulse do
     questions = Questions.list_investigatable_questions(agent, limit: 5)
 
     case length(questions) do
-      0 -> 0.0
-      n -> min(0.95, 0.5 + n * 0.1)
+      0 ->
+        0.0
+
+      n ->
+        base = min(0.95, 0.5 + n * 0.1)
+        pending = Questions.count_open_questions(agent)
+
+        cond do
+          pending >= 50 -> 0.95
+          pending >= 20 -> min(0.95, base + 0.15)
+          true -> base
+        end
     end
   rescue
     _ -> 0.0

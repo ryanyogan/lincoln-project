@@ -87,7 +87,7 @@ defmodule LincolnWeb.ActionsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_path={@current_path}>
       <div class="space-y-6 max-w-4xl mx-auto">
         <header class="border-b-4 border-base-300 pb-4">
           <h1 class="text-3xl font-terminal uppercase tracking-tight">Actions</h1>

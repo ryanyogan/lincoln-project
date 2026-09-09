@@ -36,7 +36,9 @@ defmodule Lincoln.Substrate.Attention do
     beliefs_cache: nil,
     beliefs_cached_at: nil,
     relationships_cache: nil,
-    relationships_cached_at: nil
+    relationships_cached_at: nil,
+    drive_cache: nil,
+    drive_cached_at: nil
   ]
 
   @source_novelty %{
@@ -129,63 +131,12 @@ defmodule Lincoln.Substrate.Attention do
 
   @impl true
   def handle_call(:next_thought, _from, state) do
-    now = DateTime.utc_now()
-
-    # Cache beliefs and relationships to avoid querying on every tick
-    {beliefs, state} = cached_beliefs(state, now)
-    {relationships, state} = cached_relationships(state, now)
-
-    impulses = CognitiveImpulse.candidates(state.agent, state.impulse_state, now, beliefs)
-    all_candidates = beliefs ++ impulses
-
-    case all_candidates do
-      [] ->
-        {:reply, {:ok, nil}, %{state | last_scored_at: now}}
-
-      candidates ->
-        params = state.attention_params
-        all_relationships = relationships
-
-        scored =
-          candidates
-          |> Enum.map(fn belief ->
-            {score, components} =
-              score_with_focus_detailed(belief, state, params, now, all_relationships)
-
-            {belief, score, components}
-          end)
-          |> Enum.sort_by(fn {_belief, score, _components} -> score end, :desc)
-
-        {best_belief, best_score, _best_components} = hd(scored)
-
-        # Select thought type based on cognitive style and belief state
-        thought_type = select_thought_type(params, best_belief)
-
-        scoring_detail =
-          build_scoring_detail(scored, params) |> Map.put(:thought_type, thought_type)
-
-        impulse_state = update_impulse_cooldown(state.impulse_state, best_belief.id, now)
-        new_activation_map = update_activation_map(state.activation_map, best_belief.id, now)
-
-        # Track recent focus for monotony detection
-        recent = [best_belief.id | state.recent_focus_ids] |> Enum.take(@max_focus_history)
-
-        new_state = %{
-          state
-          | current_focus_id: best_belief.id,
-            last_scored_at: now,
-            activation_map: new_activation_map,
-            impulse_state: impulse_state,
-            recent_focus_ids: recent
-        }
-
-        PubSubBroadcaster.broadcast_attention_update(
-          state.agent_id,
-          {:next_thought, best_belief, best_score}
-        )
-
-        {:reply, {:ok, best_belief, best_score, scoring_detail}, new_state}
-    end
+    {result, new_state} = do_next_thought(state)
+    {:reply, result, new_state}
+  rescue
+    e ->
+      Logger.warning("[Attention] next_thought crashed: #{Exception.message(e)}")
+      {:reply, {:ok, nil}, state}
   end
 
   @impl true
@@ -287,6 +238,77 @@ defmodule Lincoln.Substrate.Attention do
   end
 
   # =============================================================================
+  # Attention Scoring
+  # =============================================================================
+
+  defp do_next_thought(state) do
+    now = DateTime.utc_now()
+
+    {beliefs, state} = cached_beliefs(state, now)
+    {relationships, state} = cached_relationships(state, now)
+
+    {drive_adjustments, state} = cached_drive_adjustments(state, now)
+
+    impulses =
+      CognitiveImpulse.candidates(
+        state.agent,
+        state.impulse_state,
+        now,
+        beliefs,
+        drive_adjustments
+      )
+
+    all_candidates = beliefs ++ impulses
+
+    case all_candidates do
+      [] ->
+        {{:ok, nil}, %{state | last_scored_at: now}}
+
+      candidates ->
+        params = state.attention_params
+        all_relationships = relationships
+
+        scored =
+          candidates
+          |> Enum.map(fn belief ->
+            {score, components} =
+              score_with_focus_detailed(belief, state, params, now, all_relationships)
+
+            {belief, score, components}
+          end)
+          |> Enum.sort_by(fn {_belief, score, _components} -> score end, :desc)
+
+        {best_belief, best_score, _best_components} = hd(scored)
+
+        thought_type = select_thought_type(params, best_belief)
+
+        scoring_detail =
+          build_scoring_detail(scored, params) |> Map.put(:thought_type, thought_type)
+
+        impulse_state = update_impulse_cooldown(state.impulse_state, best_belief.id, now)
+        new_activation_map = update_activation_map(state.activation_map, best_belief.id, now)
+
+        recent = [best_belief.id | state.recent_focus_ids] |> Enum.take(@max_focus_history)
+
+        new_state = %{
+          state
+          | current_focus_id: best_belief.id,
+            last_scored_at: now,
+            activation_map: new_activation_map,
+            impulse_state: impulse_state,
+            recent_focus_ids: recent
+        }
+
+        PubSubBroadcaster.broadcast_attention_update(
+          state.agent_id,
+          {:next_thought, best_belief, best_score}
+        )
+
+        {{:ok, best_belief, best_score, scoring_detail}, new_state}
+    end
+  end
+
+  # =============================================================================
   # Query Caching
   # =============================================================================
 
@@ -307,6 +329,22 @@ defmodule Lincoln.Substrate.Attention do
     else
       rels = Beliefs.find_all_relationships(state.agent)
       {rels, %{state | relationships_cache: rels, relationships_cached_at: now}}
+    end
+  end
+
+  @drive_cache_ttl_seconds 30
+
+  defp cached_drive_adjustments(state, now) do
+    if state.drive_cache && state.drive_cached_at &&
+         DateTime.diff(now, state.drive_cached_at, :second) < @drive_cache_ttl_seconds do
+      {state.drive_cache, state}
+    else
+      adjustments =
+        if Application.get_env(:lincoln, :drive_learning_enabled, false),
+          do: Lincoln.Drive.DriveScores.impulse_drive_adjustments(state.agent_id),
+          else: %{}
+
+      {adjustments, %{state | drive_cache: adjustments, drive_cached_at: now}}
     end
   end
 

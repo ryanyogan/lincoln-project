@@ -17,7 +17,7 @@ defmodule Lincoln.Substrate.Skeptic do
 
   require Logger
 
-  alias Lincoln.{Beliefs, PubSubBroadcaster}
+  alias Lincoln.{Beliefs, Questions}
 
   # Embedding similarity threshold for considering two beliefs related enough
   # to potentially contradict. Lower than the Resonator's "supports" threshold
@@ -93,30 +93,31 @@ defmodule Lincoln.Substrate.Skeptic do
 
   defp maybe_create_contradiction(belief_a, belief_b, agent) do
     already_exists =
-      Beliefs.relationship_exists?(agent, belief_a.id, belief_b.id, "contradicts") or
-        Beliefs.relationship_exists?(agent, belief_b.id, belief_a.id, "contradicts")
+      Beliefs.relationship_exists?(agent, belief_a.id, belief_b.id, "related") or
+        Beliefs.relationship_exists?(agent, belief_b.id, belief_a.id, "related")
 
     unless already_exists do
       attrs = %{
         agent_id: agent.id,
         source_belief_id: belief_a.id,
         target_belief_id: belief_b.id,
-        relationship_type: "contradicts",
+        relationship_type: "related",
         confidence: min(belief_a.confidence, belief_b.confidence),
         detected_by: "skeptic",
         evidence:
-          "Skeptic detected: both beliefs have confidence > 0.7, different sources or recently challenged"
+          "Unverified related claims: similarity and source/confidence differences suggest review, not a proven contradiction"
       }
 
       case Beliefs.create_relationship(attrs) do
         {:ok, relationship} ->
-          Logger.info(
-            "[Skeptic #{agent.id}] Contradiction detected: #{belief_a.id} <-> #{belief_b.id}"
-          )
+          Logger.info("[Skeptic #{agent.id}] Review candidate: #{belief_a.id} <-> #{belief_b.id}")
 
-          PubSubBroadcaster.broadcast_skeptic_flag(
-            agent.id,
-            {:contradiction_detected, relationship, belief_a, belief_b}
+          Questions.ask_question(
+            agent,
+            "Are these claims consistent in the same context? #{belief_a.statement} / #{belief_b.statement}",
+            priority: 6,
+            context:
+              "Unverified candidate from semantic similarity; relationship #{relationship.id}. Different sources do not establish contradiction."
           )
 
         {:error, _} ->

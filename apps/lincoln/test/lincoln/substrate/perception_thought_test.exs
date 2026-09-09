@@ -57,7 +57,7 @@ defmodule Lincoln.Substrate.PerceptionThoughtTest do
 
       [belief] = Beliefs.list_beliefs(agent, status: "active")
       assert belief.statement =~ "Erlang processes"
-      assert belief.source_type == "observation"
+      assert belief.source_type == "testimony"
 
       reloaded = Memory.get_memory!(memory.id)
       assert reloaded.source_context["processed_at"]
