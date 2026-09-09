@@ -83,7 +83,7 @@ defmodule Lincoln.MixProject do
       {:mox, "~> 1.1", only: :test},
 
       # Environment variables from .env files
-      {:dotenvy, "~> 1.1", only: [:dev, :test]}
+      {:dotenvy, "~> 1.1"}
     ]
   end
 
