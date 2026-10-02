@@ -1,5 +1,7 @@
 # Lincoln
 
+A research system on Elixir/OTP: a continuously running per-agent process with a belief store that keeps revision history, parameterized attention scoring, and tiered inference (local computation, Ollama, a frontier model). It is an experiment, not production software. [ASSESSMENT.md](ASSESSMENT.md) records which of the claims further down this README are verified in the code and which were overstated.
+
 ## Family workspace — September 2026
 
 Lincoln now opens directly into conversation. The main navigation is **Talk**, **Family journal**, and **Commitments**. Technical controls remain under **Workshop** (`/workshop`); existing research URLs still work.
@@ -31,13 +33,13 @@ Lincoln is not an agent that gets called. It is a process that exists.
 
 Most AI agent frameworks bolt memory onto stateless inference — a retrieval pipeline that fetches context before each LLM call. Lincoln inverts this. It is a continuously-running Elixir/OTP application that maintains beliefs with confidence levels, revises them when contradicted by evidence, detects its own uncertainty, and develops persistent interests based on tunable attention parameters. Memory is not something Lincoln retrieves; it is a side-effect of a process that was running when the information arrived.
 
-The belief system implements AGM revision semantics (Alchourron, Gardenfors, Makinson, 1985) as first-class data structures. Each belief carries a confidence score (0.0–1.0), an entrenchment level (1–10), a source type with credibility weighting (observation > inference > testimony > training), and a revision history. When new evidence arrives, it is scored against existing beliefs; if the evidence exceeds the revision threshold, the belief is revised rather than overwritten. This creates a system where lived experience gradually outweighs training priors — a deliberate inversion of how most AI systems handle conflicting information.
+The belief system uses a revision heuristic inspired by AGM (Alchourron, Gardenfors, Makinson, 1985); it does not demonstrate compliance with the AGM postulates (see [ASSESSMENT.md](ASSESSMENT.md)). Each belief carries a confidence score (0.0–1.0), an entrenchment level (1–10), a source type with credibility weighting (observation > inference > testimony > training), and a revision history. When new evidence arrives, it is scored against existing beliefs; if the evidence exceeds the revision threshold, the belief is revised rather than overwritten. This creates a system where lived experience gradually outweighs training priors — a deliberate inversion of how most AI systems handle conflicting information.
 
 The core experimental claim is that **continuity of process** is a missing primitive in agent architecture. Lincoln runs whether or not anyone is talking to it. At any moment, you can ask what it is currently thinking about, and it has an answer that is not "nothing." Two Lincoln instances with different attention parameters develop visibly different preoccupations from the same input stream — same code, different parameters, different entity.
 
 ## Architecture
 
-Five long-lived supervised GenServer processes run per agent under a `DynamicSupervisor`:
+Each agent runs under its own supervisor, which starts three children: Substrate, Attention, and a ThoughtSupervisor for Thought processes. Skeptic and Resonator are functions called periodically, not separate processes. The diagram and table below show the earlier five-process design:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -82,7 +84,7 @@ Most ticks are free. Lincoln does not call Claude on every thought.
 
 ### Self-Modification Pipeline
 
-Lincoln can analyze and modify its own source code during evolution cycles. The validation chain prevents catastrophic changes:
+Lincoln has a pipeline for analyzing and modifying its own source code during evolution cycles. Background self-modification is off by default (`:self_modification_enabled`) and is peripheral to the project's main question. The validation chain prevents catastrophic changes:
 
 `mix format` → `mix credo --strict` → isolated compilation → behavioral test suite
 
@@ -96,7 +98,7 @@ Most AI systems use System 1/System 2 as vocabulary ("fast LLM" vs "slow LLM wit
 
 Parts of this work converge on ideas from published literature that were rediscovered from first principles rather than derived from reading the papers first. This is worth stating honestly.
 
-The belief revision framework implements what is essentially AGM semantics (1985) — the standard philosophical logic framework for how rational agents should update beliefs. The confidence scoring, entrenchment, and revision threshold mechanics mirror established epistemology research. The architecture shares structural parallels with Sophia (Sun, Hong, Zhang, 2025), which also layers cognitive processes over LLM inference. The key architectural difference: Sophia wraps an existing LLM and adds cognitive layers on top; Lincoln tries to be the cognitive process itself, with LLMs as one tool among many.
+The belief revision framework is a heuristic inspired by AGM semantics (1985) — the standard philosophical logic framework for how rational agents should update beliefs. The confidence scoring, entrenchment, and revision threshold mechanics mirror established epistemology research. The architecture shares structural parallels with Sophia (Sun, Hong, Zhang, 2025), which also layers cognitive processes over LLM inference. The key architectural difference: Sophia wraps an existing LLM and adds cognitive layers on top; Lincoln tries to be the cognitive process itself, with LLMs as one tool among many.
 
 The broader landscape is well-mapped by Hu et al.'s survey on LLM-based agents (arXiv:2512.13564, Dec 2025), which organizes agent memory into forms, functions, and dynamics. Lincoln's contribution is not novel theory — it is a specific integration: taking established cognitive science theories literally (not as metaphors) and building production infrastructure around them on the BEAM.
 
@@ -104,7 +106,7 @@ Steve Kinney's synthesis of this research space was instrumental in connecting t
 
 ## Why This Matters
 
-The non-obvious insight is that the BEAM virtual machine — built by Ericsson in the 1980s to handle millions of concurrent phone switch calls that never fail and can hot-swap code — maps almost exactly onto the requirements of a cognitive substrate. Lightweight preemptive processes, supervision trees that restart failed components, message passing between concurrent entities, hot code reloading. This is not a stylistic preference for Elixir; it is a capability ceiling that Python's threading model cannot reach.
+The non-obvious insight is that the BEAM virtual machine — built by Ericsson in the 1980s to handle millions of concurrent phone switch calls that never fail and can hot-swap code — maps almost exactly onto the requirements of a cognitive substrate. Lightweight preemptive processes, supervision trees that restart failed components, message passing between concurrent entities, hot code reloading. The BEAM is a coherent runtime for this design; that does not mean the architecture could not be reproduced in Python (see [ASSESSMENT.md](ASSESSMENT.md)).
 
 The second insight is that **attention parameters create personality, not just behavior**. Two Lincoln instances with identical code but different attention weights (novelty seeking vs. depth preference, focus momentum vs. interrupt sensitivity) develop visibly different preoccupations over time from the same input stream. The `/substrate/compare` divergence observatory makes this visible in real time. This is entity differentiation, not behavior variation.
 
@@ -370,11 +372,11 @@ Research-grade exploration in active development. Not production software. The s
 
 Current capabilities:
 - Continuous cognitive loop with parameterized attention
-- AGM belief revision with confidence, entrenchment, and source credibility
+- AGM-inspired belief revision heuristic with confidence, entrenchment, and source labels
 - Goal creation, pursuit, decomposition, and periodic relevance review
 - Web search grounded in Lincoln's own questions (SearXNG/Tavily/Firecrawl cascade)
 - Conversation with goal detection, web search, and full belief/memory context
-- Self-modification pipeline with safety guardrails
+- Self-modification pipeline with validation checks (background runs off by default)
 - Two-agent divergence observatory
 
 Known limitations are documented in `LEARNINGS.md` and are the next work.
